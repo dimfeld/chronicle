@@ -1,0 +1,31 @@
+
+{% macro button(text, url, classes='') %}
+<table class="button{% if classes %} {{classes}}{% endif %}">
+  <tbody>
+    <tr>
+      <td>
+        <table>
+          <tbody>
+            <tr>
+              <td><a href="{{url | safe}}">{{text}}</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+  </tbody>
+</table>
+{% endmacro button %}
+
+{% macro spacer(height=16) %}
+<table class="spacer">
+    <tbody>
+      <tr>
+        <td height="{{height}}" style="font-size:{{height}}px;line-height:{{height}}px;">&nbsp;</td>
+      </tr>
+    </tbody>
+  </table>
+{% endmacro spacer %}
+
+
+

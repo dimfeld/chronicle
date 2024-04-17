@@ -1,0 +1,33 @@
+product_name = "chronicle"
+company_name = ""
+
+default_auth_scope = "model"
+
+[error_reporting]
+provider = "none"
+
+[secrets]
+
+[server]
+dotenv = true
+hosts = ["localhost"]
+
+[web]
+framework = "htmx"
+
+[tracing]
+provider = "none"
+api_service_name = "chronicle-api"
+
+
+[formatter]
+rust = ["rustfmt", "--edition", "2021"]
+js = ["prettier", "--stdin-filepath=stdin.ts"]
+sql = ["pg_format"]
+
+[database]
+migrate_on_start = true
+
+[email]
+provider = "none"
+from = "support@example.com"

@@ -1,0 +1,26 @@
+{
+  "name": "chronicle-web",
+  "module": "src/index.ts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "NODE_ENV=${NODE_ENV:-production} bun build-web.ts",
+    "dev": "NODE_ENV=development vite build --mode development --watch"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "autoprefixer": "^10.4.19",
+    "daisyui": "^4.10.1",
+    "tailwindcss": "^3.4.3",
+    "vite": "^5.2.8"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@alpinejs/morph": "^3.13.8",
+    "alpinejs": "^3.13.8",
+    "htmx.org": "^1.9.11",
+    "prettier": "^3.2.5"
+  }
+}
