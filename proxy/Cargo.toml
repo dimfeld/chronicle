@@ -8,6 +8,7 @@ description = "LLM Abstraction"
 
 [dependencies]
 async-trait = "0.1.80"
+backon = "0.4.4"
 error-stack = "0.4.1"
 reqwest = "0.12.3"
 serde = { version = "1.0.198", features = ["derive"] }

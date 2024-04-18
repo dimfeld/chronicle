@@ -4,29 +4,13 @@ use std::{
     sync::Arc,
 };
 
-pub mod anthropic;
-pub mod error;
-pub mod ollama;
-pub mod openai;
-
 pub mod database;
+pub mod error;
+pub mod providers;
 
 use database::Pool;
 pub use error::Error;
-
-#[async_trait::async_trait]
-pub trait ChatModelProvider: Debug + Send + Sync {
-    fn name(&self) -> &str;
-
-    async fn send_request(
-        &self,
-        body: serde_json::Value,
-    ) -> Result<reqwest::Response, reqwest::Error>;
-
-    fn default_url(&self) -> &'static str;
-
-    fn is_default_for_model(&self, model: &str) -> bool;
-}
+use providers::ChatModelProvider;
 
 #[derive(Debug)]
 pub struct Proxy {
