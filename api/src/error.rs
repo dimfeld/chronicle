@@ -61,6 +61,10 @@ pub enum Error {
     InvalidHostHeader,
     #[error("Type Export Error")]
     TypeExport,
+    #[error("Missing Model")]
+    MissingModel,
+    #[error("Missing provider for model {0}")]
+    MissingProvider(String),
 }
 
 impl From<Report<Error>> for Error {
@@ -146,6 +150,8 @@ impl HttpError for Error {
             Error::MissingPermission(_) => FilErrorKind::Unauthenticated.as_str(),
             Error::InvalidHostHeader => FilErrorKind::InvalidHostHeader.as_str(),
             Error::Storage => FilErrorKind::Storage.as_str(),
+            Error::MissingModel => "missing_model",
+            Error::MissingProvider(_) => "missing_provider",
             // These aren't ever returned, we just need some value to fill out the match
             Error::Config => "config",
             Error::TypeExport => "cli",
@@ -191,6 +197,8 @@ impl HttpError for Error {
             Error::Storage => StatusCode::INTERNAL_SERVER_ERROR,
             Error::Config => StatusCode::INTERNAL_SERVER_ERROR,
             Error::TypeExport => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::MissingModel => StatusCode::BAD_REQUEST,
+            Error::MissingProvider(_) => StatusCode::BAD_REQUEST,
         }
     }
 

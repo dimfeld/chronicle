@@ -6,6 +6,7 @@ use std::{
 };
 
 use axum::{extract::FromRef, handler::Handler, routing::get, Router};
+use chronicle_proxy::Proxy;
 use error_stack::{Report, ResultExt};
 use filigree::{
     auth::{
@@ -48,6 +49,9 @@ pub struct ServerStateInner {
     pub db: PgPool,
     /// Secrets loaded from the environment
     pub secrets: Secrets,
+
+    /// LLM providers
+    pub model_providers: Proxy,
 }
 
 impl ServerStateInner {
@@ -282,6 +286,11 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
         insecure: config.insecure,
         db: config.pg_pool.clone(),
         secrets: config.secrets,
+
+        // TODO support passing a config file here
+        model_providers: Proxy::new(Some(config.pg_pool.clone()), None)
+            .await
+            .change_context(Error::ServerStart)?,
     }));
 
     let auth_queries = Arc::new(crate::auth::AuthQueries::new(
@@ -306,6 +315,7 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
         .merge(crate::models::create_routes())
         .merge(crate::users::users::create_routes())
         .merge(crate::auth::create_routes())
+        .nest("/proxy", crate::proxy::create_routes())
         // Return not found here so we don't run the other non-API fallbacks
         .fallback(|| async { Error::NotFound("Route") });
 

@@ -1,3 +1,4 @@
+use chronicle_api::{cmd, db, emails, server, Error};
 use clap::{Args, Parser, Subcommand};
 use error_stack::{Report, ResultExt};
 use filigree::{
@@ -5,8 +6,6 @@ use filigree::{
     tracing_config::{configure_tracing, teardown_tracing, TracingProvider},
 };
 use tracing::{event, Level};
-
-use chronicle::{cmd, db, emails, server, Error};
 
 #[derive(Parser)]
 #[command(version, about)]
