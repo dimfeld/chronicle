@@ -6,7 +6,7 @@ use filigree::{
 };
 use tracing::{event, Level};
 
-use chronicle::{cmd, db, emails, server, Error};
+use chronicle_api::{cmd, db, emails, server, Error};
 
 #[derive(Parser)]
 #[command(version, about)]

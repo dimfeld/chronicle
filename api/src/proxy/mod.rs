@@ -14,7 +14,7 @@ async fn proxy_request(
     // around that.
     let model = body["model"]
         .as_str()
-        .ok_or(Error::MissingModel)?
+        .ok_or(Error::MissingMdel)?
         .to_string();
     let provider = body["provider"]
         .take()
@@ -33,17 +33,6 @@ async fn proxy_request(
     let meta = body["meta"].take();
 
     // Parse out model and provider choice
-
-    // Send update to postgres recorder
-
-    tracing::info!(?body, "Starting request");
-
-    // Run call
-
-    // Get response stats: latency, tokens used, etc.
-
-    let result = ();
-    tracing::info!(?result, "Finished request");
 
     todo!()
 }

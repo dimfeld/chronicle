@@ -14,13 +14,13 @@ axum-htmx = "0.5.0"
 axum-jsonschema = "0.8.0"
 axum-sqlx-tx = { version = "0.8.0", features = ["postgres", "runtime-tokio-rustls"] }
 bytes = "1.5.0"
-chronicle-proxy = { path = "../proxy", version = "0.1.0", default-features = false, features = ["postgres"] }
+chronicle-proxy = { path = "../proxy", version = "0.1.0", default-features = false, features = ["postgres", "filigree"] }
 chrono = "0.4.33"
 clap = { version = "4.4.11", features = ["env", "derive"] }
 dotenvy = "0.15.7"
 error-stack = { version = "0.4.1", features = ["spantrace"] }
 eyre = "0.6.11"
-filigree = { version = "0.1.0", features = ["htmx", "maud", "watch-manifest"] }
+filigree.workspace = true
 futures = "0.3.30"
 http = "1.0.0"
 hyper = { version = "1.1.0", features = ["server", "http1", "http2"] }

@@ -3,7 +3,7 @@ use std::path::Path;
 use filigree::vite_manifest::{watch::ManifestWatcher, Manifest, ManifestError};
 use maud::{html, Markup, DOCTYPE};
 
-use crate::auth::Authed;
+use super::auth::WebAuthed;
 
 use super::auth::WebAuthed;
 

@@ -597,12 +597,16 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "backon",
+ "bytes",
  "error-stack",
+ "filigree",
  "reqwest 0.12.3",
  "serde",
  "serde_json",
  "sqlx",
  "thiserror",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1104,8 +1108,6 @@ dependencies = [
 [[package]]
 name = "filigree"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8216f6c05481e5f424ccb53008295bc324bceac595c9a34cd3807956fca94326"
 dependencies = [
  "argon2",
  "async-trait",

@@ -1,5 +1,5 @@
 {
-  "name": "chronicle-web",
+  "name": "chronicle_api-web",
   "module": "src/index.ts",
   "private": true,
   "type": "module",

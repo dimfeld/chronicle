@@ -15,6 +15,7 @@ use filigree::{
     },
     error_reporting::ErrorReporter,
     errors::{panic_handler, ObfuscateErrorLayer, ObfuscateErrorLayerSettings},
+    requests::MakeRequestUuidV7,
     server::FiligreeState,
 };
 use sqlx::PgPool;
@@ -22,7 +23,6 @@ use tower::ServiceBuilder;
 use tower_http::{
     compression::CompressionLayer,
     cors::CorsLayer,
-    request_id::MakeRequestUuid,
     timeout::TimeoutLayer,
     trace::{DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer},
     ServiceBuilderExt,
@@ -383,6 +383,7 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
                 enabled: obfuscate_errors,
                 ..Default::default()
             }))
+            .set_x_request_id(MakeRequestUuidV7)
             .layer(
                 TraceLayer::new_for_http()
                     .make_span_with(|req: &axum::extract::Request| {
@@ -395,16 +396,25 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
                             .get::<axum::extract::MatchedPath>()
                             .map(|matched_path| matched_path.as_str());
 
-                        tracing::info_span!("request", %method, %uri, route)
+                        let request_id = req
+                            .headers()
+                            .get("X-Request-Id")
+                            .and_then(|s| s.to_str().ok())
+                            .unwrap_or("");
+
+                        tracing::info_span!("request", ?request_id, %method, %uri, route)
                     })
-                    .on_response(DefaultOnResponse::new().level(Level::INFO))
+                    .on_response(
+                        DefaultOnResponse::new()
+                            .level(Level::INFO)
+                            .latency_unit(tower_http::LatencyUnit::Millis),
+                    )
                     .on_request(DefaultOnRequest::new().level(Level::INFO))
                     .on_failure(DefaultOnFailure::new().level(Level::ERROR)),
             )
             .layer(TimeoutLayer::new(config.request_timeout))
             .layer(api_cors_layer)
             .layer(tower_cookies::CookieManagerLayer::new())
-            .set_x_request_id(MakeRequestUuid)
             .propagate_x_request_id()
             .layer(CompressionLayer::new())
             .layer(filigree::auth::middleware::AuthLayer::new(auth_queries))
