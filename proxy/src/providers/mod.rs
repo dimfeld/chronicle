@@ -6,10 +6,14 @@ pub mod openai;
 use std::fmt::Debug;
 
 use error_stack::Report;
-use reqwest::{StatusCode, Url};
+use reqwest::StatusCode;
 use thiserror::Error;
 
-use crate::{Error, ProxyRequestOptions};
+use crate::{
+    format::{ChatRequest, ChatResponse},
+    request::RetryOptions,
+    Error,
+};
 
 #[async_trait::async_trait]
 pub trait ChatModelProvider: Debug + Send + Sync {
@@ -17,14 +21,12 @@ pub trait ChatModelProvider: Debug + Send + Sync {
 
     /// Send a request and return the response. If there's any chance of retryable failures for
     /// this provider (e.g. almost every provider), then this function should handle retrying with
-    /// the behavior specified in `options.retry`. The `retryable_request` function can assist with that.
+    /// the behavior specified in `options.retry`. The `request_with_retry` function can assist with that.
     async fn send_request(
         &self,
-        options: &ProxyRequestOptions,
-        body: serde_json::Value,
+        retry_options: RetryOptions,
+        body: ChatRequest,
     ) -> Result<ProviderResponse, Report<Error>>;
-
-    fn default_url(&self) -> &'static str;
 
     fn is_default_for_model(&self, model: &str) -> bool;
 }
@@ -32,7 +34,7 @@ pub trait ChatModelProvider: Debug + Send + Sync {
 /// A generic structure with a provider's response translated into the common format, and possible error codes.
 pub struct ProviderResponse {
     // todo use strong typing here?
-    pub body: Option<serde_json::Value>,
+    pub body: ChatResponse,
     /// Any other metadata from the provider that should be logged.
     pub meta: Option<serde_json::Value>,
     /// How many retries were performed.
@@ -42,8 +44,6 @@ pub struct ProviderResponse {
     /// The latency of the request. If the request was retried this should only count the
     /// final successful one. Total latency including retries is tracked outside of the provider.
     pub latency: std::time::Duration,
-    pub tokens_input: Option<u32>,
-    pub tokens_output: Option<u32>,
 }
 
 #[derive(Debug, Error)]
@@ -57,21 +57,46 @@ pub struct ProviderError {
     pub body: Option<serde_json::Value>,
 }
 
+#[cfg(feature = "filigree")]
+impl filigree::errors::HttpError for ProviderError {
+    type Detail = serde_json::Value;
+
+    fn status_code(&self) -> StatusCode {
+        self.status_code
+            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+    }
+
+    fn error_kind(&self) -> &'static str {
+        self.kind.as_str()
+    }
+
+    fn error_detail(&self) -> Self::Detail {
+        self.body.clone().unwrap_or(serde_json::Value::Null)
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum ProviderErrorKind {
     /// A generic error not otherwise specified. These will be retried
     #[error("Model provider returned an error")]
     Generic,
-    /// An error expected to be transient, such as 5xx status codes
-    #[error("Model provider encountered a transient error")]
-    Transient,
-
+    /// a 5xx HTTP status code or similar error
+    #[error("Model provider encountered a server error")]
+    Server,
+    #[error("Failed while trying to send request")]
+    Sending,
+    #[error("Failed while parsing response")]
+    ParsingResponse,
     /// The provider returned a rate limit error.
     #[error("Model provider rate limited this request")]
     RateLimit {
         /// How soon we can retry, if the response specified
         retry_after: Option<std::time::Duration>,
     },
+
+    /// The request took longer than the conifgured timeout
+    #[error("Timed out waiting for model provider's response")]
+    Timeout,
 
     /// Some non-retryable error not covered below
     #[error("Model provider encountered an unrecoverable error")]
@@ -96,8 +121,6 @@ impl ProviderErrorKind {
         }
 
         let code = match code {
-            // 5xx errors tend to be transient and retryable
-            c if c.is_server_error() => Self::Transient,
             // We don't have the information on how long to wait here, but it can be extracted
             // later by the provider if it is present.
             StatusCode::TOO_MANY_REQUESTS => Self::RateLimit { retry_after: None },
@@ -112,8 +135,10 @@ impl ProviderErrorKind {
             | StatusCode::NOT_FOUND
             | StatusCode::METHOD_NOT_ALLOWED
             | StatusCode::NOT_ACCEPTABLE => Self::BadInput,
+            c if c.is_server_error() => Self::Server,
+            // Some other client error but these tend to indicate that a retry won't work.
             c if c.is_client_error() => Self::Permanent,
-            c => Self::Generic,
+            _ => Self::Generic,
         };
 
         Some(code)
@@ -123,7 +148,26 @@ impl ProviderErrorKind {
     pub fn retryable(&self) -> bool {
         matches!(
             self,
-            Self::Transient | Self::RateLimit { .. } | Self::Generic
+            Self::Server
+                | Self::ParsingResponse
+                | Self::Sending
+                | Self::RateLimit { .. }
+                | Self::Generic
         )
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ProviderErrorKind::Generic => "generic",
+            ProviderErrorKind::Server => "provider_server_error",
+            ProviderErrorKind::Sending => "provider_connection_error",
+            ProviderErrorKind::ParsingResponse => "parsing_provider_response",
+            ProviderErrorKind::RateLimit { .. } => "rate_limit",
+            ProviderErrorKind::Timeout => "timeout",
+            ProviderErrorKind::Permanent => "unrecoverable_server_error",
+            ProviderErrorKind::BadInput => "provider_rejected_input",
+            ProviderErrorKind::AuthRejected => "provider_rejected_token",
+            ProviderErrorKind::OutOfCredits => "out_of_credits",
+        }
     }
 }

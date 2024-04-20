@@ -27,7 +27,6 @@ pub struct TestApp {
     pub pg_pool: PgPool,
     pub server_task: tokio::task::JoinHandle<Result<(), Report<Error>>>,
     pub sent_emails: Arc<Mutex<Vec<filigree::email::Email>>>,
-    queue_dir: temp_dir::TempDir,
 }
 
 #[derive(Clone, Debug)]
@@ -141,7 +140,6 @@ pub async fn start_app_with_options(
         server_task,
         sent_emails,
         pg_pool,
-        queue_dir,
     };
 
     (app, bootstrapped_data)

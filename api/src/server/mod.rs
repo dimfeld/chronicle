@@ -51,7 +51,7 @@ pub struct ServerStateInner {
     pub secrets: Secrets,
 
     /// LLM providers
-    pub model_providers: Proxy,
+    pub proxy: Proxy,
 }
 
 impl ServerStateInner {
@@ -288,7 +288,7 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
         secrets: config.secrets,
 
         // TODO support passing a config file here
-        model_providers: Proxy::new(Some(config.pg_pool.clone()), None)
+        proxy: Proxy::new(Some(config.pg_pool.clone()), None)
             .await
             .change_context(Error::ServerStart)?,
     }));

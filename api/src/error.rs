@@ -9,6 +9,7 @@ use filigree::{
     storage::StorageError,
     uploads::UploadInspectorError,
 };
+use serde_json::json;
 use thiserror::Error;
 
 /// The top-level error type from the platform
@@ -65,6 +66,11 @@ pub enum Error {
     MissingModel,
     #[error("Missing provider for model {0}")]
     MissingProvider(String),
+
+    #[error("Model provider error")]
+    Proxy,
+    #[error("Could not parse input as a chat request")]
+    BadChatRequest,
 }
 
 impl From<Report<Error>> for Error {
@@ -86,7 +92,8 @@ impl Error {
                 |e| e.status_code(),
                 AuthError,
                 UploadInspectorError,
-                StorageError
+                StorageError,
+                chronicle_proxy::providers::ProviderError
             )
         })
     }
@@ -103,7 +110,8 @@ impl Error {
                 |e| e.error_kind(),
                 AuthError,
                 UploadInspectorError,
-                StorageError
+                StorageError,
+                chronicle_proxy::providers::ProviderError
             )
         })
     }
@@ -123,10 +131,22 @@ impl Error {
             )
         })
     }
+
+    fn find_downstack_error_detail(&self) -> Option<serde_json::Value> {
+        let Error::WrapReport(report) = self else {
+            return None;
+        };
+
+        report.frames().find_map(|frame| {
+            frame
+                .downcast_ref::<chronicle_proxy::providers::ProviderError>()
+                .and_then(|e| e.body.clone())
+        })
+    }
 }
 
 impl HttpError for Error {
-    type Detail = String;
+    type Detail = serde_json::Value;
 
     fn error_kind(&self) -> &'static str {
         if let Some(error_kind) = self.find_downstack_error_kind() {
@@ -152,6 +172,7 @@ impl HttpError for Error {
             Error::Storage => FilErrorKind::Storage.as_str(),
             Error::MissingModel => "missing_model",
             Error::MissingProvider(_) => "missing_provider",
+            Error::Proxy => "proxy",
             // These aren't ever returned, we just need some value to fill out the match
             Error::Config => "config",
             Error::TypeExport => "cli",
@@ -199,14 +220,22 @@ impl HttpError for Error {
             Error::TypeExport => StatusCode::INTERNAL_SERVER_ERROR,
             Error::MissingModel => StatusCode::BAD_REQUEST,
             Error::MissingProvider(_) => StatusCode::BAD_REQUEST,
+            Error::Proxy => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
-    fn error_detail(&self) -> String {
-        match self {
-            Error::WrapReport(e) => e.error_detail(),
-            _ => String::new(),
-        }
+    fn error_detail(&self) -> serde_json::Value {
+        let body = self.find_downstack_error_detail();
+
+        let error_details = match self {
+            Error::WrapReport(e) => e.error_detail().into(),
+            _ => serde_json::Value::Null,
+        };
+
+        json!({
+            "body": body,
+            "details": error_details,
+        })
     }
 }
 

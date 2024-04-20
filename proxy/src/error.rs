@@ -8,8 +8,8 @@ pub enum Error {
     NoDefault(String),
     #[error("Request is missing model name")]
     ModelNotSpecified,
-    #[error(transparent)]
-    ModelError(ProviderError),
+    #[error("Model provider returned an error")]
+    ModelError,
     #[error("Error transforming a model request")]
     TransformingRequest,
     #[error("Error transforming a model response")]

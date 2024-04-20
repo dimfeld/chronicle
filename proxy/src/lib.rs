@@ -2,14 +2,16 @@ use std::{collections::BTreeMap, fmt::Debug, path::PathBuf, sync::Arc};
 
 pub mod database;
 pub mod error;
+pub mod format;
 pub mod providers;
-mod request;
+pub mod request;
 
-use bytes::Bytes;
 use database::Pool;
 pub use error::Error;
-use error_stack::{Report, ResultExt};
-use providers::{ChatModelProvider, ProviderResponse};
+use error_stack::Report;
+use format::{ChatRequest, ChatResponse};
+use providers::ChatModelProvider;
+use request::RetryOptions;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
@@ -59,12 +61,12 @@ impl Proxy {
 
     fn model_from_options<'a>(
         options: &'a ProxyRequestOptions,
-        body: &'a serde_json::Value,
+        body: &'a ChatRequest,
     ) -> Result<(bool, &'a str), Error> {
         let (from_options, model) = if let Some(model) = &options.model {
             (true, model.as_str())
         } else {
-            (false, body["model"].as_str().unwrap_or_default())
+            (false, body.model.as_deref().unwrap_or_default())
         };
 
         if model.is_empty() {
@@ -83,8 +85,8 @@ impl Proxy {
     pub async fn send(
         &self,
         options: ProxyRequestOptions,
-        body: serde_json::Value,
-    ) -> Result<serde_json::Value, Report<Error>> {
+        body: ChatRequest,
+    ) -> Result<ChatResponse, Report<Error>> {
         let provider = if let Some(provider) = &options.provider {
             self.get_provider(&provider)
                 .ok_or(Error::UnknownProvider(provider.clone()))?
@@ -111,8 +113,8 @@ impl Proxy {
         &self,
         provider: Arc<dyn ChatModelProvider>,
         options: ProxyRequestOptions,
-        mut body: serde_json::Value,
-    ) -> Result<serde_json::Value, Report<Error>> {
+        mut body: ChatRequest,
+    ) -> Result<ChatResponse, Report<Error>> {
         tracing::info!(?body, "Starting request");
         // Send update to postgres recorder
 
@@ -120,11 +122,11 @@ impl Proxy {
 
         // If we got the model from the options, then overwrite the model in the body
         if from_options {
-            body["model"] = serde_json::Value::String(model.to_string());
+            body.model = Some(model.to_string());
         }
 
         let send_start = tokio::time::Instant::now();
-        let response = provider.send_request(&options, body).await?;
+        let response = provider.send_request(options.retry, body).await;
         let send_time = send_start.elapsed().as_millis();
 
         // Get response stats: latency, tokens used, etc.
@@ -135,24 +137,44 @@ impl Proxy {
         let current_span = tracing::Span::current();
         // In case of retries, this might be meaningfully different from the main latency.
         current_span.record("total_latency", send_time);
-        current_span.record("latency", response.latency.as_millis());
-        current_span.record("retries", response.retries);
-        current_span.record("rate_limited", response.rate_limited);
-        current_span.record("tokens_input", response.tokens_input);
-        current_span.record("tokens_output", response.tokens_output);
 
-        Ok(response.body.ok_or(Error::ResultParseError)?)
+        match &response {
+            Ok(response) => {
+                current_span.record("latency", response.latency.as_millis());
+                current_span.record("retries", response.retries);
+                current_span.record("rate_limited", response.rate_limited);
+                if let Some(input_tokens) = response.body.usage.prompt_tokens {
+                    current_span.record("tokens_input", input_tokens);
+                }
+                if let Some(output_tokens) = response.body.usage.completion_tokens {
+                    current_span.record("tokens_output", output_tokens);
+                }
+            }
+            Err(e) => {
+                todo!()
+            }
+        }
+
+        response.map(|r| r.body)
+    }
+
+    pub async fn shutdown(&mut self) {
+        // TODO if the database logger is active, close it down.
+        // let log_tx = self.log_tx.take();
+        // drop(log_tx)
+        // let log_task = self.log_task.take();
+        // log_task.await
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProxyRequestOptions {
     /// Override the model from the request body.
-    model: Option<String>,
-    provider: Option<String>,
-    timeout: std::time::Duration,
-    // retry: RetryOptions,
-    metadata: ProxyRequestMetadata,
+    pub model: Option<String>,
+    pub provider: Option<String>,
+    pub timeout: std::time::Duration,
+    pub retry: RetryOptions,
+    pub metadata: ProxyRequestMetadata,
 }
 
 impl Default for ProxyRequestOptions {
@@ -160,6 +182,7 @@ impl Default for ProxyRequestOptions {
         Self {
             model: None,
             provider: None,
+            retry: RetryOptions::default(),
             timeout: std::time::Duration::from_secs(60),
             metadata: ProxyRequestMetadata::default(),
         }
@@ -171,21 +194,59 @@ impl Default for ProxyRequestOptions {
 /// fields are optional, and the `extra` field can be used to add anything else that useful
 /// for your use case.
 pub struct ProxyRequestMetadata {
+    /// The application making this call
+    pub application: Option<String>,
+    /// The environment the application is running in
+    pub environment: Option<String>,
     /// The organization_id of the user that triggered the request
-    organization_id: Option<String>,
+    pub organization_id: Option<String>,
     /// The id of the user that triggered the request
-    user_id: Option<String>,
+    pub user_id: Option<String>,
     /// The id of the workflow that this request belongs to
-    workflow_id: Option<String>,
+    pub workflow_id: Option<String>,
     /// A readable name of the workflow that this request belongs to
-    workflow_name: Option<String>,
+    pub workflow_name: Option<String>,
     /// The id of of the specific run that this request belongs to.
-    run_id: Option<String>,
+    pub run_id: Option<String>,
     /// The name of the workflow step
-    step: Option<String>,
+    pub step: Option<String>,
     /// The index of the step within the workflow.
-    step_index: Option<i32>,
+    pub step_index: Option<u32>,
 
     /// Any other metadata to include.
-    extra: Option<BTreeMap<String, serde_json::Value>>,
+    #[serde(flatten)]
+    pub extra: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+#[cfg(test)]
+mod test {
+    use serde_json::json;
+
+    use crate::ProxyRequestMetadata;
+
+    #[test]
+    /// Make sure extra flattening works as expected
+    fn deserialize_meta() {
+        let test_value = json!({
+            "application": "abc",
+            "another": "value",
+            "step": "email",
+            "third": "fourth",
+        });
+
+        let value: ProxyRequestMetadata =
+            serde_json::from_value(test_value).expect("deserializing");
+
+        println!("{value:#?}");
+        assert_eq!(value.application, Some("abc".to_string()));
+        assert_eq!(value.step, Some("email".to_string()));
+        assert_eq!(
+            value.extra.as_ref().unwrap().get("another").unwrap(),
+            &json!("value")
+        );
+        assert_eq!(
+            value.extra.as_ref().unwrap().get("third").unwrap(),
+            &json!("fourth")
+        );
+    }
 }

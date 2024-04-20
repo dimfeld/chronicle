@@ -5,8 +5,6 @@ use maud::{html, Markup, DOCTYPE};
 
 use super::auth::WebAuthed;
 
-use super::auth::WebAuthed;
-
 pub static MANIFEST: Manifest = Manifest::new();
 
 pub fn init_page_layout(

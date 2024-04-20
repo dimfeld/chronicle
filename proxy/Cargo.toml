@@ -10,19 +10,29 @@ description = "LLM Abstraction"
 async-trait = "0.1.80"
 backon = "0.4.4"
 bytes = "1.6.0"
+chrono = "0.4.38"
 error-stack = "0.4.1"
 filigree = { workspace = true, optional = true }
-reqwest = "0.12.3"
+flume = "0.11.0"
+itertools = "0.12.1"
+rand = "0.8.5"
+reqwest = { version = "0.12.3", features = ["json"] }
 serde = { version = "1.0.198", features = ["derive"] }
 serde_json = "1.0.116"
+serde_path_to_error = "0.1.16"
 sqlx = { version = "0.7.4", features = ["any"] }
 thiserror = "1.0.58"
 tokio = { version = "1.37.0", features = ["time"] }
+toml = "0.8.12"
 tracing = "0.1.40"
 
 [features]
-default = ["postgres"]
+default = ["postgres", "migrations"]
 any-db = ["sqlx/any"]
 postgres = ["sqlx/postgres"]
 sqlite = ["sqlx/sqlite"]
 filigree = ["dep:filigree"]
+migrations = [];
+
+[dev-dependencies]
+wiremock = "0.6.0"
