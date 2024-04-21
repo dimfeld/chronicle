@@ -152,12 +152,14 @@ where
             return Err(error);
         }
 
+        let wait = backoff.next();
         let wait = match inner.kind {
             // Rate limited, where the provider specified a time to wait
             ProviderErrorKind::RateLimit {
                 retry_after: Some(retry_after),
             } => {
                 was_rate_limited = true;
+
                 if options.fail_if_rate_limit_exceeds_max_backoff
                     && retry_after > options.max_backoff
                 {
@@ -165,11 +167,11 @@ where
                     return Err(error);
                 }
 
-                retry_after
+                // If the rate limit retry duration is more than the planned wait, then wait for
+                // the rate limit duration instead.
+                wait.max(retry_after)
             }
-            // We already checked above for retryable, so don't need to treat the other errors
-            // differently here.
-            _ => backoff.next(),
+            _ => wait,
         };
 
         tokio::time::sleep(wait).await;
@@ -183,6 +185,7 @@ where
 #[instrument(level = "debug", skip(body, prepare, handle_rate_limit))]
 pub async fn send_standard_request<RESPONSE: DeserializeOwned>(
     retry_options: RetryOptions,
+    timeout: Duration,
     prepare: impl Fn() -> reqwest::RequestBuilder,
     handle_rate_limit: impl Fn(&reqwest::Response) -> Option<Duration>,
     body: Bytes,
@@ -190,6 +193,7 @@ pub async fn send_standard_request<RESPONSE: DeserializeOwned>(
     with_retry(retry_options, body, |body| async {
         let start = tokio::time::Instant::now();
         let result = prepare()
+            .timeout(timeout)
             .body(body)
             .send()
             .await
@@ -205,7 +209,6 @@ pub async fn send_standard_request<RESPONSE: DeserializeOwned>(
         if let Some(mut e) = error {
             match &mut e {
                 ProviderErrorKind::RateLimit { retry_after } => {
-                    // TODO make this a closure as well
                     let value = handle_rate_limit(&result);
                     *retry_after = value;
                 }

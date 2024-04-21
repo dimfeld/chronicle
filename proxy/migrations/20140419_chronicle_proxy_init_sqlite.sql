@@ -12,12 +12,17 @@ VALUES (
 
 CREATE TABLE IF NOT EXISTS chronicle_events (
   id text PRIMARY KEY,
-  chat_request json,
+  organization_id text,
+  project_id text,
+  user_id text,
+  chat_request json NOT NULL,
   chat_response json,
   error json,
+  model text,
   application text,
   environment text,
   request_organization_id text,
+  request_project_id text,
   request_user_id text,
   workflow id text,
   workflow_name text,

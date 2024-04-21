@@ -6,34 +6,34 @@ use axum::{
     Json, Router,
 };
 use chronicle_proxy::{
-    format::ChatRequest, request::RetryOptions, Proxy, ProxyRequestMetadata, ProxyRequestOptions,
+    format::ChatRequest, request::RetryOptions, ProxyRequestInternalMetadata, ProxyRequestMetadata,
+    ProxyRequestOptions,
 };
 use error_stack::ResultExt;
-use http::StatusCode;
 use serde::Deserialize;
 
-use crate::{server::ServerState, Error};
+use crate::{auth::Authed, server::ServerState, Error};
 
 #[derive(Deserialize, Debug)]
 struct ProxyRequestPayload {
     #[serde(flatten)]
     request: ChatRequest,
 
+    /// Force a certain provider
     provider: Option<String>,
+    /// Customize retry behavior
     retry: Option<RetryOptions>,
+    /// Metadata about the request, which will be recorded
     meta: Option<ProxyRequestMetadata>,
     /// Timeout, in milliseconds
-    timeout: Option<u32>,
+    timeout: Option<u64>,
 }
 
 async fn proxy_request(
     State(state): State<ServerState>,
+    auth: Option<Authed>,
     Json(body): Json<ProxyRequestPayload>,
 ) -> Result<Response, Error> {
-    // Parse out extra metadata
-
-    // move most of this into the proxy object itself. This endpoint should just be a thing wrapper
-    // around that.
     let model = body
         .request
         .model
@@ -58,7 +58,14 @@ async fn proxy_request(
                 provider: None,
                 retry: body.retry.unwrap_or_default(),
                 metadata: body.meta.unwrap_or_default(),
-                timeout: Duration::from_millis(body.timeout.unwrap_or(30_000) as u64),
+                internal_metadata: ProxyRequestInternalMetadata {
+                    organization_id: auth
+                        .as_ref()
+                        .map(|a| a.organization_id.as_uuid().to_string()),
+                    user_id: auth.as_ref().map(|a| a.user_id.as_uuid().to_string()),
+                    project_id: None,
+                },
+                timeout: body.timeout.map(Duration::from_millis),
             },
             body.request,
         )
@@ -68,17 +75,10 @@ async fn proxy_request(
     Ok(Json(result).into_response())
 }
 
-fn value_as_string(value: serde_json::Value) -> Option<String> {
-    match value {
-        serde_json::Value::String(s) => Some(s),
-        _ => None,
-    }
-}
-
 pub fn create_routes() -> Router<ServerState> {
     Router::new()
         .route("/chat", axum::routing::post(proxy_request))
-        // We dont use this path, but allow calling with any path for compatibility with clients
+        // We don't use the wildcard path, but allow calling with any path for compatibility with clients
         // that always append an API path to a base url.
         .route("/char/*path", axum::routing::post(proxy_request))
 }

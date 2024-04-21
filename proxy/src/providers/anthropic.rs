@@ -30,11 +30,13 @@ impl ChatModelProvider for Anthropic {
     async fn send_request(
         &self,
         retry_options: RetryOptions,
+        timeout: Duration,
         mut body: ChatRequest,
     ) -> Result<ProviderResponse, Report<Error>> {
         body.transform(ChatRequestTransformation {
             supports_message_name: false,
             system_in_messages: false,
+            strip_model_prefix: Some("anthropic/"),
         });
 
         // We could do something here to simulate the `n` parameter but don't right now.
@@ -55,6 +57,7 @@ impl ChatModelProvider for Anthropic {
 
         let result = send_standard_request::<AnthropicChatResponse>(
             retry_options,
+            timeout,
             || {
                 self.client
                     .post("https://api.anthropic.com/v1/messages")
@@ -76,7 +79,7 @@ impl ChatModelProvider for Anthropic {
     }
 
     fn is_default_for_model(&self, model: &str) -> bool {
-        model.starts_with("claude")
+        model.starts_with("anthropic/") || model.starts_with("claude")
     }
 }
 

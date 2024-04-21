@@ -3,7 +3,7 @@ pub mod custom;
 pub mod ollama;
 pub mod openai;
 
-use std::fmt::Debug;
+use std::{fmt::Debug, time::Duration};
 
 use error_stack::Report;
 use reqwest::StatusCode;
@@ -25,6 +25,7 @@ pub trait ChatModelProvider: Debug + Send + Sync {
     async fn send_request(
         &self,
         retry_options: RetryOptions,
+        timeout: Duration,
         body: ChatRequest,
     ) -> Result<ProviderResponse, Report<Error>>;
 

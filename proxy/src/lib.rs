@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, fmt::Debug, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, fmt::Debug, path::PathBuf, sync::Arc, time::Duration};
 
 pub mod database;
 pub mod error;
@@ -22,6 +22,7 @@ pub struct Proxy {
     pool: Option<database::Pool>,
     config_path: Option<PathBuf>,
     providers: Vec<Arc<dyn ChatModelProvider>>,
+    default_timeout: Option<Duration>,
     default_provider: Option<Arc<dyn ChatModelProvider>>,
     client: reqwest::Client,
 }
@@ -38,6 +39,7 @@ impl Proxy {
             pool: database_pool,
             config_path,
             default_provider: None,
+            default_timeout: None,
             providers: vec![],
             // todo allow passing an existing client, or maybe options for one? We still
             client: reqwest::Client::new(),
@@ -126,7 +128,16 @@ impl Proxy {
         }
 
         let send_start = tokio::time::Instant::now();
-        let response = provider.send_request(options.retry, body).await;
+        let response = provider
+            .send_request(
+                options.retry,
+                options
+                    .timeout
+                    .or(self.default_timeout)
+                    .unwrap_or(Duration::from_secs(60)),
+                body,
+            )
+            .await;
         let send_time = send_start.elapsed().as_millis();
 
         // Get response stats: latency, tokens used, etc.
@@ -172,9 +183,11 @@ pub struct ProxyRequestOptions {
     /// Override the model from the request body.
     pub model: Option<String>,
     pub provider: Option<String>,
-    pub timeout: std::time::Duration,
+    pub timeout: Option<std::time::Duration>,
     pub retry: RetryOptions,
+
     pub metadata: ProxyRequestMetadata,
+    pub internal_metadata: ProxyRequestInternalMetadata,
 }
 
 impl Default for ProxyRequestOptions {
@@ -183,10 +196,23 @@ impl Default for ProxyRequestOptions {
             model: None,
             provider: None,
             retry: RetryOptions::default(),
-            timeout: std::time::Duration::from_secs(60),
+            timeout: None,
             metadata: ProxyRequestMetadata::default(),
+            internal_metadata: ProxyRequestInternalMetadata::default(),
         }
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+/// Metadata about the internal source of this request. Mostly useful for multi-tenant
+/// scenarios where one proxy server is handling requests from multiple unrelated applications.
+pub struct ProxyRequestInternalMetadata {
+    /// The internal organiztion that the request belongs to
+    pub organization_id: Option<String>,
+    /// The internal project that the request belongs to
+    pub project_id: Option<String>,
+    /// The internal user ID that the request belongs to
+    pub user_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -198,8 +224,10 @@ pub struct ProxyRequestMetadata {
     pub application: Option<String>,
     /// The environment the application is running in
     pub environment: Option<String>,
-    /// The organization_id of the user that triggered the request
+    /// The organization related to the request
     pub organization_id: Option<String>,
+    /// The project related to the request
+    pub project_id: Option<String>,
     /// The id of the user that triggered the request
     pub user_id: Option<String>,
     /// The id of the workflow that this request belongs to

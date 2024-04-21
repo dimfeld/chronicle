@@ -43,13 +43,15 @@ pub struct UsageResponse {
     pub total_tokens: Option<usize>,
 }
 
-pub struct ChatRequestTransformation {
+pub struct ChatRequestTransformation<'a> {
     /// True if the model provider supports a `name` for each message. False if name
     /// should be merged into the main content of the message when it is provided.
     pub supports_message_name: bool,
     /// True if the system message is just another message with a system role.
     /// False if it is the special `system` field.
     pub system_in_messages: bool,
+    /// If the model starts with this prefix, strip it off.
+    pub strip_model_prefix: Option<&'a str>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -85,6 +87,14 @@ pub struct ChatRequest {
 
 impl ChatRequest {
     pub fn transform(&mut self, options: ChatRequestTransformation) {
+        let stripped = options
+            .strip_model_prefix
+            .zip(self.model.as_deref())
+            .and_then(|(prefix, model)| model.strip_prefix(prefix));
+        if let Some(stripped) = stripped {
+            self.model = Some(stripped.to_string());
+        }
+
         if !options.supports_message_name {
             self.merge_message_names();
         }

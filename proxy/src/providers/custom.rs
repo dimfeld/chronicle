@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use error_stack::Report;
 use reqwest::header::{HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
@@ -31,6 +33,7 @@ impl ChatModelProvider for CustomProvider {
     async fn send_request(
         &self,
         retry_options: RetryOptions,
+        timeout: Duration,
         body: ChatRequest,
     ) -> Result<ProviderResponse, Report<Error>> {
         // https://docs.anthropic.com/claude/reference/messages_post

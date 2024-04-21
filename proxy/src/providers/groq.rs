@@ -6,14 +6,14 @@ use super::{ChatModelProvider, ProviderResponse};
 use crate::{format::ChatRequest, request::RetryOptions, Error};
 
 #[derive(Debug)]
-pub struct Ollama {
+pub struct Groq {
     pub url: String,
 }
 
 #[async_trait::async_trait]
-impl ChatModelProvider for Ollama {
+impl ChatModelProvider for Groq {
     fn name(&self) -> &str {
-        "Ollama"
+        "Groq"
     }
 
     async fn send_request(
@@ -26,6 +26,6 @@ impl ChatModelProvider for Ollama {
     }
 
     fn is_default_for_model(&self, model: &str) -> bool {
-        model.starts_with("claude")
+        model.starts_with("groq/")
     }
 }
