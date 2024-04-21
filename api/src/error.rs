@@ -69,8 +69,6 @@ pub enum Error {
 
     #[error("Model provider error")]
     Proxy,
-    #[error("Could not parse input as a chat request")]
-    BadChatRequest,
 }
 
 impl From<Report<Error>> for Error {
