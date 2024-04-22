@@ -12,7 +12,7 @@ pub mod format;
 pub mod providers;
 pub mod request;
 
-use database::{load_providers_from_database, Pool};
+use database::{load_providers_from_database, logging::ProxyLogEntry, Pool};
 pub use error::Error;
 use error_stack::{Report, ResultExt};
 use format::{ChatRequest, ChatResponse};
@@ -25,7 +25,10 @@ use request::RetryOptions;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
-use crate::providers::{anthropic::Anthropic, groq::Groq, SendRequestOptions};
+use crate::{
+    database::logging::start_database_logger,
+    providers::{anthropic::Anthropic, groq::Groq, SendRequestOptions},
+};
 
 pub type AnyChatModelProvider = Arc<dyn ChatModelProvider>;
 
@@ -89,63 +92,83 @@ impl ProxyBuilder {
         }
     }
 
+    /// Set the database connection pool
     pub fn with_database(mut self, pool: Pool) -> Self {
         self.pool = Some(pool);
         self
     }
 
+    /// Enable or disable logging to the database. Logging requires `with_database` to have been
+    /// called.
     pub fn log_to_database(mut self, log: bool) -> Self {
         self.config.log_to_database = Some(log);
         self
     }
 
+    /// Merge this configuration into the current one.
     pub fn with_config(mut self, config: ProxyConfig) -> Self {
-        self.config = config;
-        self
-    }
-
-    /// Load all the default providers
-    pub fn with_default_providers(self) -> Self {
-        self.with_anthropic(None).with_groq(None).with_openai(None)
-    }
-
-    pub fn with_custom_provider(mut self, config: CustomProviderConfig) -> Self {
-        self.config.providers.push(config);
-        self
-    }
-
-    pub fn with_openai(mut self, token: Option<String>) -> Self {
-        self.openai = token.or(Some(String::new()));
-        self
-    }
-
-    pub fn with_anthropic(mut self, token: Option<String>) -> Self {
-        self.anthropic = token.or(Some(String::new()));
-        self
-    }
-
-    pub fn with_groq(mut self, token: Option<String>) -> Self {
-        self.groq = token.or(Some(String::new()));
-        self
-    }
-
-    pub async fn with_config_from_path(mut self, path: &Path) -> Result<Self, Report<Error>> {
-        let data = tokio::fs::read_to_string(path)
-            .await
-            .change_context(Error::ReadingConfig)?;
-        let config: ProxyConfig = toml::from_str(&data).change_context(Error::ReadingConfig)?;
-
-        // Merge the new config into whatever was set before.
-
         self.config.default_timeout = config.default_timeout.or(self.config.default_timeout);
         self.config.log_to_database = config.log_to_database.or(self.config.log_to_database);
         if config.user_agent.is_some() {
             self.config.user_agent = config.user_agent;
         }
         self.config.providers.extend(config.providers);
-        Ok(self)
+        self
     }
 
+    /// Read a configuration file from this path and merge it into the current configuration.
+    pub async fn with_config_from_path(self, path: &Path) -> Result<Self, Report<Error>> {
+        let data = tokio::fs::read_to_string(path)
+            .await
+            .change_context(Error::ReadingConfig)?;
+        let config: ProxyConfig = toml::from_str(&data).change_context(Error::ReadingConfig)?;
+
+        Ok(self.with_config(config))
+    }
+
+    /// Add a custom provider to the list of providers
+    pub fn with_custom_provider(mut self, config: CustomProviderConfig) -> Self {
+        self.config.providers.push(config);
+        self
+    }
+
+    /// Enable the OpenAI provider
+    pub fn with_openai(mut self, token: Option<String>) -> Self {
+        self.openai = token.or(Some(String::new()));
+        self
+    }
+
+    /// Enable the Anthropic provider
+    pub fn with_anthropic(mut self, token: Option<String>) -> Self {
+        self.anthropic = token.or(Some(String::new()));
+        self
+    }
+
+    /// Enable the Groq provider
+    pub fn with_groq(mut self, token: Option<String>) -> Self {
+        self.groq = token.or(Some(String::new()));
+        self
+    }
+
+    // /// Enable the Ollama provider
+    // pub fn with_ollama(mut self, url: Option<String>) -> Self {
+    //     self.ollama = url.or(Some(String::new()));
+    //     self
+    // }
+
+    /// Load all the default providers
+    pub fn with_default_providers(self) -> Self {
+        self.with_anthropic(None).with_groq(None).with_openai(None)
+    }
+
+    /// Set the user agent that will be used for HTTP requests. This only applies if
+    /// `with_client` is not used.
+    pub fn user_agent(mut self, user_agent: impl Into<String>) -> Self {
+        self.config.user_agent = Some(user_agent.into());
+        self
+    }
+
+    /// Supply a custom [reqwest::Client]
     pub fn with_client(mut self, client: reqwest::Client) -> Self {
         self.client = Some(client);
         self
@@ -153,10 +176,24 @@ impl ProxyBuilder {
 
     pub async fn build(self) -> Result<Proxy, Report<Error>> {
         let mut providers = self.config.providers;
-        if let Some(pool) = &self.pool {
+        let logger = if let Some(pool) = &self.pool {
             let db_providers = load_providers_from_database(&pool).await?;
             providers.extend(db_providers);
-        }
+
+            let logger = if self.config.log_to_database.unwrap_or(false) {
+                Some(start_database_logger(
+                    pool.clone(),
+                    500,
+                    Duration::from_secs(1),
+                ))
+            } else {
+                None
+            };
+
+            logger
+        } else {
+            None
+        };
 
         let client = self.client.unwrap_or_else(|| {
             reqwest::Client::builder()
@@ -200,12 +237,14 @@ impl ProxyBuilder {
                 as Arc<dyn ChatModelProvider>);
         }
 
-        // TODO enable database logger
+        let (log_tx, log_task) = logger.unzip();
 
         Ok(Proxy {
             pool: self.pool,
             providers: RwLock::new(providers),
             default_timeout: self.config.default_timeout,
+            log_tx,
+            log_task,
         })
     }
 }
@@ -213,6 +252,8 @@ impl ProxyBuilder {
 #[derive(Debug)]
 pub struct Proxy {
     pool: Option<database::Pool>,
+    log_tx: Option<flume::Sender<ProxyLogEntry>>,
+    log_task: Option<tokio::task::JoinHandle<()>>,
     providers: RwLock<Vec<Arc<dyn ChatModelProvider>>>,
     default_timeout: Option<Duration>,
 }
@@ -306,16 +347,17 @@ impl Proxy {
             body.model = Some(model.to_string());
         }
 
+        let timestamp = chrono::Utc::now();
         let send_start = tokio::time::Instant::now();
         let response = provider
             .send_request(SendRequestOptions {
-                retry_options: options.retry,
+                retry_options: options.retry.clone(),
                 timeout: options
                     .timeout
                     .or(self.default_timeout)
                     .unwrap_or(Duration::from_secs(60)),
-                api_key: options.api_key,
-                body,
+                api_key: options.api_key.clone(),
+                body: body.clone(),
             })
             .await;
         let send_time = send_start.elapsed().as_millis();
@@ -340,23 +382,48 @@ impl Proxy {
                 if let Some(output_tokens) = response.body.usage.completion_tokens {
                     current_span.record("tokens_output", output_tokens);
                 }
+
+                if let Some(log_tx) = &self.log_tx {
+                    let log_entry = ProxyLogEntry {
+                        timestamp,
+                        request: body.clone(),
+                        response: Some(response.clone()),
+                        total_latency: send_start.elapsed(),
+                        error: None,
+                        options,
+                    };
+
+                    log_tx.send_async(log_entry).await.ok();
+                }
             }
             Err(e) => {
-                todo!()
+                tracing::error!(?e, "Request failed");
+
+                if let Some(log_tx) = &self.log_tx {
+                    let log_entry = ProxyLogEntry {
+                        timestamp,
+                        request: body,
+                        response: None,
+                        total_latency: send_start.elapsed(),
+                        error: Some(format!("{:?}", e)),
+                        options,
+                    };
+
+                    log_tx.send_async(log_entry).await.ok();
+                }
             }
         }
-
-        // self.log_tx.send(log_entry).await.ok();
 
         response.map(|r| r.body)
     }
 
     pub async fn shutdown(&mut self) {
-        // TODO if the database logger is active, close it down.
-        // let log_tx = self.log_tx.take();
-        // drop(log_tx)
-        // let log_task = self.log_task.take();
-        // log_task.await
+        let log_tx = self.log_tx.take();
+        drop(log_tx);
+        let log_task = self.log_task.take();
+        if let Some(log_task) = log_task {
+            log_task.await.ok();
+        }
     }
 }
 

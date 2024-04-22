@@ -40,6 +40,7 @@ pub trait ChatModelProvider: Debug + Send + Sync {
 }
 
 /// A generic structure with a provider's response translated into the common format, and possible error codes.
+#[derive(Debug, Clone)]
 pub struct ProviderResponse {
     // todo use strong typing here?
     pub body: ChatResponse,

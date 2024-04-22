@@ -14,7 +14,7 @@ pub struct ProxyLogEntry {
     pub request: ChatRequest,
     pub response: Option<ProviderResponse>,
     pub total_latency: Duration,
-    pub error: Option<Report<Error>>,
+    pub error: Option<String>,
     pub options: ProxyRequestOptions,
 }
 
