@@ -1,4 +1,10 @@
-use std::{collections::BTreeMap, fmt::Debug, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeMap,
+    fmt::Debug,
+    path::{Path, PathBuf},
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 pub mod database;
 pub mod error;
@@ -6,11 +12,14 @@ pub mod format;
 pub mod providers;
 pub mod request;
 
-use database::Pool;
+use database::{load_providers_from_database, Pool};
 pub use error::Error;
-use error_stack::Report;
+use error_stack::{Report, ResultExt};
 use format::{ChatRequest, ChatResponse};
-use providers::ChatModelProvider;
+use providers::{
+    custom::{CustomProvider, ProviderRequestFormat},
+    ChatModelProvider,
+};
 use request::RetryOptions;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
@@ -19,37 +28,147 @@ use crate::providers::SendRequestOptions;
 
 pub type AnyChatModelProvider = Arc<dyn ChatModelProvider>;
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct ProxyConfig {
+    providers: Vec<CustomProviderConfig>,
+    default_timeout: Option<Duration>,
+    log_to_database: Option<bool>,
+    user_agent: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CustomProviderConfig {
+    pub name: String,
+    pub url: String,
+    pub token: Option<String>,
+    pub format: ProviderRequestFormat,
+    pub headers: BTreeMap<String, String>,
+    pub prefix: Option<String>,
+    /// A list of models that this provider should be the default for
+    #[serde(default)]
+    pub default_for: Vec<String>,
+    pub token_env: Option<String>,
+}
+
+impl CustomProviderConfig {
+    pub fn into_provider(mut self, client: reqwest::Client) -> CustomProvider {
+        if let Some(token) = self
+            .token_env
+            .as_deref()
+            .and_then(|var| std::env::var(&var).ok())
+        {
+            self.token = Some(token);
+        }
+
+        CustomProvider {
+            config: self,
+            client,
+        }
+    }
+}
+
+pub struct ProxyBuilder {
+    pool: Option<Pool>,
+    config: ProxyConfig,
+    client: Option<reqwest::Client>,
+}
+
+impl ProxyBuilder {
+    pub fn new() -> Self {
+        Self {
+            pool: None,
+            config: ProxyConfig::default(),
+            client: None,
+        }
+    }
+
+    pub fn with_database(mut self, pool: Pool) -> Self {
+        self.pool = Some(pool);
+        self
+    }
+
+    pub fn log_to_database(mut self, log: bool) -> Self {
+        self.config.log_to_database = Some(log);
+        self
+    }
+
+    pub fn with_config(mut self, config: ProxyConfig) -> Self {
+        self.config = config;
+        self
+    }
+
+    pub async fn with_config_from_path(mut self, path: &Path) -> Result<Self, Report<Error>> {
+        let data = tokio::fs::read_to_string(path)
+            .await
+            .change_context(Error::ReadingConfig)?;
+        let config: ProxyConfig = toml::from_str(&data).change_context(Error::ReadingConfig)?;
+
+        // Merge the new config into whatever was set before.
+
+        self.config.default_timeout = config.default_timeout.or(self.config.default_timeout);
+        self.config.log_to_database = config.log_to_database.or(self.config.log_to_database);
+        if config.user_agent.is_some() {
+            self.config.user_agent = config.user_agent;
+        }
+        self.config.providers = config.providers;
+        Ok(self)
+    }
+
+    pub fn with_client(mut self, client: reqwest::Client) -> Self {
+        self.client = Some(client);
+        self
+    }
+
+    pub async fn build(self) -> Result<Proxy, Report<Error>> {
+        let mut providers = self.config.providers;
+        if let Some(pool) = &self.pool {
+            let db_providers = load_providers_from_database(&pool).await?;
+            providers.extend(db_providers);
+        }
+
+        let client = self.client.unwrap_or_else(|| {
+            reqwest::Client::builder()
+                .user_agent(self.config.user_agent.as_deref().unwrap_or("chronicle"))
+                .timeout(
+                    self.config
+                        .default_timeout
+                        .unwrap_or(Duration::from_secs(60)),
+                )
+                .build()
+                .unwrap()
+        });
+
+        let providers = providers
+            .into_iter()
+            .map(|c| Arc::new(c.into_provider(client.clone())) as Arc<dyn ChatModelProvider>)
+            .collect();
+
+        Ok(Proxy {
+            pool: self.pool,
+            providers: RwLock::new(providers),
+            default_timeout: self.config.default_timeout,
+            client,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct Proxy {
     pool: Option<database::Pool>,
-    config_path: Option<PathBuf>,
-    providers: Vec<Arc<dyn ChatModelProvider>>,
+    providers: RwLock<Vec<Arc<dyn ChatModelProvider>>>,
     default_timeout: Option<Duration>,
-    default_provider: Option<Arc<dyn ChatModelProvider>>,
     client: reqwest::Client,
 }
 
 impl Proxy {
-    pub async fn new(
-        database_pool: Option<Pool>,
-        config_path: Option<PathBuf>,
-    ) -> Result<Self, Error> {
-        // todo load the providers from the database and from the config file if present
-
-        // TODO make a builder interface for this
-        Ok(Self {
-            pool: database_pool,
-            config_path,
-            default_provider: None,
-            default_timeout: None,
-            providers: vec![],
-            // todo allow passing an existing client, or maybe options for one? We still
-            client: reqwest::Client::new(),
-        })
+    pub fn builder() -> ProxyBuilder {
+        ProxyBuilder::new()
     }
 
     pub fn get_provider(&self, name: &str) -> Option<Arc<dyn ChatModelProvider>> {
         self.providers
+            .read()
+            .unwrap()
             .iter()
             .find(|p| p.name() == name)
             .map(Arc::clone)
@@ -57,10 +176,11 @@ impl Proxy {
 
     pub fn default_provider_for_model(&self, model: &str) -> Option<Arc<dyn ChatModelProvider>> {
         self.providers
+            .read()
+            .unwrap()
             .iter()
             .find(|p| p.is_default_for_model(model))
             .map(Arc::clone)
-            .or_else(|| self.default_provider.clone())
     }
 
     fn model_from_options<'a>(

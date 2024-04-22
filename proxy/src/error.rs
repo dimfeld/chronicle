@@ -16,4 +16,8 @@ pub enum Error {
     TransformingResponse,
     #[error("Failed to parse model provider's output")]
     ResultParseError,
+    #[error("Failed to read configuration file")]
+    ReadingConfig,
+    #[error("Failed to load provider profiles from the database")]
+    LoadingDatabase,
 }

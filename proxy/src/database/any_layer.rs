@@ -27,7 +27,7 @@ impl DbAbstraction {
             #[cfg(feature = "sqlite")]
             Self::Sqlite => datetime.timestamp().to_string(),
             #[cfg(feature = "postgres")]
-            Self::Postgres => super::Escaped(datetime.to_rfc3339()).to_string(),
+            Self::Postgres => super::logging::Escaped(datetime.to_rfc3339()).to_string(),
         }
     }
 }

@@ -1,7 +1,7 @@
 //! The common format for requests. This mostly hews to the OpenAI format except
 //! some response fields are made optional to accomodate different model providers.
 
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
 use serde::{Deserialize, Serialize};
 
@@ -45,6 +45,7 @@ pub struct UsageResponse {
 
 /// For providers that conform almost, but not quite, to the OpenAI spec, these transformations
 /// apply small changes that can alter the request in place to the form needed for the provider.
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChatRequestTransformation<'a> {
     /// True if the model provider supports a `name` for each message. False if name
     /// should be merged into the main content of the message when it is provided.
@@ -53,7 +54,7 @@ pub struct ChatRequestTransformation<'a> {
     /// False if it is the special `system` field.
     pub system_in_messages: bool,
     /// If the model starts with this prefix, strip it off.
-    pub strip_model_prefix: Option<&'a str>,
+    pub strip_model_prefix: Option<Cow<'a, str>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -104,9 +105,10 @@ pub struct ChatRequest {
 }
 
 impl ChatRequest {
-    pub fn transform(&mut self, options: ChatRequestTransformation) {
+    pub fn transform(&mut self, options: &ChatRequestTransformation) {
         let stripped = options
             .strip_model_prefix
+            .as_deref()
             .zip(self.model.as_deref())
             .and_then(|(prefix, model)| model.strip_prefix(prefix));
         if let Some(stripped) = stripped {

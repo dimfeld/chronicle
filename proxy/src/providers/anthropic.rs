@@ -37,10 +37,10 @@ impl ChatModelProvider for Anthropic {
             mut body,
         }: SendRequestOptions,
     ) -> Result<ProviderResponse, Report<Error>> {
-        body.transform(ChatRequestTransformation {
+        body.transform(&ChatRequestTransformation {
             supports_message_name: false,
             system_in_messages: false,
-            strip_model_prefix: Some("anthropic/"),
+            strip_model_prefix: Some("anthropic/".into()),
         });
 
         // We could do something here to simulate the `n` parameter but don't right now.

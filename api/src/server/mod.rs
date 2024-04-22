@@ -288,7 +288,10 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
         secrets: config.secrets,
 
         // TODO support passing a config file here
-        proxy: Proxy::new(Some(config.pg_pool.clone()), None)
+        proxy: Proxy::builder()
+            .with_database(config.pg_pool.clone())
+            .log_to_database(true)
+            .build()
             .await
             .change_context(Error::ServerStart)?,
     }));

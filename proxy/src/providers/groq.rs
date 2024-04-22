@@ -35,10 +35,10 @@ impl ChatModelProvider for Groq {
             mut body,
         }: SendRequestOptions,
     ) -> Result<ProviderResponse, Report<Error>> {
-        body.transform(ChatRequestTransformation {
+        body.transform(&ChatRequestTransformation {
             supports_message_name: false,
             system_in_messages: true,
-            strip_model_prefix: Some("groq/"),
+            strip_model_prefix: Some("groq/".into()),
         });
 
         // Groq prohibits sending these fields

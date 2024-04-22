@@ -30,54 +30,71 @@ impl ChatModelProvider for OpenAi {
     #[instrument(skip(self))]
     async fn send_request(
         &self,
-        SendRequestOptions {
-            retry_options,
-            timeout,
-            api_key,
-            mut body,
-        }: SendRequestOptions,
+        options: SendRequestOptions,
     ) -> Result<ProviderResponse, Report<Error>> {
-        body.transform(ChatRequestTransformation {
-            supports_message_name: false,
-            system_in_messages: true,
-            strip_model_prefix: Some("openai/"),
-        });
-
-        let body = serde_json::to_vec(&body).change_context(Error::TransformingRequest)?;
-        let body = Bytes::from(body);
-
-        let token = api_key
-            .as_deref()
-            .or(self.token.as_deref())
-            // Allow no APi key since we could be sending to an internal OpenAI-compatible service.
-            .unwrap_or_default();
-
-        let result = send_standard_request(
-            retry_options,
-            timeout,
-            || {
-                self.client
-                    .post(&self.url)
-                    .bearer_auth(token)
-                    .header(CONTENT_TYPE, "application/json; charset=utf8")
+        send_openai_request(
+            &self.client,
+            &self.url,
+            self.token.as_deref(),
+            &ChatRequestTransformation {
+                supports_message_name: false,
+                system_in_messages: true,
+                strip_model_prefix: Some("openai/".into()),
             },
-            handle_rate_limit_headers,
-            body,
+            options,
         )
-        .await?;
-
-        Ok(ProviderResponse {
-            body: result.data.0,
-            meta: None,
-            retries: result.num_retries,
-            rate_limited: result.was_rate_limited,
-            latency: result.data.1,
-        })
+        .await
     }
 
     fn is_default_for_model(&self, model: &str) -> bool {
         model.starts_with("openai/") || model.starts_with("gpt-")
     }
+}
+
+pub async fn send_openai_request(
+    client: &reqwest::Client,
+    url: &str,
+    provider_token: Option<&str>,
+    transform: &ChatRequestTransformation<'_>,
+    SendRequestOptions {
+        retry_options,
+        timeout,
+        api_key,
+        mut body,
+    }: SendRequestOptions,
+) -> Result<ProviderResponse, Report<Error>> {
+    body.transform(transform);
+
+    let body = serde_json::to_vec(&body).change_context(Error::TransformingRequest)?;
+    let body = Bytes::from(body);
+
+    let token = api_key
+        .as_deref()
+        .or(provider_token)
+        // Allow no APi key since we could be sending to an internal OpenAI-compatible service.
+        .unwrap_or_default();
+
+    let result = send_standard_request(
+        retry_options,
+        timeout,
+        || {
+            client
+                .post(url)
+                .bearer_auth(token)
+                .header(CONTENT_TYPE, "application/json; charset=utf8")
+        },
+        handle_rate_limit_headers,
+        body,
+    )
+    .await?;
+
+    Ok(ProviderResponse {
+        body: result.data.0,
+        meta: None,
+        retries: result.num_retries,
+        rate_limited: result.was_rate_limited,
+        latency: result.data.1,
+    })
 }
 
 pub fn handle_rate_limit_headers(res: &Response) -> Option<Duration> {
