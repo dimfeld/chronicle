@@ -22,6 +22,15 @@ pub struct Anthropic {
     token: Option<String>,
 }
 
+impl Anthropic {
+    pub fn new(client: reqwest::Client, token: Option<String>) -> Self {
+        Self {
+            client,
+            token: token.or_else(|| std::env::var("ANTHROPIC_API_KEY").ok()),
+        }
+    }
+}
+
 #[async_trait::async_trait]
 impl ChatModelProvider for Anthropic {
     fn name(&self) -> &str {

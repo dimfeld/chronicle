@@ -1,23 +1,25 @@
-use std::time::Duration;
-
 use bytes::Bytes;
 use error_stack::{Report, ResultExt};
-use reqwest::{header::CONTENT_TYPE, Response};
-use tracing::instrument;
+use reqwest::header::CONTENT_TYPE;
 
 use super::{
     openai::handle_rate_limit_headers, ChatModelProvider, ProviderResponse, SendRequestOptions,
 };
-use crate::{
-    format::{ChatRequest, ChatRequestTransformation},
-    request::{send_standard_request, RetryOptions},
-    Error, ProxyRequestOptions,
-};
+use crate::{format::ChatRequestTransformation, request::send_standard_request, Error};
 
 #[derive(Debug)]
 pub struct Groq {
     client: reqwest::Client,
     token: Option<String>,
+}
+
+impl Groq {
+    pub fn new(client: reqwest::Client, token: Option<String>) -> Self {
+        Self {
+            client,
+            token: token.or_else(|| std::env::var("GROQ_API_KEY").ok()),
+        }
+    }
 }
 
 #[async_trait::async_trait]

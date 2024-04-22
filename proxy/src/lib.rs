@@ -18,13 +18,14 @@ use error_stack::{Report, ResultExt};
 use format::{ChatRequest, ChatResponse};
 use providers::{
     custom::{CustomProvider, ProviderRequestFormat},
+    openai::OpenAi,
     ChatModelProvider,
 };
 use request::RetryOptions;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
-use crate::providers::SendRequestOptions;
+use crate::providers::{anthropic::Anthropic, groq::Groq, SendRequestOptions};
 
 pub type AnyChatModelProvider = Arc<dyn ChatModelProvider>;
 
@@ -70,6 +71,9 @@ impl CustomProviderConfig {
 pub struct ProxyBuilder {
     pool: Option<Pool>,
     config: ProxyConfig,
+    openai: Option<String>,
+    anthropic: Option<String>,
+    groq: Option<String>,
     client: Option<reqwest::Client>,
 }
 
@@ -78,6 +82,9 @@ impl ProxyBuilder {
         Self {
             pool: None,
             config: ProxyConfig::default(),
+            openai: None,
+            anthropic: None,
+            groq: None,
             client: None,
         }
     }
@@ -97,6 +104,31 @@ impl ProxyBuilder {
         self
     }
 
+    /// Load all the default providers
+    pub fn with_default_providers(self) -> Self {
+        self.with_anthropic(None).with_groq(None).with_openai(None)
+    }
+
+    pub fn with_custom_provider(mut self, config: CustomProviderConfig) -> Self {
+        self.config.providers.push(config);
+        self
+    }
+
+    pub fn with_openai(mut self, token: Option<String>) -> Self {
+        self.openai = token.or(Some(String::new()));
+        self
+    }
+
+    pub fn with_anthropic(mut self, token: Option<String>) -> Self {
+        self.anthropic = token.or(Some(String::new()));
+        self
+    }
+
+    pub fn with_groq(mut self, token: Option<String>) -> Self {
+        self.groq = token.or(Some(String::new()));
+        self
+    }
+
     pub async fn with_config_from_path(mut self, path: &Path) -> Result<Self, Report<Error>> {
         let data = tokio::fs::read_to_string(path)
             .await
@@ -110,7 +142,7 @@ impl ProxyBuilder {
         if config.user_agent.is_some() {
             self.config.user_agent = config.user_agent;
         }
-        self.config.providers = config.providers;
+        self.config.providers.extend(config.providers);
         Ok(self)
     }
 
@@ -138,16 +170,42 @@ impl ProxyBuilder {
                 .unwrap()
         });
 
-        let providers = providers
+        let mut providers = providers
             .into_iter()
             .map(|c| Arc::new(c.into_provider(client.clone())) as Arc<dyn ChatModelProvider>)
-            .collect();
+            .collect::<Vec<_>>();
+
+        fn empty_to_none(s: String) -> Option<String> {
+            if s.is_empty() {
+                None
+            } else {
+                Some(s)
+            }
+        }
+
+        if let Some(token) = self.anthropic {
+            providers.push(
+                Arc::new(Anthropic::new(client.clone(), empty_to_none(token)))
+                    as Arc<dyn ChatModelProvider>,
+            );
+        }
+
+        if let Some(token) = self.openai {
+            providers.push(Arc::new(OpenAi::new(client.clone(), empty_to_none(token)))
+                as Arc<dyn ChatModelProvider>);
+        }
+
+        if let Some(token) = self.groq {
+            providers.push(Arc::new(Groq::new(client.clone(), empty_to_none(token)))
+                as Arc<dyn ChatModelProvider>);
+        }
+
+        // TODO enable database logger
 
         Ok(Proxy {
             pool: self.pool,
             providers: RwLock::new(providers),
             default_timeout: self.config.default_timeout,
-            client,
         })
     }
 }
@@ -157,7 +215,6 @@ pub struct Proxy {
     pool: Option<database::Pool>,
     providers: RwLock<Vec<Arc<dyn ChatModelProvider>>>,
     default_timeout: Option<Duration>,
-    client: reqwest::Client,
 }
 
 impl Proxy {

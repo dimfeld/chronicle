@@ -15,16 +15,23 @@ use crate::{
 /// OpenAI or fully-compatible provider
 #[derive(Debug)]
 pub struct OpenAi {
-    name: String,
     client: reqwest::Client,
     token: Option<String>,
-    url: String,
+}
+
+impl OpenAi {
+    pub fn new(client: reqwest::Client, token: Option<String>) -> Self {
+        Self {
+            client,
+            token: token.or_else(|| std::env::var("OPENAI_API_KEY").ok()),
+        }
+    }
 }
 
 #[async_trait::async_trait]
 impl ChatModelProvider for OpenAi {
     fn name(&self) -> &str {
-        &self.name
+        "OpenAI"
     }
 
     #[instrument(skip(self))]
@@ -34,7 +41,7 @@ impl ChatModelProvider for OpenAi {
     ) -> Result<ProviderResponse, Report<Error>> {
         send_openai_request(
             &self.client,
-            &self.url,
+            "https://api.openai.com/v1/chat/completions",
             self.token.as_deref(),
             &ChatRequestTransformation {
                 supports_message_name: false,
