@@ -15,6 +15,8 @@ use request::RetryOptions;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
+use crate::providers::SendRequestOptions;
+
 pub type AnyChatModelProvider = Arc<dyn ChatModelProvider>;
 
 #[derive(Debug)]
@@ -129,14 +131,15 @@ impl Proxy {
 
         let send_start = tokio::time::Instant::now();
         let response = provider
-            .send_request(
-                options.retry,
-                options
+            .send_request(SendRequestOptions {
+                retry_options: options.retry,
+                timeout: options
                     .timeout
                     .or(self.default_timeout)
                     .unwrap_or(Duration::from_secs(60)),
+                api_key: options.api_key,
                 body,
-            )
+            })
             .await;
         let send_time = send_start.elapsed().as_millis();
 
@@ -166,6 +169,8 @@ impl Proxy {
             }
         }
 
+        // self.log_tx.send(log_entry).await.ok();
+
         response.map(|r| r.body)
     }
 
@@ -183,6 +188,7 @@ pub struct ProxyRequestOptions {
     /// Override the model from the request body.
     pub model: Option<String>,
     pub provider: Option<String>,
+    pub api_key: Option<String>,
     pub timeout: Option<std::time::Duration>,
     pub retry: RetryOptions,
 
@@ -195,6 +201,7 @@ impl Default for ProxyRequestOptions {
         Self {
             model: None,
             provider: None,
+            api_key: None,
             retry: RetryOptions::default(),
             timeout: None,
             metadata: ProxyRequestMetadata::default(),

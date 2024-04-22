@@ -3,9 +3,10 @@ use std::time::Duration;
 use bytes::Bytes;
 use error_stack::{Report, ResultExt};
 use itertools::Itertools;
+use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Serialize};
 
-use super::{ChatModelProvider, ProviderResponse};
+use super::{ChatModelProvider, ProviderResponse, SendRequestOptions};
 use crate::{
     format::{
         ChatChoice, ChatMessage, ChatRequest, ChatRequestTransformation, ChatResponse,
@@ -18,7 +19,7 @@ use crate::{
 #[derive(Debug)]
 pub struct Anthropic {
     client: reqwest::Client,
-    token: String,
+    token: Option<String>,
 }
 
 #[async_trait::async_trait]
@@ -29,9 +30,12 @@ impl ChatModelProvider for Anthropic {
 
     async fn send_request(
         &self,
-        retry_options: RetryOptions,
-        timeout: Duration,
-        mut body: ChatRequest,
+        SendRequestOptions {
+            retry_options,
+            timeout,
+            api_key,
+            mut body,
+        }: SendRequestOptions,
     ) -> Result<ProviderResponse, Report<Error>> {
         body.transform(ChatRequestTransformation {
             supports_message_name: false,
@@ -55,14 +59,20 @@ impl ChatModelProvider for Anthropic {
         let body = serde_json::to_vec(&body).change_context(Error::TransformingRequest)?;
         let body = Bytes::from(body);
 
+        let api_token = api_key
+            .as_deref()
+            .or(self.token.as_deref())
+            .ok_or(Error::MissingApiKey)?;
+
         let result = send_standard_request::<AnthropicChatResponse>(
             retry_options,
             timeout,
             || {
                 self.client
                     .post("https://api.anthropic.com/v1/messages")
-                    .header("x-api-key", &self.token)
+                    .header("x-api-key", api_token)
                     .header("anthropic-version", "2023-06-01")
+                    .header(CONTENT_TYPE, "application/json; charset=utf8")
             },
             handle_retry_after,
             body,

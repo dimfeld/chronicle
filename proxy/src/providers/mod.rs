@@ -1,5 +1,6 @@
 pub mod anthropic;
 pub mod custom;
+pub mod groq;
 pub mod ollama;
 pub mod openai;
 
@@ -15,6 +16,14 @@ use crate::{
     Error,
 };
 
+#[derive(Debug)]
+pub struct SendRequestOptions {
+    pub retry_options: RetryOptions,
+    pub timeout: Duration,
+    pub api_key: Option<String>,
+    pub body: ChatRequest,
+}
+
 #[async_trait::async_trait]
 pub trait ChatModelProvider: Debug + Send + Sync {
     fn name(&self) -> &str;
@@ -24,9 +33,7 @@ pub trait ChatModelProvider: Debug + Send + Sync {
     /// the behavior specified in `options.retry`. The `request_with_retry` function can assist with that.
     async fn send_request(
         &self,
-        retry_options: RetryOptions,
-        timeout: Duration,
-        body: ChatRequest,
+        options: SendRequestOptions,
     ) -> Result<ProviderResponse, Report<Error>>;
 
     fn is_default_for_model(&self, model: &str) -> bool;

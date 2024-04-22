@@ -38,3 +38,18 @@ CREATE TABLE IF NOT EXISTS chronicle_events (
   total_latency_ms int,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS chronicle_custom_providers (
+  name text PRIMARY KEY,
+  headers jsonb,
+  format text NOT NULL,
+  url text NOT NULL,
+);
+
+CREATE TABLE IF NOT EXISTS chronicle_webhooks (
+  id uuid PRIMARY KEY,
+  name text NOT NULL,
+  url text NOT NULL,
+  method text NOT NULL,
+  id_field text
+);

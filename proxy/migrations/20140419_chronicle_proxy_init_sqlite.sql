@@ -8,7 +8,7 @@ INSERT INTO chronicle_meta (
   value)
 VALUES (
   "migration_version",
-  1::json);
+  1);
 
 CREATE TABLE IF NOT EXISTS chronicle_events (
   id text PRIMARY KEY,
@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS chronicle_events (
   chat_request json NOT NULL,
   chat_response json,
   error json,
+  provider text,
   model text,
   application text,
   environment text,
@@ -35,5 +36,20 @@ CREATE TABLE IF NOT EXISTS chronicle_events (
   rate_limited bool,
   request_latency_ms int,
   total_latency_ms int,
-  created_at int NOT NULL DEFAULT now()
+  created_at int NOT NULL DEFAULT unix_epoch ()
+);
+
+CREATE TABLE IF NOT EXISTS chronicle_custom_providers (
+  name text PRIMARY KEY,
+  headers json,
+  format text NOT NULL,
+  url text NOT NULL,
+);
+
+CREATE TABLE IF NOT EXISTS chronicle_webhooks (
+  id text PRIMARY KEY,
+  name text NOT NULL,
+  url text NOT NULL,
+  method text NOT NULL,
+  id_field text
 );

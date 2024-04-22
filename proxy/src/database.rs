@@ -29,11 +29,6 @@ pub type Database = sqlx::Sqlite;
 
 pub type Pool = sqlx::Pool<Database>;
 
-// Start a task
-// add batches of data to the database
-// dump the data periodically
-//
-
 pub struct ProxyLogEntry {
     pub timestamp: chrono::DateTime<Utc>,
     pub request: ChatRequest,

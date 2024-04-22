@@ -4,7 +4,7 @@ use error_stack::Report;
 use reqwest::header::{HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
 
-use super::{ChatModelProvider, ProviderResponse};
+use super::{ChatModelProvider, ProviderResponse, SendRequestOptions};
 use crate::{format::ChatRequest, request::RetryOptions, Error};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -32,9 +32,12 @@ impl ChatModelProvider for CustomProvider {
 
     async fn send_request(
         &self,
-        retry_options: RetryOptions,
-        timeout: Duration,
-        body: ChatRequest,
+        SendRequestOptions {
+            retry_options,
+            timeout,
+            api_key,
+            body,
+        }: SendRequestOptions,
     ) -> Result<ProviderResponse, Report<Error>> {
         // https://docs.anthropic.com/claude/reference/messages_post
         todo!()

@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use axum::{
     extract::State,
+    http::HeaderMap,
     response::{IntoResponse, Response},
     Json, Router,
 };
@@ -19,6 +20,8 @@ struct ProxyRequestPayload {
     #[serde(flatten)]
     request: ChatRequest,
 
+    api_key: Option<String>,
+
     /// Force a certain provider
     provider: Option<String>,
     /// Customize retry behavior
@@ -32,7 +35,8 @@ struct ProxyRequestPayload {
 async fn proxy_request(
     State(state): State<ServerState>,
     auth: Option<Authed>,
-    Json(body): Json<ProxyRequestPayload>,
+    headers: HeaderMap,
+    Json(mut body): Json<ProxyRequestPayload>,
 ) -> Result<Response, Error> {
     let model = body
         .request
@@ -47,6 +51,13 @@ async fn proxy_request(
         .or_else(|| state.proxy.default_provider_for_model(&model))
         .ok_or_else(|| Error::MissingProvider(model.to_string()))?;
 
+    let api_key = body.api_key.or_else(|| {
+        headers
+            .get("x-provider-api-key")
+            .and_then(|s| s.to_str().ok())
+            .map(|s| s.to_string())
+    });
+
     // Parse out model and provider choice
     let result = state
         .proxy
@@ -54,6 +65,7 @@ async fn proxy_request(
             provider,
             ProxyRequestOptions {
                 model: Some(model),
+                api_key,
                 // Don't need this when we're using send_to_provider
                 provider: None,
                 retry: body.retry.unwrap_or_default(),

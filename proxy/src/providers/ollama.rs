@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use error_stack::Report;
 
-use super::{ChatModelProvider, ProviderResponse};
+use super::{ChatModelProvider, ProviderResponse, SendRequestOptions};
 use crate::{format::ChatRequest, request::RetryOptions, Error};
 
 #[derive(Debug)]
@@ -18,9 +18,12 @@ impl ChatModelProvider for Ollama {
 
     async fn send_request(
         &self,
-        retry_options: RetryOptions,
-        timeout: Duration,
-        body: ChatRequest,
+        SendRequestOptions {
+            retry_options,
+            timeout,
+            api_key,
+            body,
+        }: SendRequestOptions,
     ) -> Result<ProviderResponse, Report<Error>> {
         todo!()
     }

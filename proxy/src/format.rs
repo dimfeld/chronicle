@@ -43,6 +43,8 @@ pub struct UsageResponse {
     pub total_tokens: Option<usize>,
 }
 
+/// For providers that conform almost, but not quite, to the OpenAI spec, these transformations
+/// apply small changes that can alter the request in place to the form needed for the provider.
 pub struct ChatRequestTransformation<'a> {
     /// True if the model provider supports a `name` for each message. False if name
     /// should be merged into the main content of the message when it is provided.
@@ -59,29 +61,45 @@ pub struct ChatRequest {
     pub messages: Vec<ChatMessage>,
     /// A separate field for system message as an alternative to specifying it in
     /// `messages`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub system: Option<String>,
     /// The model to use. This can be omitted if the proxy options specify a model.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub frequency_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub logit_bias: Option<BTreeMap<usize, f32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub logprobs: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub top_logprobs: Option<u8>,
     /// max_tokens is optional for some providers but we really should always provide it
     pub max_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub n: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub presence_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     // TODO look at the format here
     pub response_format: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<i64>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     // todo this should be a string or a vec
     pub stop: Vec<String>,
     // stream not supported yet
     // pub stream: Option<bool>
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     // todo need to look up the format here
     pub tools: Vec<()>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<ToolChoice>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
 }
 

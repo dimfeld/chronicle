@@ -1,5 +1,3 @@
-use crate::providers::ProviderError;
-
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("Unknown model provider {0}")]
@@ -10,6 +8,8 @@ pub enum Error {
     ModelNotSpecified,
     #[error("Model provider returned an error")]
     ModelError,
+    #[error("API key not provided")]
+    MissingApiKey,
     #[error("Error transforming a model request")]
     TransformingRequest,
     #[error("Error transforming a model response")]
