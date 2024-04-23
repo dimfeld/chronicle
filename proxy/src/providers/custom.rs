@@ -1,20 +1,18 @@
-use std::{collections::BTreeMap, time::Duration};
+//! Handle custom provider configurations that look close enough to an existing provider
+//! that we can declare them in data.
 
 use error_stack::Report;
-use reqwest::header::{HeaderName, HeaderValue};
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
 
 use super::{openai::send_openai_request, ChatModelProvider, ProviderResponse, SendRequestOptions};
-use crate::{
-    format::{ChatRequest, ChatRequestTransformation},
-    request::RetryOptions,
-    CustomProviderConfig, Error,
-};
+use crate::{config::CustomProviderConfig, format::ChatRequestTransformation, Error};
 
 #[derive(Debug, Clone)]
 pub struct CustomProvider {
     pub config: CustomProviderConfig,
     pub client: reqwest::Client,
+    pub headers: HeaderMap,
 }
 
 /// The format that this proider uses for requests
@@ -25,6 +23,25 @@ pub enum ProviderRequestFormat {
     OpenAi {
         transforms: ChatRequestTransformation<'static>,
     },
+}
+
+impl CustomProvider {
+    pub fn new(mut config: CustomProviderConfig, client: reqwest::Client) -> Self {
+        let headers = std::mem::take(&mut config.headers);
+        let headers: HeaderMap = headers
+            .into_iter()
+            .filter_map(|(k, v)| {
+                let k = HeaderName::from_bytes(k.as_bytes()).ok()?;
+                let v = HeaderValue::from_str(v.as_str()).ok()?;
+                Some((k, v))
+            })
+            .collect();
+        Self {
+            config,
+            client,
+            headers,
+        }
+    }
 }
 
 #[async_trait::async_trait]
@@ -42,6 +59,7 @@ impl ChatModelProvider for CustomProvider {
                 send_openai_request(
                     &self.client,
                     &self.config.url,
+                    Some(&self.headers),
                     self.config.token.as_deref(),
                     &transforms,
                     options,

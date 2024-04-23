@@ -44,8 +44,7 @@ CREATE TABLE IF NOT EXISTS chronicle_custom_providers (
   url text NOT NULL,
   token text,
   token_env text,
-  format text NOT NULL,
-  format_options jsonb,
+  format jsonb NOT NULL,
   headers jsonb,
   prefix text,
   default_for jsonb,
@@ -57,4 +56,17 @@ CREATE TABLE IF NOT EXISTS chronicle_webhooks (
   url text NOT NULL,
   method text NOT NULL,
   id_field text
+);
+
+CREATE TABLE IF NOT EXISTS chronicle_aliases (
+  name text PRIMARY KEY,
+  model text NOT NULL,
+  provider text NOT NULL,
+  api_key_name text
+);
+
+CREATE TABLE IF NOT EXISTS chronicle_api_keys (
+  name text PRIMARY KEY,
+  source text,
+  value text
 );

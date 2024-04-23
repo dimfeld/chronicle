@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{collections::BTreeMap, time::Duration};
 
 use bytes::Bytes;
 use error_stack::{Report, ResultExt};
@@ -42,6 +42,7 @@ impl ChatModelProvider for OpenAi {
         send_openai_request(
             &self.client,
             "https://api.openai.com/v1/chat/completions",
+            None,
             self.token.as_deref(),
             &ChatRequestTransformation {
                 supports_message_name: false,
@@ -61,6 +62,7 @@ impl ChatModelProvider for OpenAi {
 pub async fn send_openai_request(
     client: &reqwest::Client,
     url: &str,
+    headers: Option<&reqwest::header::HeaderMap>,
     provider_token: Option<&str>,
     transform: &ChatRequestTransformation<'_>,
     SendRequestOptions {
@@ -89,6 +91,7 @@ pub async fn send_openai_request(
                 .post(url)
                 .bearer_auth(token)
                 .header(CONTENT_TYPE, "application/json; charset=utf8")
+                .headers(headers.cloned().unwrap_or_default())
         },
         handle_rate_limit_headers,
         body,

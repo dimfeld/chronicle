@@ -2,7 +2,11 @@ use std::collections::BTreeMap;
 
 use error_stack::{Report, ResultExt};
 
-use crate::{providers::custom::ProviderRequestFormat, CustomProviderConfig, Error};
+use crate::{
+    config::{AliasConfig, ApiKeyConfig, CustomProviderConfig},
+    providers::custom::ProviderRequestFormat,
+    Error,
+};
 
 mod any_layer;
 pub mod logging;
@@ -55,4 +59,26 @@ pub async fn load_providers_from_database(
         })
         .collect();
     Ok(providers)
+}
+
+pub async fn load_aliases_from_database(pool: &Pool) -> Result<Vec<AliasConfig>, Report<Error>> {
+    let rows: Vec<AliasConfig> =
+        sqlx::query_as("SELECT name, model, provider, api_key_name FROM chronicle_aliases")
+            .fetch_all(pool)
+            .await
+            .change_context(Error::LoadingDatabase)?;
+
+    Ok(rows)
+}
+
+pub async fn load_api_key_configs_from_database(
+    pool: &Pool,
+) -> Result<Vec<ApiKeyConfig>, Report<Error>> {
+    let rows: Vec<ApiKeyConfig> =
+        sqlx::query_as("SELECT name, source, value FROM chronicle_api_keys")
+            .fetch_all(pool)
+            .await
+            .change_context(Error::LoadingDatabase)?;
+
+    Ok(rows)
 }

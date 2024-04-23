@@ -1,263 +1,37 @@
 use std::{
-    collections::BTreeMap,
     fmt::Debug,
-    path::Path,
     sync::{Arc, RwLock},
     time::Duration,
 };
 
+pub mod builder;
+pub mod config;
 pub mod database;
 pub mod error;
 pub mod format;
 pub mod providers;
 pub mod request;
 
-use database::{load_providers_from_database, logging::ProxyLogEntry, Pool};
+use builder::ProxyBuilder;
+use config::{AliasConfig, ApiKeyConfig};
+use database::logging::ProxyLogEntry;
 pub use error::Error;
-use error_stack::{Report, ResultExt};
+use error_stack::Report;
 use format::{ChatRequest, ChatResponse};
-use providers::{
-    custom::{CustomProvider, ProviderRequestFormat},
-    openai::OpenAi,
-    ChatModelProvider,
-};
+use providers::ChatModelProvider;
 use request::RetryOptions;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
-use crate::{
-    database::logging::start_database_logger,
-    providers::{anthropic::Anthropic, groq::Groq, ollama::Ollama, SendRequestOptions},
-};
+use crate::providers::SendRequestOptions;
 
 pub type AnyChatModelProvider = Arc<dyn ChatModelProvider>;
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct ProxyConfig {
-    providers: Vec<CustomProviderConfig>,
-    default_timeout: Option<Duration>,
-    log_to_database: Option<bool>,
-    user_agent: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct CustomProviderConfig {
-    pub name: String,
-    pub url: String,
-    pub token: Option<String>,
-    pub format: ProviderRequestFormat,
-    pub headers: BTreeMap<String, String>,
-    pub prefix: Option<String>,
-    /// A list of models that this provider should be the default for
-    #[serde(default)]
-    pub default_for: Vec<String>,
-    pub token_env: Option<String>,
-}
-
-impl CustomProviderConfig {
-    pub fn into_provider(mut self, client: reqwest::Client) -> CustomProvider {
-        if let Some(token) = self
-            .token_env
-            .as_deref()
-            .and_then(|var| std::env::var(&var).ok())
-        {
-            self.token = Some(token);
-        }
-
-        CustomProvider {
-            config: self,
-            client,
-        }
-    }
-}
-
-pub struct ProxyBuilder {
-    pool: Option<Pool>,
-    config: ProxyConfig,
-    openai: Option<String>,
-    ollama: Option<String>,
-    anthropic: Option<String>,
-    groq: Option<String>,
-    client: Option<reqwest::Client>,
-}
-
-impl ProxyBuilder {
-    pub fn new() -> Self {
-        Self {
-            pool: None,
-            config: ProxyConfig::default(),
-            openai: Some(String::new()),
-            anthropic: Some(String::new()),
-            groq: Some(String::new()),
-            ollama: Some(String::new()),
-            client: None,
-        }
-    }
-
-    /// Set the database connection pool
-    pub fn with_database(mut self, pool: Pool) -> Self {
-        self.pool = Some(pool);
-        self
-    }
-
-    /// Enable or disable logging to the database. Logging requires `with_database` to have been
-    /// called.
-    pub fn log_to_database(mut self, log: bool) -> Self {
-        self.config.log_to_database = Some(log);
-        self
-    }
-
-    /// Merge this configuration into the current one.
-    pub fn with_config(mut self, config: ProxyConfig) -> Self {
-        self.config.default_timeout = config.default_timeout.or(self.config.default_timeout);
-        self.config.log_to_database = config.log_to_database.or(self.config.log_to_database);
-        if config.user_agent.is_some() {
-            self.config.user_agent = config.user_agent;
-        }
-        self.config.providers.extend(config.providers);
-        self
-    }
-
-    /// Read a configuration file from this path and merge it into the current configuration.
-    pub async fn with_config_from_path(self, path: &Path) -> Result<Self, Report<Error>> {
-        let data = tokio::fs::read_to_string(path)
-            .await
-            .change_context(Error::ReadingConfig)?;
-        let config: ProxyConfig = toml::from_str(&data).change_context(Error::ReadingConfig)?;
-
-        Ok(self.with_config(config))
-    }
-
-    /// Add a custom provider to the list of providers
-    pub fn with_custom_provider(mut self, config: CustomProviderConfig) -> Self {
-        self.config.providers.push(config);
-        self
-    }
-
-    /// Enable the OpenAI provider, if it was disabled by [without_default_providers]
-    pub fn with_openai(mut self, token: Option<String>) -> Self {
-        self.openai = token.or(Some(String::new()));
-        self
-    }
-
-    /// Enable the Anthropic provider, if it was disabled by [without_default_providers]
-    pub fn with_anthropic(mut self, token: Option<String>) -> Self {
-        self.anthropic = token.or(Some(String::new()));
-        self
-    }
-
-    /// Enable the Groq provider, if it was disabled by [without_default_providers]
-    pub fn with_groq(mut self, token: Option<String>) -> Self {
-        self.groq = token.or(Some(String::new()));
-        self
-    }
-
-    /// Enable the Ollama provider, if it was disabled by [without_default_providers]
-    pub fn with_ollama(mut self, url: Option<String>) -> Self {
-        self.ollama = url.or(Some(String::new()));
-        self
-    }
-
-    /// Don't load the default providers
-    pub fn without_default_providers(mut self) -> Self {
-        self.anthropic = None;
-        self.groq = None;
-        self.openai = None;
-        self.ollama = None;
-        self
-    }
-
-    /// Set the user agent that will be used for HTTP requests. This only applies if
-    /// `with_client` is not used.
-    pub fn user_agent(mut self, user_agent: impl Into<String>) -> Self {
-        self.config.user_agent = Some(user_agent.into());
-        self
-    }
-
-    /// Supply a custom [reqwest::Client]
-    pub fn with_client(mut self, client: reqwest::Client) -> Self {
-        self.client = Some(client);
-        self
-    }
-
-    pub async fn build(self) -> Result<Proxy, Report<Error>> {
-        let mut providers = self.config.providers;
-        let logger = if let Some(pool) = &self.pool {
-            let db_providers = load_providers_from_database(&pool).await?;
-            providers.extend(db_providers);
-
-            let logger = if self.config.log_to_database.unwrap_or(false) {
-                Some(start_database_logger(
-                    pool.clone(),
-                    500,
-                    Duration::from_secs(1),
-                ))
-            } else {
-                None
-            };
-
-            logger
-        } else {
-            None
-        };
-
-        let client = self.client.unwrap_or_else(|| {
-            reqwest::Client::builder()
-                .user_agent(self.config.user_agent.as_deref().unwrap_or("chronicle"))
-                .timeout(
-                    self.config
-                        .default_timeout
-                        .unwrap_or(Duration::from_secs(60)),
-                )
-                .build()
-                .unwrap()
-        });
-
-        let mut providers = providers
-            .into_iter()
-            .map(|c| Arc::new(c.into_provider(client.clone())) as Arc<dyn ChatModelProvider>)
-            .collect::<Vec<_>>();
-
-        fn empty_to_none(s: String) -> Option<String> {
-            if s.is_empty() {
-                None
-            } else {
-                Some(s)
-            }
-        }
-
-        if let Some(token) = self.anthropic {
-            providers.push(
-                Arc::new(Anthropic::new(client.clone(), empty_to_none(token)))
-                    as Arc<dyn ChatModelProvider>,
-            );
-        }
-
-        if let Some(token) = self.openai {
-            providers.push(Arc::new(OpenAi::new(client.clone(), empty_to_none(token)))
-                as Arc<dyn ChatModelProvider>);
-        }
-
-        if let Some(token) = self.groq {
-            providers.push(Arc::new(Groq::new(client.clone(), empty_to_none(token)))
-                as Arc<dyn ChatModelProvider>);
-        }
-
-        if let Some(url) = self.ollama {
-            providers.push(Arc::new(Ollama::new(client.clone(), empty_to_none(url)))
-                as Arc<dyn ChatModelProvider>);
-        }
-
-        let (log_tx, log_task) = logger.unzip();
-
-        Ok(Proxy {
-            pool: self.pool,
-            providers: RwLock::new(providers),
-            default_timeout: self.config.default_timeout,
-            log_tx,
-            log_task,
-        })
-    }
+#[derive(Debug)]
+struct ProviderLookup {
+    providers: Vec<Arc<dyn ChatModelProvider>>,
+    aliases: Vec<AliasConfig>,
+    api_keys: Vec<ApiKeyConfig>,
 }
 
 #[derive(Debug)]
@@ -265,8 +39,15 @@ pub struct Proxy {
     pool: Option<database::Pool>,
     log_tx: Option<flume::Sender<ProxyLogEntry>>,
     log_task: Option<tokio::task::JoinHandle<()>>,
-    providers: RwLock<Vec<Arc<dyn ChatModelProvider>>>,
+    lookup: RwLock<ProviderLookup>,
     default_timeout: Option<Duration>,
+}
+
+struct ModelLookupResult {
+    from_options: bool,
+    model: String,
+    provider: Arc<dyn ChatModelProvider>,
+    api_key: Option<String>,
 }
 
 impl Proxy {
@@ -275,27 +56,30 @@ impl Proxy {
     }
 
     pub fn get_provider(&self, name: &str) -> Option<Arc<dyn ChatModelProvider>> {
-        self.providers
+        self.lookup
             .read()
             .unwrap()
+            .providers
             .iter()
             .find(|p| p.name() == name)
             .map(Arc::clone)
     }
 
     pub fn default_provider_for_model(&self, model: &str) -> Option<Arc<dyn ChatModelProvider>> {
-        self.providers
+        self.lookup
             .read()
             .unwrap()
+            .providers
             .iter()
             .find(|p| p.is_default_for_model(model))
             .map(Arc::clone)
     }
 
-    fn model_from_options<'a>(
+    fn find_model_and_provider<'a>(
+        &self,
         options: &'a ProxyRequestOptions,
         body: &'a ChatRequest,
-    ) -> Result<(bool, &'a str), Error> {
+    ) -> Result<ModelLookupResult, Error> {
         let (from_options, model) = if let Some(model) = &options.model {
             (true, model.as_str())
         } else {
@@ -303,10 +87,54 @@ impl Proxy {
         };
 
         if model.is_empty() {
-            Err(Error::ModelNotSpecified)
-        } else {
-            Ok((from_options, model))
+            return Err(Error::ModelNotSpecified);
         }
+
+        let lookup = self.lookup.read().unwrap();
+        let alias = lookup.aliases.iter().find(|alias| alias.name == model);
+
+        let provider = if let Some(alias) = alias {
+            lookup
+                .providers
+                .iter()
+                .find(|p| p.name() == alias.provider)
+                .ok_or_else(|| Error::NoAliasProvider(alias.name.clone(), alias.provider.clone()))?
+                .clone()
+        } else if let Some(provider_name) = options.provider.as_deref() {
+            self.get_provider(provider_name)
+                .ok_or_else(|| Error::UnknownProvider(provider_name.to_string()))?
+        } else {
+            self.default_provider_for_model(model)
+                .ok_or_else(|| Error::NoDefault(model.to_string()))?
+        };
+
+        let model = alias.map(|alias| alias.model.as_str()).unwrap_or(model);
+
+        let api_key = alias
+            .and_then(|alias| {
+                if let Some(key_name) = alias.api_key_name.as_deref() {
+                    let key = lookup
+                        .api_keys
+                        .iter()
+                        .find(|key| key.name == key_name)
+                        .map(|key| key.value.clone())
+                        .ok_or_else(|| {
+                            Error::NoAliasApiKey(alias.name.clone(), key_name.to_string())
+                        });
+
+                    Some(key)
+                } else {
+                    None
+                }
+            })
+            .transpose()?;
+
+        Ok(ModelLookupResult {
+            from_options: from_options || alias.is_some(),
+            provider,
+            model: model.to_string(),
+            api_key,
+        })
     }
 
     /// Send a request, choosing the provider based on the requested `model` and `provider`.
@@ -314,25 +142,6 @@ impl Proxy {
     /// `options.provider` can be used to choose a specific provider.
     /// `options.model` will be used next to choose a model to use
     /// `body["model"]` is used if options.model is empty.
-    #[instrument]
-    pub async fn send(
-        &self,
-        options: ProxyRequestOptions,
-        body: ChatRequest,
-    ) -> Result<ChatResponse, Report<Error>> {
-        let provider = if let Some(provider) = &options.provider {
-            self.get_provider(&provider)
-                .ok_or(Error::UnknownProvider(provider.clone()))?
-        } else {
-            let (_, model) = Self::model_from_options(&options, &body)?;
-            self.default_provider_for_model(model)
-                .ok_or_else(|| Error::NoDefault(model.to_string()))?
-        };
-
-        self.send_to_provider(provider, options, body).await
-    }
-
-    /// Send a request to a provider
     #[instrument(fields(
         latency,
         total_latency,
@@ -342,21 +151,31 @@ impl Proxy {
         tokens_output,
         status_code
     ))]
-    pub async fn send_to_provider(
+    pub async fn send(
         &self,
-        provider: Arc<dyn ChatModelProvider>,
         options: ProxyRequestOptions,
         mut body: ChatRequest,
     ) -> Result<ChatResponse, Report<Error>> {
-        tracing::info!(?body, "Starting request");
-        // Send update to postgres recorder
+        let ModelLookupResult {
+            from_options,
+            provider,
+            model,
+            api_key,
+        } = self.find_model_and_provider(&options, &body)?;
 
-        let (from_options, model) = Self::model_from_options(&options, &body)?;
-
-        // If we got the model from the options, then overwrite the model in the body
         if from_options {
+            // Update the body to have the correct model we actually want, in case
+            // the model was an alias or the options overrode it.
             body.model = Some(model.to_string());
         }
+
+        let api_key = if options.api_key.is_some() {
+            options.api_key.clone()
+        } else {
+            api_key
+        };
+
+        tracing::info!(?body, "Starting request");
 
         let timestamp = chrono::Utc::now();
         let send_start = tokio::time::Instant::now();
@@ -367,7 +186,7 @@ impl Proxy {
                     .timeout
                     .or(self.default_timeout)
                     .unwrap_or(Duration::from_secs(60)),
-                api_key: options.api_key.clone(),
+                api_key,
                 body: body.clone(),
             })
             .await;
@@ -376,8 +195,6 @@ impl Proxy {
         // Get response stats: latency, tokens used, etc.
         // We want to record both the total latency and the latency of the final working request
         // Hopefully we can do that in a way that allows Postgres to use a HOT update
-        // todo better tracing here
-        // todo send the response stats to the postgres recorder
         let current_span = tracing::Span::current();
         // In case of retries, this might be meaningfully different from the main latency.
         current_span.record("total_latency", send_time);

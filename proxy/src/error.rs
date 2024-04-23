@@ -4,12 +4,18 @@ pub enum Error {
     UnknownProvider(String),
     #[error("No default provider for model {0}")]
     NoDefault(String),
+    #[error("Alias {0} references nonexistent provider {1}")]
+    NoAliasProvider(String, String),
+    #[error("Alias {0} references nonexistent API key {1}")]
+    NoAliasApiKey(String, String),
     #[error("Request is missing model name")]
     ModelNotSpecified,
     #[error("Model provider returned an error")]
     ModelError,
     #[error("API key not provided")]
     MissingApiKey,
+    #[error("Did not find environment variable {1} for API key {0}")]
+    MissingApiKeyEnv(String, String),
     #[error("Error transforming a model request")]
     TransformingRequest,
     #[error("Error transforming a model response")]
