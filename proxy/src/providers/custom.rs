@@ -50,6 +50,10 @@ impl ChatModelProvider for CustomProvider {
         &self.config.name
     }
 
+    fn label(&self) -> &str {
+        self.config.label.as_deref().unwrap_or(&self.config.name)
+    }
+
     async fn send_request(
         &self,
         options: SendRequestOptions,

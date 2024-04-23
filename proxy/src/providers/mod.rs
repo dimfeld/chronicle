@@ -26,7 +26,11 @@ pub struct SendRequestOptions {
 
 #[async_trait::async_trait]
 pub trait ChatModelProvider: Debug + Send + Sync {
+    /// Internal name for the provider
     fn name(&self) -> &str;
+
+    /// A readable name for the provider
+    fn label(&self) -> &str;
 
     /// Send a request and return the response. If there's any chance of retryable failures for
     /// this provider (e.g. almost every provider), then this function should handle retrying with

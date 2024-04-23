@@ -25,6 +25,10 @@ impl Groq {
 #[async_trait::async_trait]
 impl ChatModelProvider for Groq {
     fn name(&self) -> &str {
+        "groq"
+    }
+
+    fn label(&self) -> &str {
         "Groq"
     }
 

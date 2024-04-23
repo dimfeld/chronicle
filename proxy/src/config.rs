@@ -51,6 +51,7 @@ impl std::fmt::Debug for ApiKeyConfig {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CustomProviderConfig {
     pub name: String,
+    pub label: Option<String>,
     /// The url to use
     pub url: String,
     /// The API token to pass along

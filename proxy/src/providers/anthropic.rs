@@ -34,6 +34,10 @@ impl Anthropic {
 #[async_trait::async_trait]
 impl ChatModelProvider for Anthropic {
     fn name(&self) -> &str {
+        "anthropic"
+    }
+
+    fn label(&self) -> &str {
         "Anthropic"
     }
 

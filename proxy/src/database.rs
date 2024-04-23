@@ -27,6 +27,7 @@ pub type Pool = sqlx::Pool<Database>;
 #[derive(sqlx::FromRow)]
 struct DbProvider {
     name: String,
+    label: Option<String>,
     url: String,
     token: Option<String>,
     format: sqlx::types::Json<ProviderRequestFormat>,
@@ -40,7 +41,7 @@ struct DbProvider {
 pub async fn load_providers_from_database(
     pool: &Pool,
 ) -> Result<Vec<CustomProviderConfig>, Report<Error>> {
-    let rows: Vec<DbProvider> = sqlx::query_as("SELECT name, url, token, format, headers, prefix, default_for, token_env FROM chronicle_custom_providers")
+    let rows: Vec<DbProvider> = sqlx::query_as("SELECT name, label, url, token, format, headers, prefix, default_for, token_env FROM chronicle_custom_providers")
         .fetch_all(pool)
         .await
         .change_context(Error::LoadingDatabase)?;
@@ -49,6 +50,7 @@ pub async fn load_providers_from_database(
         .into_iter()
         .map(|row| CustomProviderConfig {
             name: row.name,
+            label: row.label,
             url: row.url,
             token: row.token,
             format: row.format.0,

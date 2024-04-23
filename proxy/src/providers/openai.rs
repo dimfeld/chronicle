@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, time::Duration};
+use std::time::Duration;
 
 use bytes::Bytes;
 use error_stack::{Report, ResultExt};
@@ -6,11 +6,7 @@ use reqwest::{header::CONTENT_TYPE, Response};
 use tracing::instrument;
 
 use super::{ChatModelProvider, ProviderResponse, SendRequestOptions};
-use crate::{
-    format::{ChatRequest, ChatRequestTransformation},
-    request::{send_standard_request, RetryOptions},
-    Error, ProxyRequestOptions,
-};
+use crate::{format::ChatRequestTransformation, request::send_standard_request, Error};
 
 /// OpenAI or fully-compatible provider
 #[derive(Debug)]
@@ -31,6 +27,10 @@ impl OpenAi {
 #[async_trait::async_trait]
 impl ChatModelProvider for OpenAi {
     fn name(&self) -> &str {
+        "openai"
+    }
+
+    fn label(&self) -> &str {
         "OpenAI"
     }
 

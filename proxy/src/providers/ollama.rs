@@ -32,6 +32,10 @@ impl Ollama {
 #[async_trait::async_trait]
 impl ChatModelProvider for Ollama {
     fn name(&self) -> &str {
+        "ollama"
+    }
+
+    fn label(&self) -> &str {
         "Ollama"
     }
 

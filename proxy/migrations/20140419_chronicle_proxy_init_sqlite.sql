@@ -36,11 +36,13 @@ CREATE TABLE IF NOT EXISTS chronicle_events (
   rate_limited bool,
   request_latency_ms int,
   total_latency_ms int,
+  pricing_plan int,
   created_at int NOT NULL DEFAULT unix_epoch ()
 );
 
 CREATE TABLE IF NOT EXISTS chronicle_custom_providers (
   name text PRIMARY KEY,
+  label text,
   url text NOT NULL,
   token text,
   token_env text,
@@ -69,4 +71,14 @@ CREATE TABLE IF NOT EXISTS chronicle_api_keys (
   name text PRIMARY KEY,
   source text,
   value text
+);
+
+CREATE TABLE chronicle_pricing_plans (
+  id integer PRIMARY KEY,
+  provider text,
+  start_date bigint,
+  end_date bigint,
+  per_input_token numeric,
+  per_output_token numeric,
+  per_request numeric
 );
