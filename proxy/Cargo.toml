@@ -29,7 +29,7 @@ url = "2.5.0"
 uuid = { version = "1.8.0", features = ["v7"] }
 
 [features]
-default = ["postgres", "migrations"]
+default = []
 any-db = ["sqlx/any"]
 postgres = ["sqlx/postgres"]
 sqlite = ["sqlx/sqlite"]

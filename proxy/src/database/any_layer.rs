@@ -14,9 +14,15 @@ impl DbAbstraction {
         let scheme = u.scheme();
 
         if scheme.starts_with("sqlite") {
+            #[cfg(feature = "sqlite")]
             Self::Sqlite
+            #[cfg(not(feature = "sqlite"))]
+            panic!("sqlite not supported, enable the sqlite feature")
         } else if scheme.starts_with("postgres") {
+            #[cfg(feature = "postgres")]
             Self::Postgres
+            #[cfg(not(feature = "postgres"))]
+            panic!("postgres not supported, enable the sqlite feature")
         } else {
             panic!("Unsupported database scheme: {}", scheme);
         }

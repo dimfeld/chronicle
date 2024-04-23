@@ -261,6 +261,10 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
         .build()
         .unwrap();
 
+    chronicle_proxy::database::migrations::init_db(&config.pg_pool)
+        .await
+        .change_context(Error::ServerStart)?;
+
     let state = ServerState(Arc::new(ServerStateInner {
         production,
         filigree: Arc::new(FiligreeState {

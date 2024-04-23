@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     fmt::Debug,
-    path::{Path, PathBuf},
+    path::Path,
     sync::{Arc, RwLock},
     time::Duration,
 };
@@ -27,7 +27,7 @@ use tracing::instrument;
 
 use crate::{
     database::logging::start_database_logger,
-    providers::{anthropic::Anthropic, groq::Groq, SendRequestOptions},
+    providers::{anthropic::Anthropic, groq::Groq, ollama::Ollama, SendRequestOptions},
 };
 
 pub type AnyChatModelProvider = Arc<dyn ChatModelProvider>;
@@ -75,6 +75,7 @@ pub struct ProxyBuilder {
     pool: Option<Pool>,
     config: ProxyConfig,
     openai: Option<String>,
+    ollama: Option<String>,
     anthropic: Option<String>,
     groq: Option<String>,
     client: Option<reqwest::Client>,
@@ -85,9 +86,10 @@ impl ProxyBuilder {
         Self {
             pool: None,
             config: ProxyConfig::default(),
-            openai: None,
-            anthropic: None,
-            groq: None,
+            openai: Some(String::new()),
+            anthropic: Some(String::new()),
+            groq: Some(String::new()),
+            ollama: Some(String::new()),
             client: None,
         }
     }
@@ -132,33 +134,37 @@ impl ProxyBuilder {
         self
     }
 
-    /// Enable the OpenAI provider
+    /// Enable the OpenAI provider, if it was disabled by [without_default_providers]
     pub fn with_openai(mut self, token: Option<String>) -> Self {
         self.openai = token.or(Some(String::new()));
         self
     }
 
-    /// Enable the Anthropic provider
+    /// Enable the Anthropic provider, if it was disabled by [without_default_providers]
     pub fn with_anthropic(mut self, token: Option<String>) -> Self {
         self.anthropic = token.or(Some(String::new()));
         self
     }
 
-    /// Enable the Groq provider
+    /// Enable the Groq provider, if it was disabled by [without_default_providers]
     pub fn with_groq(mut self, token: Option<String>) -> Self {
         self.groq = token.or(Some(String::new()));
         self
     }
 
-    // /// Enable the Ollama provider
-    // pub fn with_ollama(mut self, url: Option<String>) -> Self {
-    //     self.ollama = url.or(Some(String::new()));
-    //     self
-    // }
+    /// Enable the Ollama provider, if it was disabled by [without_default_providers]
+    pub fn with_ollama(mut self, url: Option<String>) -> Self {
+        self.ollama = url.or(Some(String::new()));
+        self
+    }
 
-    /// Load all the default providers
-    pub fn with_default_providers(self) -> Self {
-        self.with_anthropic(None).with_groq(None).with_openai(None)
+    /// Don't load the default providers
+    pub fn without_default_providers(mut self) -> Self {
+        self.anthropic = None;
+        self.groq = None;
+        self.openai = None;
+        self.ollama = None;
+        self
     }
 
     /// Set the user agent that will be used for HTTP requests. This only applies if
@@ -234,6 +240,11 @@ impl ProxyBuilder {
 
         if let Some(token) = self.groq {
             providers.push(Arc::new(Groq::new(client.clone(), empty_to_none(token)))
+                as Arc<dyn ChatModelProvider>);
+        }
+
+        if let Some(url) = self.ollama {
+            providers.push(Arc::new(Ollama::new(client.clone(), empty_to_none(url)))
                 as Arc<dyn ChatModelProvider>);
         }
 

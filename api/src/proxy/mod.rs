@@ -36,7 +36,7 @@ async fn proxy_request(
     State(state): State<ServerState>,
     auth: Option<Authed>,
     headers: HeaderMap,
-    Json(mut body): Json<ProxyRequestPayload>,
+    Json(body): Json<ProxyRequestPayload>,
 ) -> Result<Response, Error> {
     let model = body
         .request
