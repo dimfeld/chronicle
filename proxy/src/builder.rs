@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     path::Path,
     sync::{Arc, RwLock},
     time::Duration,
@@ -232,18 +231,15 @@ impl ProxyBuilder {
             })
             .collect::<Result<Vec<_>, Error>>()?;
 
-        let lookup = ProviderLookup {
-            providers,
-            aliases,
-            api_keys,
-        };
+        let lookup = ProviderLookup::new(providers, aliases, api_keys);
 
         Ok(Proxy {
             pool: self.pool,
-            lookup: RwLock::new(lookup),
+            lookup,
             default_timeout: self.config.default_timeout,
             log_tx,
             log_task,
+            client,
         })
     }
 }

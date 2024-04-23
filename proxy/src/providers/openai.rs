@@ -80,7 +80,7 @@ pub async fn send_openai_request(
     let token = api_key
         .as_deref()
         .or(provider_token)
-        // Allow no APi key since we could be sending to an internal OpenAI-compatible service.
+        // Allow no API key since we could be sending to an internal OpenAI-compatible service.
         .unwrap_or_default();
 
     let result = send_standard_request(
