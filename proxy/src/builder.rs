@@ -23,6 +23,7 @@ pub struct ProxyBuilder {
     anthropic: Option<String>,
     groq: Option<String>,
     client: Option<reqwest::Client>,
+    providers: Vec<Arc<dyn ChatModelProvider>>,
 }
 
 impl ProxyBuilder {
@@ -36,6 +37,7 @@ impl ProxyBuilder {
             ollama: Some(String::new()),
             load_config_from_database: true,
             client: None,
+            providers: Vec::new(),
         }
     }
 
@@ -98,6 +100,13 @@ impl ProxyBuilder {
         self
     }
 
+    /// Add a precreated provider to the list of providers. This can be used to create your own
+    /// custom providers that require capabilities not provided by the [CustomProviderConfig].
+    pub fn with_provider(mut self, provider: Arc<dyn ChatModelProvider>) -> Self {
+        self.providers.push(provider);
+        self
+    }
+
     /// Enable the OpenAI provider, if it was disabled by [without_default_providers]
     pub fn with_openai(mut self, token: Option<String>) -> Self {
         self.openai = token.or(Some(String::new()));
@@ -145,7 +154,8 @@ impl ProxyBuilder {
     }
 
     pub async fn build(self) -> Result<Proxy, Report<Error>> {
-        let mut providers = self.config.providers;
+        let mut providers = self.providers;
+        let mut provider_configs = self.config.providers;
         let mut api_keys = self.config.api_keys;
         let mut aliases = self.config.aliases;
         let logger = if let Some(pool) = &self.pool {
@@ -154,7 +164,7 @@ impl ProxyBuilder {
                 let db_aliases = load_aliases_from_database(&pool).await?;
                 let db_api_keys = load_api_key_configs_from_database(&pool).await?;
 
-                providers.extend(db_providers);
+                provider_configs.extend(db_providers);
                 aliases.extend(db_aliases);
                 api_keys.extend(db_api_keys);
             }
@@ -186,10 +196,11 @@ impl ProxyBuilder {
                 .unwrap()
         });
 
-        let mut providers = providers
-            .into_iter()
-            .map(|c| Arc::new(c.into_provider(client.clone())) as Arc<dyn ChatModelProvider>)
-            .collect::<Vec<_>>();
+        providers.extend(
+            provider_configs
+                .into_iter()
+                .map(|c| Arc::new(c.into_provider(client.clone())) as Arc<dyn ChatModelProvider>),
+        );
 
         fn empty_to_none(s: String) -> Option<String> {
             if s.is_empty() {
