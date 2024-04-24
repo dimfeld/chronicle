@@ -619,7 +619,6 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "sqlx",
- "sqlx-transparent-json-decode",
  "thiserror",
  "tokio",
  "toml",
@@ -4105,9 +4104,9 @@ dependencies = [
 
 [[package]]
 name = "sqlx-transparent-json-decode"
-version = "2.2.1"
+version = "2.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8915b52796d771ac71edc7d011a8eef6a5ce1d1fad69eb02f5fa06a8efb11bcd"
+checksum = "e3aae5d6c5d7d3eabd9b01f031cca33d970ff578fb88463021f7ade44677a72b"
 dependencies = [
  "serde_json",
  "sqlx",

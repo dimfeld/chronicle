@@ -126,7 +126,7 @@ pub struct ProxiedResult {
 pub async fn try_model_choices(
     ModelLookupResult {
         alias,
-        random,
+        random_order,
         choices,
     }: ModelLookupResult,
     options: RetryOptions,
@@ -134,7 +134,7 @@ pub async fn try_model_choices(
     request: ChatRequest,
 ) -> Result<ProxiedResult, Report<Error>> {
     let single_choice = choices.len() == 1;
-    let start_choice = if random && !single_choice {
+    let start_choice = if random_order && !single_choice {
         rand::thread_rng().gen_range(0..choices.len())
     } else {
         0

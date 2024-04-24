@@ -17,6 +17,7 @@ use crate::{
 pub struct ProxyBuilder {
     pool: Option<Pool>,
     config: ProxyConfig,
+    load_config_from_database: bool,
     openai: Option<String>,
     ollama: Option<String>,
     anthropic: Option<String>,
@@ -33,6 +34,7 @@ impl ProxyBuilder {
             anthropic: Some(String::new()),
             groq: Some(String::new()),
             ollama: Some(String::new()),
+            load_config_from_database: true,
             client: None,
         }
     }
@@ -40,6 +42,13 @@ impl ProxyBuilder {
     /// Set the database connection pool
     pub fn with_database(mut self, pool: Pool) -> Self {
         self.pool = Some(pool);
+        self
+    }
+
+    /// Load configuration for custom providers, aliases, and API keys from the database. If a
+    /// database pool is provided, this defaults to true.
+    pub fn load_config_from_database(mut self, load: bool) -> Self {
+        self.load_config_from_database = load;
         self
     }
 
@@ -140,13 +149,15 @@ impl ProxyBuilder {
         let mut api_keys = self.config.api_keys;
         let mut aliases = self.config.aliases;
         let logger = if let Some(pool) = &self.pool {
-            let db_providers = load_providers_from_database(&pool).await?;
-            let db_aliases = load_aliases_from_database(&pool).await?;
-            let db_api_keys = load_api_key_configs_from_database(&pool).await?;
+            if self.load_config_from_database {
+                let db_providers = load_providers_from_database(&pool).await?;
+                let db_aliases = load_aliases_from_database(&pool).await?;
+                let db_api_keys = load_api_key_configs_from_database(&pool).await?;
 
-            providers.extend(db_providers);
-            aliases.extend(db_aliases);
-            api_keys.extend(db_api_keys);
+                providers.extend(db_providers);
+                aliases.extend(db_aliases);
+                api_keys.extend(db_api_keys);
+            }
 
             let logger = if self.config.log_to_database.unwrap_or(false) {
                 Some(start_database_logger(

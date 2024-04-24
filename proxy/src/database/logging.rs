@@ -6,7 +6,7 @@ use std::{
 
 use chrono::Utc;
 
-use super::{any_layer::DbAbstraction, Pool};
+use super::Pool;
 use crate::{format::ChatRequest, request::ProxiedResult, ProxyRequestOptions};
 pub struct ProxyLogEntry {
     pub timestamp: chrono::DateTime<Utc>,
@@ -24,19 +24,11 @@ pub fn start_database_logger(
 ) -> (flume::Sender<ProxyLogEntry>, tokio::task::JoinHandle<()>) {
     let (log_tx, log_rx) = flume::unbounded();
 
-    #[cfg(feature = "any-db")]
-    let db_type = DbAbstraction::from_url(&pool.connect_options().database_url);
-    #[cfg(all(not(feature = "any-db"), feature = "postgres"))]
-    let db_type = DbAbstraction::Postgres;
-    #[cfg(all(not(feature = "any-db"), feature = "sqlite"))]
-    let db_type = DbAbstraction::Sqlite;
-
     let task = tokio::task::spawn(database_logger_task(
         pool,
         log_rx,
         batch_size,
         debounce_time,
-        db_type,
     ));
 
     (log_tx, task)
@@ -47,7 +39,6 @@ async fn database_logger_task(
     rx: flume::Receiver<ProxyLogEntry>,
     batch_size: usize,
     debounce_time: Duration,
-    db_type: DbAbstraction,
 ) {
     let mut batch = Vec::with_capacity(batch_size);
 
@@ -63,23 +54,23 @@ async fn database_logger_task(
 
                 if batch.len() >= batch_size {
                     let send_batch = std::mem::replace(&mut batch, Vec::with_capacity(batch_size));
-                    write_batch(&pool, db_type, send_batch).await;
+                    write_batch(&pool, send_batch).await;
                 }
 
             }
             _ = tokio::time::sleep(debounce_time), if !batch.is_empty() => {
                 let send_batch = std::mem::replace(&mut batch, Vec::with_capacity(batch_size));
-                write_batch(&pool, db_type, send_batch).await;
+                write_batch(&pool, send_batch).await;
             }
         }
     }
 
     if !batch.is_empty() {
-        write_batch(&pool, db_type, batch).await;
+        write_batch(&pool, batch).await;
     }
 }
 
-async fn write_batch(pool: &Pool, db_type: DbAbstraction, items: Vec<ProxyLogEntry>) {
+async fn write_batch(pool: &Pool, items: Vec<ProxyLogEntry>) {
     let mut query = String::with_capacity(items.len() * 1024);
 
     query.push_str(
@@ -130,7 +121,7 @@ async fn write_batch(pool: &Pool, db_type: DbAbstraction, items: Vec<ProxyLogEnt
         let rate_limited = nullable_bool(item.response.as_ref().map(|r| r.was_rate_limited));
         let request_latency_ms = Nullable(item.response.map(|r| r.latency.as_millis() as u64));
         let total_latency_ms = item.total_latency.as_millis() as u64;
-        let created_at = db_type.timestamp_value(&item.timestamp);
+        let created_at = super::any_layer::timestamp_value(&item.timestamp);
 
         if i > 0 {
             query.push_str(",\n");

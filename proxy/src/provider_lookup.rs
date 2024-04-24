@@ -133,7 +133,7 @@ impl ProviderLookup {
 
         Ok(ModelLookupResult {
             alias: alias.map(|a| a.name.clone()).unwrap_or_default(),
-            random: alias.map(|a| a.random).unwrap_or(false),
+            random_order: alias.map(|a| a.random_order).unwrap_or(false),
             choices,
         })
     }

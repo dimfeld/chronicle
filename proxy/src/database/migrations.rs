@@ -3,53 +3,28 @@
 use super::Pool;
 
 #[cfg(feature = "sqlite")]
-const SQLITE_MIGRATIONS: &[&'static str] = &[include_str!(
-    "../../migrations/20140419_chronicle_proxy_init_sqlite.sql"
-)];
-
-#[cfg(feature = "sqlite")]
-/// Run migrations specific to the proxy. You can either use this or integrate the files from the
-/// `migrations` directory into your project.
-pub async fn init_sqlite_db(pool: &Pool) -> Result<(), sqlx::Error> {
-    run_migrations(pool, SQLITE_MIGRATIONS).await?;
-}
+const SQLITE_MIGRATIONS: &[&'static str] = &[
+    include_str!("../../migrations/20240419_chronicle_proxy_init_sqlite.sql"),
+    include_str!("../../migrations/20240424_chronicle_proxy_data_tables_sqlite.sql"),
+];
 
 #[cfg(feature = "postgres")]
-const POSTGRESQL_MIGRATIONS: &[&'static str] = &[include_str!(
-    "../../migrations/20240419_chronicle_proxy_init_postgresql.sql"
-)];
+const POSTGRESQL_MIGRATIONS: &[&'static str] = &[
+    include_str!("../../migrations/20240419_chronicle_proxy_init_postgresql.sql"),
+    include_str!("../../migrations/20240424_chronicle_proxy_data_tables_postgresql.sql"),
+];
 
-#[cfg(feature = "postgres")]
-/// Run migrations specific to the proxy. You can either use this or integrate the files from the
-/// `migrations` directory into your project.
-pub async fn init_postgresql_db(pool: &Pool) -> Result<(), sqlx::Error> {
-    run_migrations(pool, POSTGRESQL_MIGRATIONS).await
-}
-
-#[cfg(not(feature = "any-db"))]
-/// Run migrations specific to the proxy. You can either use this or integrate the files from the
-/// `migrations` directory into your project.
-pub async fn init_db(pool: &Pool) -> Result<(), sqlx::Error> {
+/// Run database migrations specific to the proxy. These migrations are designed for a simple setup with
+/// single-tenant use. You may want to add multi-tenant features or partitioning, and can integrate
+/// the files from the `migrations` directory into your project to accomplish that.
+pub async fn run_default_migrations(pool: &Pool) -> Result<(), sqlx::Error> {
     #[cfg(feature = "sqlite")]
-    init_sqlite_db(pool).await?;
+    run_migrations(pool, SQLITE_MIGRATIONS).await?;
 
     #[cfg(feature = "postgres")]
-    init_postgresql_db(pool).await?;
+    run_migrations(pool, POSTGRESQL_MIGRATIONS).await?;
 
     Ok(())
-}
-
-#[cfg(feature = "any-db")]
-pub async fn init_db(pool: &Pool) -> Result<(), sqlx::Error> {
-    use super::any_layer::DbAbstraction;
-
-    let db_type = DbAbstraction::from_url(pool.connect_options().database_url);
-    match db_type {
-        #[cfg(feature = "postgres")]
-        DbAbstraction::Postgres => init_postgresql_db(pool).await,
-        #[cfg(feature = "sqlite")]
-        DbAbstraction::Sqlite => init_sqlite_db(pool).await,
-    }
 }
 
 async fn run_migrations(pool: &Pool, migrations: &[&str]) -> Result<(), sqlx::Error> {

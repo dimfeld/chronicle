@@ -37,7 +37,7 @@ pub struct Proxy {
 #[derive(Debug)]
 struct ModelLookupResult {
     alias: String,
-    random: bool,
+    random_order: bool,
     choices: Vec<ModelLookupChoice>,
 }
 

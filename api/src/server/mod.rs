@@ -261,7 +261,7 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
         .build()
         .unwrap();
 
-    chronicle_proxy::database::migrations::init_db(&config.pg_pool)
+    chronicle_proxy::database::migrations::run_default_migrations(&config.pg_pool)
         .await
         .change_context(Error::ServerStart)?;
 
@@ -292,7 +292,6 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
         secrets: config.secrets,
 
         proxy: Proxy::builder()
-            .with_default_providers()
             .with_database(config.pg_pool.clone())
             .log_to_database(true)
             .build()

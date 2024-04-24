@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use error_stack::{Report, ResultExt};
 
 use crate::{
-    config::{AliasConfig, ApiKeyConfig, CustomProviderConfig},
+    config::{AliasConfig, AliasConfigProvider, ApiKeyConfig, CustomProviderConfig},
     providers::custom::ProviderRequestFormat,
     Error,
 };
@@ -13,13 +13,10 @@ pub mod logging;
 #[cfg(feature = "migrations")]
 pub mod migrations;
 
-#[cfg(feature = "any-db")]
-pub type Database = sqlx::Any;
-
-#[cfg(all(not(feature = "any-db"), feature = "postgres"))]
+#[cfg(feature = "postgres")]
 pub type Database = sqlx::Postgres;
 
-#[cfg(all(not(feature = "any-db"), feature = "sqlite"))]
+#[cfg(feature = "sqlite")]
 pub type Database = sqlx::Sqlite;
 
 pub type Pool = sqlx::Pool<Database>;
@@ -64,8 +61,15 @@ pub async fn load_providers_from_database(
 }
 
 pub async fn load_aliases_from_database(pool: &Pool) -> Result<Vec<AliasConfig>, Report<Error>> {
-    let rows: Vec<AliasConfig> = sqlx::query_as(
-        "SELECT name, random,
+    #[derive(sqlx::FromRow)]
+    struct DbAliasConfig {
+        name: String,
+        random_order: bool,
+        models: Vec<sqlx::types::Json<AliasConfigProvider>>,
+    }
+
+    let rows: Vec<DbAliasConfig> = sqlx::query_as(
+        "SELECT name, random_order,
                 array_agg(jsonb_build_object(
                 'provider', ap.provider,
                 'model', ap.model,
@@ -78,6 +82,15 @@ pub async fn load_aliases_from_database(pool: &Pool) -> Result<Vec<AliasConfig>,
     .fetch_all(pool)
     .await
     .change_context(Error::LoadingDatabase)?;
+
+    let rows = rows
+        .into_iter()
+        .map(|row| AliasConfig {
+            name: row.name,
+            random_order: row.random_order,
+            models: row.models.into_iter().map(|model| model.0).collect(),
+        })
+        .collect();
 
     Ok(rows)
 }

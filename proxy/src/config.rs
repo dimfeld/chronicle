@@ -24,7 +24,7 @@ pub struct AliasConfig {
     /// If true, start from a random provider.
     /// If false, always start with the first provider, and only use later providers on retry.
     #[serde(default)]
-    pub random: bool,
+    pub random_order: bool,
     pub models: Vec<AliasConfigProvider>,
 }
 
@@ -37,8 +37,6 @@ pub struct AliasConfigProvider {
     /// An API key configuration to use
     pub api_key_name: Option<String>,
 }
-
-sqlx_transparent_json_decode::sqlx_json_decode!(AliasConfigProvider);
 
 #[derive(Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct ApiKeyConfig {

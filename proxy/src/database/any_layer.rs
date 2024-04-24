@@ -1,39 +1,8 @@
 use chrono::{DateTime, Utc};
 
-#[derive(Debug, Clone, Copy)]
-pub enum DbAbstraction {
+pub fn timestamp_value(datetime: &DateTime<Utc>) -> String {
     #[cfg(feature = "sqlite")]
-    Sqlite,
+    return datetime.timestamp().to_string();
     #[cfg(feature = "postgres")]
-    Postgres,
-}
-
-impl DbAbstraction {
-    #[cfg(feature = "any-db")]
-    pub fn from_url(u: &url::Url) -> Self {
-        let scheme = u.scheme();
-
-        if scheme.starts_with("sqlite") {
-            #[cfg(feature = "sqlite")]
-            return Self::Sqlite;
-            #[cfg(not(feature = "sqlite"))]
-            panic!("sqlite not supported, enable the sqlite feature")
-        } else if scheme.starts_with("postgres") {
-            #[cfg(feature = "postgres")]
-            return Self::Postgres;
-            #[cfg(not(feature = "postgres"))]
-            panic!("postgres not supported, enable the sqlite feature")
-        } else {
-            panic!("Unsupported database scheme: {}", scheme);
-        }
-    }
-
-    pub fn timestamp_value(&self, datetime: &DateTime<Utc>) -> String {
-        match self {
-            #[cfg(feature = "sqlite")]
-            Self::Sqlite => datetime.timestamp().to_string(),
-            #[cfg(feature = "postgres")]
-            Self::Postgres => super::logging::Escaped(datetime.to_rfc3339()).to_string(),
-        }
-    }
+    return super::logging::Escaped(datetime.to_rfc3339()).to_string();
 }

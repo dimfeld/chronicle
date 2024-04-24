@@ -1,3 +1,4 @@
+-- basic tables required for general proxy use
 CREATE TABLE chronicle_meta (
   key text PRIMARY KEY,
   value jsonb,
@@ -38,41 +39,6 @@ CREATE TABLE IF NOT EXISTS chronicle_events (
   total_latency_ms int,
   pricing_plan bigint REFERENCES chronicle_pricing_plans (id),
   created_at timestamptz NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS chronicle_custom_providers (
-  id uuid PRIMARY KEY,
-  name text,
-  label text,
-  url text NOT NULL,
-  token text,
-  token_env text,
-  format jsonb NOT NULL,
-  headers jsonb,
-  prefix text,
-  default_for jsonb,
-);
-
-CREATE TABLE IF NOT EXISTS chronicle_aliases (
-  id uuid PRIMARY KEY,
-  name text NOT NULL UNIQUE,
-  random bool NOT NULL DEFAULT FALSE
-);
-
-CREATE TABLE IF NOT EXISTS chronicle_alias_providers (
-  id uuid PRIMARY KEY,
-  alias_id bigint REFERENCES chronicle_aliases (id),
-  order int NOT NULL DEFAULT 0,
-  model text NOT NULL,
-  provider text NOT NULL,
-  api_key_name text
-);
-
-CREATE TABLE IF NOT EXISTS chronicle_api_keys (
-  id uuid PRIMARY KEY,
-  name text,
-  source text,
-  value text
 );
 
 CREATE TABLE chronicle_pricing_plans (

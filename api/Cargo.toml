@@ -33,7 +33,7 @@ serde = { version = "1.0.193", features = ["derive"] }
 serde_json = "1.0.113"
 serde_with = { version = "3.6.1", features = ["json", "schemars_0_8"] }
 sqlx = { version = "0.7.3", features = ["chrono", "postgres"] }
-sqlx-transparent-json-decode = "2.2.1"
+sqlx-transparent-json-decode = "2.2.2"
 tera = "1.19.1"
 thiserror = "1.0.56"
 tokio = { version = "1.36.0", features = ["full"] }

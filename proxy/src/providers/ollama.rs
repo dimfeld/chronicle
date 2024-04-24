@@ -42,9 +42,7 @@ impl ChatModelProvider for Ollama {
     async fn send_request(
         &self,
         SendRequestOptions {
-            timeout,
-            api_key,
-            mut body,
+            timeout, mut body, ..
         }: SendRequestOptions,
     ) -> Result<ProviderResponse, Report<Error>> {
         body.transform(&ChatRequestTransformation {
