@@ -42,7 +42,6 @@ impl ChatModelProvider for Ollama {
     async fn send_request(
         &self,
         SendRequestOptions {
-            retry_options,
             timeout,
             api_key,
             mut body,
@@ -77,7 +76,6 @@ impl ChatModelProvider for Ollama {
 
         let now = Utc::now().timestamp();
         let result = send_standard_request::<OllamaResponse>(
-            retry_options,
             timeout,
             || {
                 self.client
@@ -89,26 +87,27 @@ impl ChatModelProvider for Ollama {
             |_| None,
             body,
         )
-        .await?;
+        .await
+        .change_context(Error::ModelError)?;
 
         let meta = json!({
-            "load_duration": result.data.0.load_duration,
-            "prompt_eval_duration": result.data.0.prompt_eval_duration,
-            "eval_duration": result.data.0.eval_duration,
+            "load_duration": result.0.load_duration,
+            "prompt_eval_duration": result.0.prompt_eval_duration,
+            "eval_duration": result.0.eval_duration,
         });
 
         let response = ChatResponse {
             created: now as u64,
-            model: Some(result.data.0.model),
+            model: Some(result.0.model),
             system_fingerprint: None,
             choices: vec![ChatChoice {
                 index: 0,
                 finish_reason: "stop".to_string(),
-                message: result.data.0.message,
+                message: result.0.message,
             }],
             usage: UsageResponse {
-                prompt_tokens: Some(result.data.0.prompt_eval_count as usize),
-                completion_tokens: Some(result.data.0.eval_count as usize),
+                prompt_tokens: Some(result.0.prompt_eval_count as usize),
+                completion_tokens: Some(result.0.eval_count as usize),
                 total_tokens: None,
             },
         };
@@ -116,9 +115,7 @@ impl ChatModelProvider for Ollama {
         Ok(ProviderResponse {
             body: response,
             meta: Some(meta),
-            retries: result.num_retries,
-            rate_limited: result.was_rate_limited,
-            latency: result.data.1,
+            latency: result.1,
         })
     }
 

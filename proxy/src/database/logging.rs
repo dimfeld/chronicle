@@ -5,14 +5,13 @@ use std::{
 };
 
 use chrono::Utc;
-use error_stack::Report;
 
 use super::{any_layer::DbAbstraction, Pool};
-use crate::{format::ChatRequest, providers::ProviderResponse, Error, ProxyRequestOptions};
+use crate::{format::ChatRequest, request::ProxiedResult, ProxyRequestOptions};
 pub struct ProxyLogEntry {
     pub timestamp: chrono::DateTime<Utc>,
     pub request: ChatRequest,
-    pub response: Option<ProviderResponse>,
+    pub response: Option<ProxiedResult>,
     pub total_latency: Duration,
     pub error: Option<String>,
     pub options: ProxyRequestOptions,
@@ -127,8 +126,8 @@ async fn write_batch(pool: &Pool, db_type: DbAbstraction, items: Vec<ProxyLogEnt
                 .as_ref()
                 .and_then(|r| serde_json::to_string(&r.body).ok()),
         );
-        let retries = Nullable(item.response.as_ref().map(|r| r.retries));
-        let rate_limited = nullable_bool(item.response.as_ref().map(|r| r.rate_limited));
+        let retries = Nullable(item.response.as_ref().map(|r| r.num_retries));
+        let rate_limited = nullable_bool(item.response.as_ref().map(|r| r.was_rate_limited));
         let request_latency_ms = Nullable(item.response.map(|r| r.latency.as_millis() as u64));
         let total_latency_ms = item.total_latency.as_millis() as u64;
         let created_at = db_type.timestamp_value(&item.timestamp);

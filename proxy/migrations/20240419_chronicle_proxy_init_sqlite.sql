@@ -41,7 +41,8 @@ CREATE TABLE IF NOT EXISTS chronicle_events (
 );
 
 CREATE TABLE IF NOT EXISTS chronicle_custom_providers (
-  name text PRIMARY KEY,
+  id text PRIMARY KEY,
+  name text NOT NULL,
   label text,
   url text NOT NULL,
   token text,
@@ -52,29 +53,30 @@ CREATE TABLE IF NOT EXISTS chronicle_custom_providers (
   default_for json,
 );
 
-CREATE TABLE IF NOT EXISTS chronicle_webhooks (
+CREATE TABLE IF NOT EXISTS chronicle_aliases (
   id text PRIMARY KEY,
   name text NOT NULL,
-  url text NOT NULL,
-  method text NOT NULL,
-  id_field text
+  random bool NOT NULL DEFAULT FALSE
 );
 
-CREATE TABLE IF NOT EXISTS chronicle_aliases (
-  name text PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS chronicle_alias_providers (
+  id text PRIMARY KEY,
+  alias_id text REFERENCES chronicle_aliases (id) ON DELETE CASCADE,
+  order int NOT NULL DEFAULT 0,
   model text NOT NULL,
   provider text NOT NULL,
   api_key_name text
 );
 
 CREATE TABLE IF NOT EXISTS chronicle_api_keys (
-  name text PRIMARY KEY,
+  id text PRIMARY KEY,
+  name text,
   source text,
   value text
 );
 
 CREATE TABLE chronicle_pricing_plans (
-  id integer PRIMARY KEY,
+  id text PRIMARY KEY,
   provider text,
   start_date bigint,
   end_date bigint,

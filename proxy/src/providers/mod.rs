@@ -12,13 +12,11 @@ use thiserror::Error;
 
 use crate::{
     format::{ChatRequest, ChatResponse},
-    request::RetryOptions,
     Error,
 };
 
 #[derive(Debug)]
 pub struct SendRequestOptions {
-    pub retry_options: RetryOptions,
     pub timeout: Duration,
     pub api_key: Option<String>,
     pub body: ChatRequest,
@@ -46,14 +44,9 @@ pub trait ChatModelProvider: Debug + Send + Sync {
 /// A generic structure with a provider's response translated into the common format, and possible error codes.
 #[derive(Debug, Clone)]
 pub struct ProviderResponse {
-    // todo use strong typing here?
     pub body: ChatResponse,
     /// Any other metadata from the provider that should be logged.
     pub meta: Option<serde_json::Value>,
-    /// How many retries were performed.
-    pub retries: u32,
-    /// True if this request had to be retried due to rate limits.
-    pub rate_limited: bool,
     /// The latency of the request. If the request was retried this should only count the
     /// final successful one. Total latency including retries is tracked outside of the provider.
     pub latency: std::time::Duration,

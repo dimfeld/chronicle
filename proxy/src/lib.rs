@@ -1,8 +1,4 @@
-use std::{
-    fmt::Debug,
-    sync::{Arc, RwLock},
-    time::Duration,
-};
+use std::{fmt::Debug, sync::Arc, time::Duration};
 
 pub mod builder;
 pub mod config;
@@ -14,7 +10,6 @@ pub mod providers;
 pub mod request;
 
 use builder::ProxyBuilder;
-use config::{AliasConfig, ApiKeyConfig};
 use database::logging::ProxyLogEntry;
 pub use error::Error;
 use error_stack::Report;
@@ -25,7 +20,7 @@ use request::RetryOptions;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
-use crate::providers::SendRequestOptions;
+use crate::request::try_model_choices;
 
 pub type AnyChatModelProvider = Arc<dyn ChatModelProvider>;
 
@@ -39,8 +34,15 @@ pub struct Proxy {
     default_timeout: Option<Duration>,
 }
 
+#[derive(Debug)]
 struct ModelLookupResult {
-    from_options: bool,
+    alias: String,
+    random: bool,
+    choices: Vec<ModelLookupChoice>,
+}
+
+#[derive(Debug)]
+struct ModelLookupChoice {
     model: String,
     provider: Arc<dyn ChatModelProvider>,
     api_key: Option<String>,
@@ -68,42 +70,29 @@ impl Proxy {
     pub async fn send(
         &self,
         options: ProxyRequestOptions,
-        mut body: ChatRequest,
+        body: ChatRequest,
     ) -> Result<ChatResponse, Report<Error>> {
-        let ModelLookupResult {
-            from_options,
-            provider,
-            model,
-            api_key,
-        } = self.lookup.find_model_and_provider(&options, &body)?;
+        let models = self.lookup.find_model_and_provider(&options, &body)?;
 
-        if from_options {
-            // Update the body to have the correct model we actually want, in case
-            // the model was an alias or the options overrode it.
-            body.model = Some(model.to_string());
+        if models.choices.is_empty() {
+            return Err(Report::new(Error::AliasEmpty(models.alias)));
         }
-
-        let api_key = if options.api_key.is_some() {
-            options.api_key.clone()
-        } else {
-            api_key
-        };
 
         tracing::info!(?body, "Starting request");
 
         let timestamp = chrono::Utc::now();
         let send_start = tokio::time::Instant::now();
-        let response = provider
-            .send_request(SendRequestOptions {
-                retry_options: options.retry.clone(),
-                timeout: options
-                    .timeout
-                    .or(self.default_timeout)
-                    .unwrap_or(Duration::from_secs(60)),
-                api_key,
-                body: body.clone(),
-            })
-            .await;
+        let response = try_model_choices(
+            models,
+            options.retry.clone(),
+            options
+                .timeout
+                .or(self.default_timeout)
+                .unwrap_or_else(|| Duration::from_millis(60_000)),
+            body.clone(),
+        )
+        .await;
+
         let send_time = send_start.elapsed().as_millis();
 
         // Get response stats: latency, tokens used, etc.
@@ -116,8 +105,8 @@ impl Proxy {
         match &response {
             Ok(response) => {
                 current_span.record("latency", response.latency.as_millis());
-                current_span.record("retries", response.retries);
-                current_span.record("rate_limited", response.rate_limited);
+                current_span.record("retries", response.num_retries);
+                current_span.record("rate_limited", response.was_rate_limited);
                 if let Some(input_tokens) = response.body.usage.prompt_tokens {
                     current_span.record("tokens_input", input_tokens);
                 }

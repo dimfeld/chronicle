@@ -21,6 +21,15 @@ pub struct ProxyConfig {
 pub struct AliasConfig {
     /// A name for this model-provider pair.
     pub name: String,
+    /// If true, start from a random provider.
+    /// If false, always start with the first provider, and only use later providers on retry.
+    #[serde(default)]
+    pub random: bool,
+    pub models: Vec<AliasConfigProvider>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, sqlx::FromRow)]
+pub struct AliasConfigProvider {
     /// The model to use
     pub model: String,
     /// The provider to use
@@ -29,6 +38,8 @@ pub struct AliasConfig {
     pub api_key_name: Option<String>,
 }
 
+sqlx_transparent_json_decode::sqlx_json_decode!(AliasConfigProvider);
+
 #[derive(Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct ApiKeyConfig {
     /// A name for this key
@@ -36,7 +47,7 @@ pub struct ApiKeyConfig {
     /// If "env", the key is an environment variable name to read, rather than the key itself.
     /// Eventually this will support other pluggable sources.
     pub source: String,
-    /// The key itself, or if `from_env` is set, the name of the environment variable to read.
+    /// The key itself, or if `source` is "env", the name of the environment variable to read.
     pub value: String,
 }
 
@@ -44,6 +55,15 @@ impl std::fmt::Debug for ApiKeyConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ApiKeyConfig")
             .field("name", &self.name)
+            .field("source", &self.source)
+            .field(
+                "value",
+                if self.source == "env" {
+                    &self.value
+                } else {
+                    &"***"
+                },
+            )
             .finish_non_exhaustive()
     }
 }

@@ -4,7 +4,7 @@ use crate::{
     config::{AliasConfig, ApiKeyConfig},
     format::ChatRequest,
     providers::ChatModelProvider,
-    Error, ModelLookupResult, ProxyRequestOptions,
+    Error, ModelLookupChoice, ModelLookupResult, ProxyRequestOptions,
 };
 
 #[derive(Debug)]
@@ -27,6 +27,13 @@ impl ProviderLookupInternal {
             .iter()
             .find(|p| p.is_default_for_model(model))
             .map(Arc::clone)
+    }
+
+    fn lookup_api_key(&self, name: &str) -> Option<String> {
+        self.api_keys
+            .iter()
+            .find(|key| key.name == name)
+            .map(|key| key.value.clone())
     }
 }
 
@@ -59,10 +66,10 @@ impl ProviderLookup {
         options: &'a ProxyRequestOptions,
         body: &'a ChatRequest,
     ) -> Result<ModelLookupResult, Error> {
-        let (from_options, model) = if let Some(model) = &options.model {
-            (true, model.as_str())
+        let model = if let Some(model) = &options.model {
+            model.as_str()
         } else {
-            (false, body.model.as_deref().unwrap_or_default())
+            body.model.as_deref().unwrap_or_default()
         };
 
         if model.is_empty() {
@@ -72,49 +79,62 @@ impl ProviderLookup {
         let lookup = self.0.read().unwrap();
         let alias = lookup.aliases.iter().find(|alias| alias.name == model);
 
-        let provider = if let Some(alias) = alias {
-            lookup
-                .providers
+        let choices = if let Some(alias) = alias {
+            alias
+                .models
                 .iter()
-                .find(|p| p.name() == alias.provider)
-                .ok_or_else(|| Error::NoAliasProvider(alias.name.clone(), alias.provider.clone()))?
-                .clone()
+                .map(|choice| {
+                    let provider = lookup
+                        .providers
+                        .iter()
+                        .find(|p| p.name() == choice.provider)
+                        .ok_or_else(|| {
+                            Error::NoAliasProvider(alias.name.clone(), choice.provider.clone())
+                        })?
+                        .clone();
+
+                    let api_key = if let Some(key_name) = &choice.api_key_name {
+                        let api_key = lookup.lookup_api_key(key_name).ok_or_else(|| {
+                            Error::NoAliasApiKey(alias.name.clone(), key_name.to_string())
+                        })?;
+                        Some(api_key)
+                    } else {
+                        None
+                    };
+                    Ok::<_, Error>(ModelLookupChoice {
+                        model: choice.model.clone(),
+                        provider,
+                        api_key,
+                    })
+                })
+                .into_iter()
+                .collect::<Result<Vec<_>, Error>>()?
         } else if let Some(provider_name) = options.provider.as_deref() {
-            lookup
+            let provider = lookup
                 .get_provider(provider_name)
-                .ok_or_else(|| Error::UnknownProvider(provider_name.to_string()))?
+                .ok_or_else(|| Error::UnknownProvider(provider_name.to_string()))?;
+
+            vec![ModelLookupChoice {
+                model: model.to_string(),
+                provider,
+                api_key: options.api_key.clone(),
+            }]
         } else {
-            lookup
+            let provider = lookup
                 .default_provider_for_model(model)
-                .ok_or_else(|| Error::NoDefault(model.to_string()))?
+                .ok_or_else(|| Error::NoDefault(model.to_string()))?;
+
+            vec![ModelLookupChoice {
+                model: model.to_string(),
+                provider,
+                api_key: options.api_key.clone(),
+            }]
         };
 
-        let model = alias.map(|alias| alias.model.as_str()).unwrap_or(model);
-
-        let api_key = alias
-            .and_then(|alias| {
-                if let Some(key_name) = alias.api_key_name.as_deref() {
-                    let key = lookup
-                        .api_keys
-                        .iter()
-                        .find(|key| key.name == key_name)
-                        .map(|key| key.value.clone())
-                        .ok_or_else(|| {
-                            Error::NoAliasApiKey(alias.name.clone(), key_name.to_string())
-                        });
-
-                    Some(key)
-                } else {
-                    None
-                }
-            })
-            .transpose()?;
-
         Ok(ModelLookupResult {
-            from_options: from_options || alias.is_some(),
-            provider,
-            model: model.to_string(),
-            api_key,
+            alias: alias.map(|a| a.name.clone()).unwrap_or_default(),
+            random: alias.map(|a| a.random).unwrap_or(false),
+            choices,
         })
     }
 }

@@ -38,19 +38,6 @@ async fn proxy_request(
     headers: HeaderMap,
     Json(body): Json<ProxyRequestPayload>,
 ) -> Result<Response, Error> {
-    let model = body
-        .request
-        .model
-        .as_deref()
-        .ok_or(Error::MissingModel)?
-        .to_string();
-    let provider = body
-        .provider
-        .as_deref()
-        .and_then(|s| state.proxy.get_provider(s))
-        .or_else(|| state.proxy.default_provider_for_model(&model))
-        .ok_or_else(|| Error::MissingProvider(model.to_string()))?;
-
     let api_key = body.api_key.or_else(|| {
         headers
             .get("x-provider-api-key")
@@ -61,13 +48,12 @@ async fn proxy_request(
     // Parse out model and provider choice
     let result = state
         .proxy
-        .send_to_provider(
-            provider,
+        .send(
             ProxyRequestOptions {
-                model: Some(model),
+                model: None,
                 api_key,
                 // Don't need this when we're using send_to_provider
-                provider: None,
+                provider: body.provider,
                 retry: body.retry.unwrap_or_default(),
                 metadata: body.meta.unwrap_or_default(),
                 internal_metadata: ProxyRequestInternalMetadata {

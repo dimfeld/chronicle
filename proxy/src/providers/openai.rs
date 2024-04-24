@@ -66,7 +66,6 @@ pub async fn send_openai_request(
     provider_token: Option<&str>,
     transform: &ChatRequestTransformation<'_>,
     SendRequestOptions {
-        retry_options,
         timeout,
         api_key,
         mut body,
@@ -84,7 +83,6 @@ pub async fn send_openai_request(
         .unwrap_or_default();
 
     let result = send_standard_request(
-        retry_options,
         timeout,
         || {
             client
@@ -96,14 +94,13 @@ pub async fn send_openai_request(
         handle_rate_limit_headers,
         body,
     )
-    .await?;
+    .await
+    .change_context(Error::ModelError)?;
 
     Ok(ProviderResponse {
-        body: result.data.0,
+        body: result.0,
+        latency: result.1,
         meta: None,
-        retries: result.num_retries,
-        rate_limited: result.was_rate_limited,
-        latency: result.data.1,
     })
 }
 

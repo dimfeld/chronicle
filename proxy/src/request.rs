@@ -1,5 +1,5 @@
 //! Utilities for retrying a provider request as needed.
-use std::{future::Future, time::Duration};
+use std::time::Duration;
 
 use bytes::Bytes;
 use error_stack::{Report, ResultExt};
@@ -8,8 +8,9 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::instrument;
 
 use crate::{
-    providers::{ProviderError, ProviderErrorKind},
-    Error,
+    format::{ChatRequest, ChatResponse},
+    providers::{ProviderError, ProviderErrorKind, SendRequestOptions},
+    Error, ModelLookupChoice, ModelLookupResult,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,35 +109,68 @@ impl<'a> BackoffValue<'a> {
     }
 }
 
-pub struct RetryResult<DATA> {
-    pub data: DATA,
+#[derive(Debug, Clone)]
+pub struct ProxiedResult {
+    pub body: ChatResponse,
+    /// Any other metadata from the provider that should be logged.
+    pub meta: Option<serde_json::Value>,
+    /// The latency of the request. If the request was retried this should only count the
+    /// final successful one. Total latency including retries is tracked outside of the provider.
+    pub latency: std::time::Duration,
     pub num_retries: u32,
     pub was_rate_limited: bool,
 }
 
 /// Run a provider request and retry on failure.
-#[instrument(level = "debug", skip(data, f))]
-pub async fn with_retry<F, FDATA, Fut, R>(
+#[instrument(level = "debug")]
+pub async fn try_model_choices(
+    ModelLookupResult {
+        alias,
+        random,
+        choices,
+    }: ModelLookupResult,
     options: RetryOptions,
-    data: FDATA,
-    f: F,
-) -> Result<RetryResult<R>, Report<ProviderError>>
-where
-    Fut: Future<Output = Result<R, Report<ProviderError>>>,
-    FDATA: Clone + Send + Sync + 'static,
-    F: Fn(FDATA) -> Fut,
-{
+    timeout: Duration,
+    request: ChatRequest,
+) -> Result<ProxiedResult, Report<Error>> {
+    let single_choice = choices.len() == 1;
+    let start_choice = if random && !single_choice {
+        rand::thread_rng().gen_range(0..choices.len())
+    } else {
+        0
+    };
+
+    let mut current_choice = start_choice;
+
+    let mut do_backoff = single_choice;
     let mut backoff = BackoffValue::new(&options);
 
     let mut was_rate_limited = false;
     let mut current_try: u32 = 1;
 
     loop {
-        let result = f(data.clone()).await;
+        let ModelLookupChoice {
+            model,
+            provider,
+            api_key,
+        } = &choices[current_choice];
+
+        let mut body = request.clone();
+        body.model = Some(model.to_string());
+        let result = provider
+            .send_request(SendRequestOptions {
+                timeout,
+                api_key: api_key.clone(),
+                body,
+            })
+            .await;
+
         let error = match result {
             Ok(value) => {
-                return Ok(RetryResult {
-                    data: value,
+                return Ok(ProxiedResult {
+                    body: value.body,
+                    meta: value.meta,
+                    latency: value.latency,
                     num_retries: current_try - 1,
                     was_rate_limited,
                 })
@@ -147,34 +181,55 @@ where
             }
         };
 
-        let inner = error.current_context();
-        if !inner.kind.retryable() || current_try == options.max_tries {
+        let Some(provider_error) = error
+            .frames()
+            .find_map(|frame| frame.downcast_ref::<ProviderError>())
+        else {
+            // If it wasn't a ProviderError then it's not retryable
+            return Err(error);
+        };
+
+        if !provider_error.kind.retryable() || current_try == options.max_tries {
             return Err(error);
         }
 
-        let wait = backoff.next();
-        let wait = match inner.kind {
-            // Rate limited, where the provider specified a time to wait
-            ProviderErrorKind::RateLimit {
-                retry_after: Some(retry_after),
-            } => {
-                was_rate_limited = true;
+        if current_choice == choices.len() - 1 {
+            current_choice = 0;
+        } else {
+            current_choice = current_choice + 1;
+        }
 
-                if options.fail_if_rate_limit_exceeds_max_backoff
-                    && retry_after > options.max_backoff
-                {
-                    // Rate limited with a retry time that exceeds max backoff.
-                    return Err(error);
+        if current_choice == start_choice {
+            // We looped around to the first choice again so enable backoff if it wasn't already
+            // on.
+            do_backoff = true;
+        }
+
+        if do_backoff {
+            let wait = backoff.next();
+            let wait = match provider_error.kind {
+                // Rate limited, where the provider specified a time to wait
+                ProviderErrorKind::RateLimit {
+                    retry_after: Some(retry_after),
+                } => {
+                    was_rate_limited = true;
+
+                    if options.fail_if_rate_limit_exceeds_max_backoff
+                        && retry_after > options.max_backoff
+                    {
+                        // Rate limited with a retry time that exceeds max backoff.
+                        return Err(error);
+                    }
+
+                    // If the rate limit retry duration is more than the planned wait, then wait for
+                    // the rate limit duration instead.
+                    wait.max(retry_after)
                 }
+                _ => wait,
+            };
 
-                // If the rate limit retry duration is more than the planned wait, then wait for
-                // the rate limit duration instead.
-                wait.max(retry_after)
-            }
-            _ => wait,
-        };
-
-        tokio::time::sleep(wait).await;
+            tokio::time::sleep(wait).await;
+        }
 
         current_try += 1;
     }
@@ -184,65 +239,60 @@ where
 /// Most providers can use this to handle sending their request and handling errors.
 #[instrument(level = "debug", skip(body, prepare, handle_rate_limit))]
 pub async fn send_standard_request<RESPONSE: DeserializeOwned>(
-    retry_options: RetryOptions,
     timeout: Duration,
     prepare: impl Fn() -> reqwest::RequestBuilder,
     handle_rate_limit: impl Fn(&reqwest::Response) -> Option<Duration>,
     body: Bytes,
-) -> Result<RetryResult<(RESPONSE, Duration)>, Report<Error>> {
-    with_retry(retry_options, body, |body| async {
-        let start = tokio::time::Instant::now();
-        let result = prepare()
-            .timeout(timeout)
-            .body(body)
-            .send()
-            .await
-            .change_context(ProviderError {
-                kind: ProviderErrorKind::Sending,
-                status_code: None,
-                body: None,
-            })?;
+) -> Result<(RESPONSE, Duration), Report<ProviderError>> {
+    let start = tokio::time::Instant::now();
+    let result = prepare()
+        .timeout(timeout)
+        .body(body)
+        .send()
+        .await
+        .change_context(ProviderError {
+            kind: ProviderErrorKind::Sending,
+            status_code: None,
+            body: None,
+        })?;
 
-        let status = result.status();
-        let error = ProviderErrorKind::from_status_code(status);
+    let status = result.status();
+    let error = ProviderErrorKind::from_status_code(status);
 
-        if let Some(mut e) = error {
-            match &mut e {
-                ProviderErrorKind::RateLimit { retry_after } => {
-                    let value = handle_rate_limit(&result);
-                    *retry_after = value;
-                }
-                _ => {}
-            };
+    if let Some(mut e) = error {
+        match &mut e {
+            ProviderErrorKind::RateLimit { retry_after } => {
+                let value = handle_rate_limit(&result);
+                *retry_after = value;
+            }
+            _ => {}
+        };
 
-            let body = result.json::<serde_json::Value>().await.ok();
+        let body = result.json::<serde_json::Value>().await.ok();
 
-            Err(Report::new(ProviderError {
-                kind: e,
-                status_code: Some(status),
-                body,
-            }))
-        } else {
-            // Get the result as text first so that we can save the entire response for better
-            // introspection if parsing fails.
-            let text = result.text().await.change_context(ProviderError {
+        Err(Report::new(ProviderError {
+            kind: e,
+            status_code: Some(status),
+            body,
+        }))
+    } else {
+        // Get the result as text first so that we can save the entire response for better
+        // introspection if parsing fails.
+        let text = result.text().await.change_context(ProviderError {
+            kind: ProviderErrorKind::ParsingResponse,
+            status_code: Some(status),
+            body: None,
+        })?;
+
+        let jd = &mut serde_json::Deserializer::from_str(&text);
+        let body: RESPONSE =
+            serde_path_to_error::deserialize(jd).change_context(ProviderError {
                 kind: ProviderErrorKind::ParsingResponse,
                 status_code: Some(status),
-                body: None,
+                body: Some(serde_json::Value::String(text)),
             })?;
 
-            let jd = &mut serde_json::Deserializer::from_str(&text);
-            let body: RESPONSE =
-                serde_path_to_error::deserialize(jd).change_context(ProviderError {
-                    kind: ProviderErrorKind::ParsingResponse,
-                    status_code: Some(status),
-                    body: Some(serde_json::Value::String(text)),
-                })?;
-
-            let latency = start.elapsed();
-            Ok::<_, Report<ProviderError>>((body, latency))
-        }
-    })
-    .await
-    .change_context(Error::ModelError)
+        let latency = start.elapsed();
+        Ok::<_, Report<ProviderError>>((body, latency))
+    }
 }

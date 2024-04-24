@@ -1,8 +1,4 @@
-use std::{
-    path::Path,
-    sync::{Arc, RwLock},
-    time::Duration,
-};
+use std::{path::Path, sync::Arc, time::Duration};
 
 use error_stack::{Report, ResultExt};
 

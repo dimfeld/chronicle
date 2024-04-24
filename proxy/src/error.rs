@@ -6,6 +6,8 @@ pub enum Error {
     NoDefault(String),
     #[error("Alias {0} references nonexistent provider {1}")]
     NoAliasProvider(String, String),
+    #[error("Alias {0} has no associated models")]
+    AliasEmpty(String),
     #[error("Alias {0} references nonexistent API key {1}")]
     NoAliasApiKey(String, String),
     #[error("Request is missing model name")]

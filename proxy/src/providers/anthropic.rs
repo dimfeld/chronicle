@@ -8,11 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{ChatModelProvider, ProviderResponse, SendRequestOptions};
 use crate::{
-    format::{
-        ChatChoice, ChatMessage, ChatRequest, ChatRequestTransformation, ChatResponse,
-        UsageResponse,
-    },
-    request::{send_standard_request, RetryOptions},
+    format::{ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, UsageResponse},
+    request::send_standard_request,
     Error,
 };
 
@@ -44,7 +41,6 @@ impl ChatModelProvider for Anthropic {
     async fn send_request(
         &self,
         SendRequestOptions {
-            retry_options,
             timeout,
             api_key,
             mut body,
@@ -78,7 +74,6 @@ impl ChatModelProvider for Anthropic {
             .ok_or(Error::MissingApiKey)?;
 
         let result = send_standard_request::<AnthropicChatResponse>(
-            retry_options,
             timeout,
             || {
                 self.client
@@ -90,14 +85,13 @@ impl ChatModelProvider for Anthropic {
             handle_retry_after,
             body,
         )
-        .await?;
+        .await
+        .change_context(Error::ModelError)?;
 
         Ok(ProviderResponse {
-            body: result.data.0.into(),
+            body: result.0.into(),
+            latency: result.1,
             meta: None,
-            retries: result.num_retries,
-            rate_limited: result.was_rate_limited,
-            latency: result.data.1,
         })
     }
 

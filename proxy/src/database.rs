@@ -64,11 +64,20 @@ pub async fn load_providers_from_database(
 }
 
 pub async fn load_aliases_from_database(pool: &Pool) -> Result<Vec<AliasConfig>, Report<Error>> {
-    let rows: Vec<AliasConfig> =
-        sqlx::query_as("SELECT name, model, provider, api_key_name FROM chronicle_aliases")
-            .fetch_all(pool)
-            .await
-            .change_context(Error::LoadingDatabase)?;
+    let rows: Vec<AliasConfig> = sqlx::query_as(
+        "SELECT name, random,
+                array_agg(jsonb_build_object(
+                'provider', ap.provider,
+                'model', ap.model,
+                'api_key_name', ap.api_key_name
+                ) order by ap.order) as models
+            FROM chronicle_aliases al
+            JOIN chronicle_aliases_providers ap ON ap.alias_id = al.id
+            GROUP BY al.id",
+    )
+    .fetch_all(pool)
+    .await
+    .change_context(Error::LoadingDatabase)?;
 
     Ok(rows)
 }

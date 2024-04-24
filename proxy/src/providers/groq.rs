@@ -35,7 +35,6 @@ impl ChatModelProvider for Groq {
     async fn send_request(
         &self,
         SendRequestOptions {
-            retry_options,
             timeout,
             api_key,
             mut body,
@@ -62,7 +61,6 @@ impl ChatModelProvider for Groq {
             .ok_or(Error::MissingApiKey)?;
 
         let result = send_standard_request(
-            retry_options,
             timeout,
             || {
                 self.client
@@ -73,14 +71,13 @@ impl ChatModelProvider for Groq {
             handle_rate_limit_headers,
             body,
         )
-        .await?;
+        .await
+        .change_context(Error::ModelError)?;
 
         Ok(ProviderResponse {
-            body: result.data.0,
+            body: result.0,
+            latency: result.1,
             meta: None,
-            retries: result.num_retries,
-            rate_limited: result.was_rate_limited,
-            latency: result.data.1,
         })
     }
 
