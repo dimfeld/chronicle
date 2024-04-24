@@ -142,7 +142,7 @@ pub async fn try_model_choices(
 
     let mut current_choice = start_choice;
 
-    let mut do_backoff = single_choice;
+    let mut on_final_model_choice = single_choice;
     let mut backoff = BackoffValue::new(&options);
 
     let mut was_rate_limited = false;
@@ -193,19 +193,21 @@ pub async fn try_model_choices(
             return Err(error);
         }
 
-        if current_choice == choices.len() - 1 {
-            current_choice = 0;
-        } else {
-            current_choice = current_choice + 1;
+        if !on_final_model_choice {
+            if current_choice == choices.len() - 1 {
+                current_choice = 0;
+            } else {
+                current_choice = current_choice + 1;
+            }
+
+            if current_choice == start_choice {
+                // We looped around to the first choice again so enable backoff if it wasn't already
+                // on.
+                on_final_model_choice = true;
+            }
         }
 
-        if current_choice == start_choice {
-            // We looped around to the first choice again so enable backoff if it wasn't already
-            // on.
-            do_backoff = true;
-        }
-
-        if do_backoff {
+        if on_final_model_choice {
             let wait = backoff.next();
             let wait = match provider_error.kind {
                 // Rate limited, where the provider specified a time to wait
