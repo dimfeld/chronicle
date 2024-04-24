@@ -1,4 +1,8 @@
-use std::time::Duration;
+use std::{
+    cell::Cell,
+    sync::{atomic::AtomicUsize, Arc},
+    time::Duration,
+};
 
 use error_stack::{Report, ResultExt};
 
@@ -27,6 +31,8 @@ pub struct TestProvider {
     /// Fail requests
     pub fail: Option<TestFailure>,
     pub response: String,
+    pub fail_times: usize,
+    pub calls: AtomicUsize,
 }
 
 impl Default for TestProvider {
@@ -35,7 +41,15 @@ impl Default for TestProvider {
             name: "test".to_string(),
             fail: None,
             response: "A response".to_string(),
+            fail_times: usize::MAX,
+            calls: AtomicUsize::new(0),
         }
+    }
+}
+
+impl Into<Arc<dyn ChatModelProvider>> for TestProvider {
+    fn into(self) -> Arc<dyn ChatModelProvider> {
+        Arc::new(self)
     }
 }
 
@@ -53,22 +67,32 @@ impl ChatModelProvider for TestProvider {
         &self,
         options: SendRequestOptions,
     ) -> Result<ProviderResponse, Report<Error>> {
-        match self.fail {
-            Some(TestFailure::Transient) => Err(ProviderErrorKind::Server),
-            Some(TestFailure::Timeout) => Err(ProviderErrorKind::Timeout),
-            Some(TestFailure::BadRequest) => Err(ProviderErrorKind::BadInput),
-            Some(TestFailure::RateLimit) => Err(ProviderErrorKind::RateLimit { retry_after: None }),
-            Some(TestFailure::Auth) => Err(ProviderErrorKind::AuthRejected),
-            Some(TestFailure::TransformingRequest) => return Err(Error::TransformingRequest)?,
-            Some(TestFailure::TransformingResponse) => return Err(Error::TransformingResponse)?,
-            None => Ok(()),
+        let current_call = self
+            .calls
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        if current_call < self.fail_times {
+            match self.fail {
+                Some(TestFailure::Transient) => Err(ProviderErrorKind::Server),
+                Some(TestFailure::Timeout) => Err(ProviderErrorKind::Timeout),
+                Some(TestFailure::BadRequest) => Err(ProviderErrorKind::BadInput),
+                Some(TestFailure::RateLimit) => {
+                    Err(ProviderErrorKind::RateLimit { retry_after: None })
+                }
+                Some(TestFailure::Auth) => Err(ProviderErrorKind::AuthRejected),
+                Some(TestFailure::TransformingRequest) => return Err(Error::TransformingRequest)?,
+                Some(TestFailure::TransformingResponse) => {
+                    return Err(Error::TransformingResponse)?
+                }
+                None => Ok(()),
+            }
+            .map_err(|kind| ProviderError {
+                kind,
+                status_code: None,
+                body: None,
+            })
+            .change_context(Error::ModelError)?;
         }
-        .map_err(|kind| ProviderError {
-            kind,
-            status_code: None,
-            body: None,
-        })
-        .change_context(Error::ModelError)?;
 
         Ok(ProviderResponse {
             body: ChatResponse {
