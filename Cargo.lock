@@ -1983,6 +1983,9 @@ dependencies = [
  "console",
  "lazy_static",
  "linked-hash-map",
+ "pest",
+ "pest_derive",
+ "serde",
  "similar",
 ]
 

@@ -8,6 +8,8 @@ pub mod format;
 mod provider_lookup;
 pub mod providers;
 pub mod request;
+#[cfg(test)]
+mod testing;
 
 use builder::ProxyBuilder;
 use database::logging::ProxyLogEntry;
@@ -59,6 +61,8 @@ impl Proxy {
     /// `options.model` will be used next to choose a model to use
     /// `body["model"]` is used if options.model is empty.
     #[instrument(fields(
+        provider,
+        model,
         latency,
         total_latency,
         retries,
@@ -104,6 +108,8 @@ impl Proxy {
 
         match &response {
             Ok(response) => {
+                current_span.record("provider", &response.provider);
+                current_span.record("model", &response.body.model);
                 current_span.record("latency", response.latency.as_millis());
                 current_span.record("retries", response.num_retries);
                 current_span.record("rate_limited", response.was_rate_limited);

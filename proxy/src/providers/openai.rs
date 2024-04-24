@@ -13,14 +13,23 @@ use crate::{format::ChatRequestTransformation, request::send_standard_request, E
 pub struct OpenAi {
     client: reqwest::Client,
     token: Option<String>,
+    url: String,
 }
 
 impl OpenAi {
+    /// Create a new proxy for the OpenAI service
     pub fn new(client: reqwest::Client, token: Option<String>) -> Self {
         Self {
             client,
             token: token.or_else(|| std::env::var("OPENAI_API_KEY").ok()),
+            url: "https://api.openai.com/v1/chat/completions".into(),
         }
+    }
+
+    /// Change the URL that the request will be sent to.
+    pub(crate) fn with_url(mut self, url: String) -> Self {
+        self.url = url;
+        self
     }
 }
 
@@ -41,7 +50,7 @@ impl ChatModelProvider for OpenAi {
     ) -> Result<ProviderResponse, Report<Error>> {
         send_openai_request(
             &self.client,
-            "https://api.openai.com/v1/chat/completions",
+            &self.url,
             None,
             self.token.as_deref(),
             &ChatRequestTransformation {

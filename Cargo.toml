@@ -15,3 +15,9 @@ filigree = { "path" = "../filigree/filigree", features = ["htmx", "maud", "watch
 
 [profile.dev.package.maud_macros]
 opt-level = 3
+
+[profile.dev.package.insta]
+opt-level = 3
+
+[profile.dev.package.similar]
+opt-level = 3

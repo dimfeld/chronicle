@@ -37,13 +37,13 @@ CREATE TABLE IF NOT EXISTS chronicle_events (
   rate_limited bool,
   request_latency_ms int,
   total_latency_ms int,
-  pricing_plan bigint REFERENCES chronicle_pricing_plans (id),
+  pricing_plan uuid REFERENCES chronicle_pricing_plans (id),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE chronicle_pricing_plans (
   id uuid PRIMARY KEY,
-  provider text,
+  provider uuid,
   start_date date,
   end_date date,
   per_input_token numeric,

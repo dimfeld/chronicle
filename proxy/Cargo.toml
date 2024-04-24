@@ -36,5 +36,5 @@ filigree = ["dep:filigree"]
 migrations = []
 
 [dev-dependencies]
-insta = "1.38.0"
+insta = { version = "1.38.0", features = ["json", "redactions"] }
 wiremock = "0.6.0"

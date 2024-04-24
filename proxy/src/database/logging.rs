@@ -76,7 +76,7 @@ async fn write_batch(pool: &Pool, items: Vec<ProxyLogEntry>) {
     query.push_str(
         "INSERT INTO chronicle_events
         (id, organization_id, project_id, user_id, chat_request, chat_response,
-         error, application, environment, request_organization_id, request_project_id,
+         error, provider, model, application, environment, request_organization_id, request_project_id,
          request_user_id, workflow_id, workflow_name, run_id, step, step_index,
          extra_meta, response_meta, retries, rate_limited, request_latency_ms,
          total_latency_ms, created_at) VALUES\n",
@@ -95,6 +95,7 @@ async fn write_batch(pool: &Pool, items: Vec<ProxyLogEntry>) {
                 .and_then(|r| serde_json::to_string(&r.body).ok()),
         );
         let error = EscapedNullable(item.error.map(|e| format!("{:?}", e)));
+        let provider = EscapedNullable(item.response.as_ref().map(|r| r.provider.clone()));
         let model = Escaped(item.request.model.unwrap_or_default());
         let application = EscapedNullable(item.options.metadata.application);
         let environment = EscapedNullable(item.options.metadata.environment);
@@ -131,7 +132,7 @@ async fn write_batch(pool: &Pool, items: Vec<ProxyLogEntry>) {
             query,
             "(
                 {id}, {organization_id}, {project_id}, {user_id},
-                {chat_request}, {chat_response}, {error},
+                {chat_request}, {chat_response}, {error}, {provider},
                 {model}, {application}, {environment},
                 {request_organization_id}, {request_project_id}, {request_user_id},
                 {workflow_id}, {workflow_name}, {run_id}, {step}, {step_index},

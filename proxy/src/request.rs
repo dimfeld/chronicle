@@ -112,6 +112,8 @@ impl<'a> BackoffValue<'a> {
 #[derive(Debug, Clone)]
 pub struct ProxiedResult {
     pub body: ChatResponse,
+    /// The provider which was used for the successful response
+    pub provider: String,
     /// Any other metadata from the provider that should be logged.
     pub meta: Option<serde_json::Value>,
     /// The latency of the request. If the request was retried this should only count the
@@ -165,10 +167,12 @@ pub async fn try_model_choices(
             })
             .await;
 
+        let provider_name = provider.name();
         let error = match result {
             Ok(value) => {
                 return Ok(ProxiedResult {
                     body: value.body,
+                    provider: provider_name.to_string(),
                     meta: value.meta,
                     latency: value.latency,
                     num_retries: current_try - 1,
@@ -176,20 +180,22 @@ pub async fn try_model_choices(
                 })
             }
             Err(e) => {
-                tracing::error!(err=?e);
-                e
+                tracing::error!(err=?e, provider=provider_name, model, alias);
+                e.attach_printable(format!("Provider: {provider_name}"))
             }
         };
 
-        let Some(provider_error) = error
-            .frames()
-            .find_map(|frame| frame.downcast_ref::<ProviderError>())
-        else {
-            // If it wasn't a ProviderError then it's not retryable
+        if current_try == options.max_tries {
+            // Too many retries
             return Err(error);
-        };
+        }
 
-        if !provider_error.kind.retryable() || current_try == options.max_tries {
+        let provider_error = error
+            .frames()
+            .find_map(|frame| frame.downcast_ref::<ProviderError>());
+
+        // If we don't have any more fallback models, and this error is not retryable, then exit.
+        if on_final_model_choice && !provider_error.map(|e| e.kind.retryable()).unwrap_or(false) {
             return Err(error);
         }
 
@@ -208,16 +214,17 @@ pub async fn try_model_choices(
         }
 
         if on_final_model_choice {
+            // If we're on the final model choice then we need to backoff before the next retry.
             let wait = backoff.next();
-            let wait = match provider_error.kind {
+            let wait = match provider_error.map(|e| &e.kind) {
                 // Rate limited, where the provider specified a time to wait
-                ProviderErrorKind::RateLimit {
+                Some(ProviderErrorKind::RateLimit {
                     retry_after: Some(retry_after),
-                } => {
+                }) => {
                     was_rate_limited = true;
 
                     if options.fail_if_rate_limit_exceeds_max_backoff
-                        && retry_after > options.max_backoff
+                        && *retry_after > options.max_backoff
                     {
                         // Rate limited with a retry time that exceeds max backoff.
                         return Err(error);
@@ -225,7 +232,7 @@ pub async fn try_model_choices(
 
                     // If the rate limit retry duration is more than the planned wait, then wait for
                     // the rate limit duration instead.
-                    wait.max(retry_after)
+                    wait.max(*retry_after)
                 }
                 _ => wait,
             };
@@ -296,5 +303,103 @@ pub async fn send_standard_request<RESPONSE: DeserializeOwned>(
 
         let latency = start.elapsed();
         Ok::<_, Report<ProviderError>>((body, latency))
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    mod single_choice {
+        use std::{sync::Arc, time::Duration};
+
+        use crate::{
+            format::{ChatMessage, ChatRequest},
+            request::{try_model_choices, RetryOptions},
+            testing::TestProvider,
+            ModelLookupChoice,
+        };
+
+        #[tokio::test]
+        async fn success() {
+            let response = try_model_choices(
+                crate::ModelLookupResult {
+                    alias: String::new(),
+                    random_order: false,
+                    choices: vec![ModelLookupChoice {
+                        model: "test-model".to_string(),
+                        provider: Arc::new(TestProvider::default()),
+                        api_key: None,
+                    }],
+                },
+                RetryOptions::default(),
+                Duration::from_secs(5),
+                ChatRequest {
+                    messages: vec![ChatMessage {
+                        role: "user".to_string(),
+                        content: "Tell me a story".to_string(),
+                        name: None,
+                    }],
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("Failed");
+
+            assert_eq!(response.num_retries, 0);
+            assert_eq!(response.was_rate_limited, false);
+            assert_eq!(response.provider, "test");
+            assert_eq!(response.body.model.unwrap(), "test-model");
+            assert_eq!(response.body.choices[0].message.content, "A response");
+        }
+
+        #[test]
+        #[ignore = "todo"]
+        fn nonretryable_failures() {}
+
+        #[test]
+        #[ignore = "todo"]
+        fn transient_failure() {
+            todo!()
+        }
+
+        #[test]
+        #[ignore = "todo"]
+        fn rate_limit() {
+            todo!()
+        }
+
+        #[tokio::test]
+        #[ignore = "todo"]
+        async fn max_retries() {}
+    }
+
+    mod multiple_choices {
+        #[test]
+        #[ignore = "todo"]
+        fn success() {
+            todo!()
+        }
+
+        #[test]
+        #[ignore = "todo"]
+        fn second_provider_works() {}
+
+        #[test]
+        #[ignore = "todo"]
+        fn transient_failures() {}
+
+        #[test]
+        #[ignore = "todo"]
+        fn rate_limit() {
+            todo!()
+        }
+
+        #[test]
+        #[ignore = "todo"]
+        fn all_failed_every_time() {}
+
+        #[test]
+        #[ignore = "todo"]
+        fn all_failed_once() {}
     }
 }
