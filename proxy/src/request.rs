@@ -123,6 +123,13 @@ pub struct ProxiedResult {
     pub was_rate_limited: bool,
 }
 
+#[derive(Debug)]
+pub struct ProxiedResultError {
+    pub error: Report<Error>,
+    pub num_retries: u32,
+    pub was_rate_limited: bool,
+}
+
 /// Run a provider request and retry on failure.
 #[instrument(level = "debug")]
 pub async fn try_model_choices(
@@ -134,7 +141,7 @@ pub async fn try_model_choices(
     options: RetryOptions,
     timeout: Duration,
     request: ChatRequest,
-) -> Result<ProxiedResult, Report<Error>> {
+) -> Result<ProxiedResult, ProxiedResultError> {
     let single_choice = choices.len() == 1;
     let start_choice = if random_order && !single_choice {
         rand::thread_rng().gen_range(0..choices.len())
@@ -185,18 +192,24 @@ pub async fn try_model_choices(
             }
         };
 
-        if current_try == options.max_tries {
-            // Too many retries
-            return Err(error);
-        }
-
         let provider_error = error
             .frames()
             .find_map(|frame| frame.downcast_ref::<ProviderError>());
 
+        if let Some(ProviderErrorKind::RateLimit { .. }) = provider_error.map(|e| &e.kind) {
+            was_rate_limited = true;
+        }
+
         // If we don't have any more fallback models, and this error is not retryable, then exit.
-        if on_final_model_choice && !provider_error.map(|e| e.kind.retryable()).unwrap_or(false) {
-            return Err(error);
+        if current_try == options.max_tries
+            || (on_final_model_choice
+                && !provider_error.map(|e| e.kind.retryable()).unwrap_or(false))
+        {
+            return Err(ProxiedResultError {
+                error,
+                num_retries: current_try - 1,
+                was_rate_limited,
+            });
         }
 
         if !on_final_model_choice {
@@ -221,22 +234,20 @@ pub async fn try_model_choices(
                 Some(ProviderErrorKind::RateLimit {
                     retry_after: Some(retry_after),
                 }) => {
-                    was_rate_limited = true;
-
                     if options.fail_if_rate_limit_exceeds_max_backoff
                         && *retry_after > options.max_backoff
                     {
                         // Rate limited with a retry time that exceeds max backoff.
-                        return Err(error);
+                        return Err(ProxiedResultError {
+                            error,
+                            num_retries: current_try - 1,
+                            was_rate_limited,
+                        });
                     }
 
                     // If the rate limit retry duration is more than the planned wait, then wait for
                     // the rate limit duration instead.
                     wait.max(*retry_after)
-                }
-                Some(ProviderErrorKind::RateLimit { retry_after: None }) => {
-                    was_rate_limited = true;
-                    wait
                 }
                 _ => wait,
             };
@@ -312,41 +323,45 @@ pub async fn send_standard_request<RESPONSE: DeserializeOwned>(
 
 #[cfg(test)]
 mod test {
+    use std::time::Duration;
+
+    use error_stack::Report;
+
+    use super::ProxiedResultError;
+    use crate::{
+        format::{ChatMessage, ChatRequest},
+        request::{try_model_choices, ProxiedResult, RetryOptions},
+        Error, ModelLookupChoice,
+    };
+
+    async fn test_request(
+        choices: Vec<ModelLookupChoice>,
+    ) -> Result<ProxiedResult, ProxiedResultError> {
+        try_model_choices(
+            crate::ModelLookupResult {
+                alias: String::new(),
+                random_order: false,
+                choices,
+            },
+            RetryOptions::default(),
+            Duration::from_secs(5),
+            ChatRequest {
+                messages: vec![ChatMessage {
+                    role: "user".to_string(),
+                    content: "Tell me a story".to_string(),
+                    name: None,
+                }],
+                ..Default::default()
+            },
+        )
+        .await
+    }
 
     mod single_choice {
-        use std::{sync::Arc, time::Duration};
+        use std::sync::Arc;
 
-        use error_stack::Report;
-
-        use crate::{
-            format::{ChatMessage, ChatRequest},
-            request::{try_model_choices, ProxiedResult, RetryOptions},
-            testing::TestProvider,
-            Error, ModelLookupChoice,
-        };
-
-        async fn test_request(
-            choices: Vec<ModelLookupChoice>,
-        ) -> Result<ProxiedResult, Report<Error>> {
-            try_model_choices(
-                crate::ModelLookupResult {
-                    alias: String::new(),
-                    random_order: false,
-                    choices,
-                },
-                RetryOptions::default(),
-                Duration::from_secs(5),
-                ChatRequest {
-                    messages: vec![ChatMessage {
-                        role: "user".to_string(),
-                        content: "Tell me a story".to_string(),
-                        name: None,
-                    }],
-                    ..Default::default()
-                },
-            )
-            .await
-        }
+        use super::test_request;
+        use crate::{testing::TestProvider, ModelLookupChoice};
 
         #[tokio::test]
         async fn success() {
@@ -380,6 +395,8 @@ mod test {
             .expect_err("Should have failed");
 
             assert_eq!(provider.calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+            assert_eq!(response.num_retries, 0);
+            assert_eq!(response.was_rate_limited, false);
         }
 
         #[tokio::test]
@@ -437,29 +454,123 @@ mod test {
         }
 
         #[tokio::test]
-        #[ignore = "todo"]
-        async fn max_retries() {}
+        async fn max_retries() {
+            let provider = Arc::new(TestProvider {
+                fail: Some(crate::testing::TestFailure::Transient),
+                ..Default::default()
+            });
+            let response = test_request(vec![ModelLookupChoice {
+                model: "test-model".to_string(),
+                provider: provider.clone(),
+                api_key: None,
+            }])
+            .await
+            .expect_err("Should have failed");
+
+            assert_eq!(
+                provider.calls.load(std::sync::atomic::Ordering::Relaxed),
+                4,
+                "Should have tried 4 times"
+            );
+            assert_eq!(response.num_retries, 3);
+            assert_eq!(response.was_rate_limited, false);
+        }
     }
 
     mod multiple_choices {
-        #[test]
-        #[ignore = "todo"]
-        fn success() {
-            todo!()
+        use super::test_request;
+        use crate::{
+            testing::{TestFailure, TestProvider},
+            ModelLookupChoice,
+        };
+
+        #[tokio::test]
+        async fn success() {
+            let response = test_request(vec![
+                ModelLookupChoice {
+                    model: "test-model".to_string(),
+                    provider: TestProvider::default().into(),
+                    api_key: None,
+                },
+                ModelLookupChoice {
+                    model: "test-model-2".to_string(),
+                    provider: TestProvider::default().into(),
+                    api_key: None,
+                },
+            ])
+            .await
+            .expect("Failed");
+
+            assert_eq!(response.num_retries, 0);
+            assert_eq!(response.was_rate_limited, false);
+            assert_eq!(response.provider, "test");
+            assert_eq!(response.body.model.unwrap(), "test-model");
+            assert_eq!(response.body.choices[0].message.content, "A response");
         }
 
-        #[test]
-        #[ignore = "todo"]
-        fn second_provider_works() {}
+        #[tokio::test]
+        async fn transient_failures() {
+            let response = test_request(vec![
+                ModelLookupChoice {
+                    model: "test-model".to_string(),
+                    provider: TestProvider {
+                        fail: Some(TestFailure::Transient),
+                        ..Default::default()
+                    }
+                    .into(),
+                    api_key: None,
+                },
+                ModelLookupChoice {
+                    model: "test-model-2".to_string(),
+                    provider: TestProvider {
+                        fail: Some(TestFailure::Transient),
+                        ..Default::default()
+                    }
+                    .into(),
+                    api_key: None,
+                },
+                ModelLookupChoice {
+                    model: "test-model-3".to_string(),
+                    provider: TestProvider::default().into(),
+                    api_key: None,
+                },
+            ])
+            .await
+            .expect("Failed");
 
-        #[test]
-        #[ignore = "todo"]
-        fn transient_failures() {}
+            assert_eq!(response.num_retries, 2);
+            assert_eq!(response.was_rate_limited, false);
+            assert_eq!(response.provider, "test");
+            assert_eq!(response.body.model.unwrap(), "test-model-3");
+            assert_eq!(response.body.choices[0].message.content, "A response");
+        }
 
-        #[test]
-        #[ignore = "todo"]
-        fn rate_limit() {
-            todo!()
+        #[tokio::test]
+        async fn rate_limit() {
+            let response = test_request(vec![
+                ModelLookupChoice {
+                    model: "test-model".to_string(),
+                    provider: TestProvider {
+                        fail: Some(TestFailure::RateLimit),
+                        ..Default::default()
+                    }
+                    .into(),
+                    api_key: None,
+                },
+                ModelLookupChoice {
+                    model: "test-model-2".to_string(),
+                    provider: TestProvider::default().into(),
+                    api_key: None,
+                },
+            ])
+            .await
+            .expect("Failed");
+
+            assert_eq!(response.num_retries, 1);
+            assert_eq!(response.was_rate_limited, true);
+            assert_eq!(response.provider, "test");
+            assert_eq!(response.body.model.unwrap(), "test-model-2");
+            assert_eq!(response.body.choices[0].message.content, "A response");
         }
 
         #[test]

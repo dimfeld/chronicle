@@ -125,6 +125,8 @@ impl Proxy {
                         timestamp,
                         request: body.clone(),
                         response: Some(response.clone()),
+                        num_retries: response.num_retries,
+                        was_rate_limited: response.was_rate_limited,
                         total_latency: send_start.elapsed(),
                         error: None,
                         options,
@@ -142,6 +144,8 @@ impl Proxy {
                         request: body,
                         response: None,
                         total_latency: send_start.elapsed(),
+                        num_retries: e.num_retries,
+                        was_rate_limited: e.was_rate_limited,
                         error: Some(format!("{:?}", e)),
                         options,
                     };
@@ -151,7 +155,7 @@ impl Proxy {
             }
         }
 
-        response.map(|r| r.body)
+        response.map(|r| r.body).map_err(|e| e.error)
     }
 
     pub async fn shutdown(&mut self) {

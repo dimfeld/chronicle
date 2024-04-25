@@ -13,6 +13,8 @@ pub struct ProxyLogEntry {
     pub request: ChatRequest,
     pub response: Option<ProxiedResult>,
     pub total_latency: Duration,
+    pub was_rate_limited: bool,
+    pub num_retries: u32,
     pub error: Option<String>,
     pub options: ProxyRequestOptions,
 }
@@ -118,8 +120,8 @@ async fn write_batch(pool: &Pool, items: Vec<ProxyLogEntry>) {
                 .as_ref()
                 .and_then(|r| serde_json::to_string(&r.body).ok()),
         );
-        let retries = Nullable(item.response.as_ref().map(|r| r.num_retries));
-        let rate_limited = nullable_bool(item.response.as_ref().map(|r| r.was_rate_limited));
+        let retries = item.num_retries;
+        let rate_limited = item.was_rate_limited;
         let request_latency_ms = Nullable(item.response.map(|r| r.latency.as_millis() as u64));
         let total_latency_ms = item.total_latency.as_millis() as u64;
         let created_at = super::any_layer::timestamp_value(&item.timestamp);
