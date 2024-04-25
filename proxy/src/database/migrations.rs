@@ -29,6 +29,21 @@ pub async fn run_default_migrations(pool: &Pool) -> Result<(), sqlx::Error> {
 
 async fn run_migrations(pool: &Pool, migrations: &[&str]) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
+
+    sqlx::raw_sql(&format!(
+        "CREATE TABLE IF NOT EXISTS chronicle_meta (
+          key text PRIMARY KEY,
+          value {}
+        );",
+        if cfg!(feature = "postgres") {
+            "jsonb"
+        } else {
+            "text"
+        }
+    ))
+    .execute(&mut *tx)
+    .await?;
+
     let migration_version = sqlx::query_scalar::<_, i32>(
         "SELECT value::int FROM chronicle_meta WHERE key='migration_version'",
     )
@@ -40,18 +55,20 @@ async fn run_migrations(pool: &Pool, migrations: &[&str]) -> Result<(), sqlx::Er
 
     let start_migration = migration_version.min(migrations.len());
     for migration in &migrations[start_migration..] {
-        sqlx::query(migration).execute(&mut *tx).await?;
+        sqlx::raw_sql(migration).execute(&mut *tx).await?;
     }
 
     let new_version = migrations.len();
 
-    sqlx::query(
-        "UPDATE chronicle_meta
-            SET value=$1::jsonb WHERE key='migration_version",
-    )
-    .bind(new_version as i32)
-    .execute(&mut *tx)
-    .await?;
+    #[cfg(feature = "sqlite")]
+    let query = "UPDATE chronicle_meta SET value=$1 WHERE key='migration_version'";
+    #[cfg(feature = "postgres")]
+    let query = "UPDATE chronicle_meta SET value=$1::jsonb WHERE key='migration_version'";
+
+    sqlx::query(query)
+        .bind(new_version.to_string())
+        .execute(&mut *tx)
+        .await?;
 
     tx.commit().await?;
     Ok(())

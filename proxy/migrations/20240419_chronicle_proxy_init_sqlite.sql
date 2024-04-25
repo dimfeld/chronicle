@@ -1,15 +1,20 @@
 -- basic tables required for general proxy use
-CREATE TABLE chronicle_meta (
-  key text PRIMARY KEY,
-  value text
-);
-
 INSERT INTO chronicle_meta (
   key,
   value)
 VALUES (
-  "migration_version",
-  1);
+  'migration_version',
+  '1');
+
+CREATE TABLE chronicle_pricing_plans (
+  id text PRIMARY KEY,
+  provider text,
+  start_date bigint,
+  end_date bigint,
+  per_input_token numeric,
+  per_output_token numeric,
+  per_request numeric
+);
 
 CREATE TABLE IF NOT EXISTS chronicle_events (
   id text PRIMARY KEY,
@@ -26,7 +31,7 @@ CREATE TABLE IF NOT EXISTS chronicle_events (
   request_organization_id text,
   request_project_id text,
   request_user_id text,
-  workflow id text,
+  workflow_id text,
   workflow_name text,
   run_id text,
   step text,
@@ -39,14 +44,4 @@ CREATE TABLE IF NOT EXISTS chronicle_events (
   total_latency_ms int,
   pricing_plan bigint REFERENCES chronicle_pricing_plans (id),
   created_at int NOT NULL DEFAULT unix_epoch ()
-);
-
-CREATE TABLE chronicle_pricing_plans (
-  id text PRIMARY KEY,
-  provider text,
-  start_date bigint,
-  end_date bigint,
-  per_input_token numeric,
-  per_output_token numeric,
-  per_request numeric
 );

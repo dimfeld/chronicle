@@ -74,9 +74,9 @@ pub async fn load_aliases_from_database(pool: &Pool) -> Result<Vec<AliasConfig>,
                 'provider', ap.provider,
                 'model', ap.model,
                 'api_key_name', ap.api_key_name
-                ) order by ap.order) as models
+                ) order by ap.sort) as models
             FROM chronicle_aliases al
-            JOIN chronicle_aliases_providers ap ON ap.alias_id = al.id
+            JOIN chronicle_alias_providers ap ON ap.alias_id = al.id
             GROUP BY al.id",
     )
     .fetch_all(pool)
