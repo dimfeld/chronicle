@@ -188,7 +188,7 @@ pub async fn try_model_choices(
             }
             Err(e) => {
                 tracing::error!(err=?e, provider=provider_name, model, alias);
-                e.attach_printable(format!("Provider: {provider_name}"))
+                e.attach_printable(format!("Provider: {provider_name}, Model: {model}"))
             }
         };
 
@@ -363,7 +363,7 @@ mod test {
         use super::test_request;
         use crate::{testing::TestProvider, ModelLookupChoice};
 
-        #[tokio::test]
+        #[tokio::test(start_paused = true)]
         async fn success() {
             let response = test_request(vec![ModelLookupChoice {
                 model: "test-model".to_string(),
@@ -380,7 +380,7 @@ mod test {
             assert_eq!(response.body.choices[0].message.content, "A response");
         }
 
-        #[tokio::test]
+        #[tokio::test(start_paused = true)]
         async fn nonretryable_failures() {
             let provider = Arc::new(TestProvider {
                 fail: Some(crate::testing::TestFailure::BadRequest),
@@ -399,7 +399,7 @@ mod test {
             assert_eq!(response.was_rate_limited, false);
         }
 
-        #[tokio::test]
+        #[tokio::test(start_paused = true)]
         async fn transient_failure() {
             let provider = Arc::new(TestProvider {
                 fail: Some(crate::testing::TestFailure::Transient),
@@ -426,7 +426,7 @@ mod test {
             assert_eq!(response.body.choices[0].message.content, "A response");
         }
 
-        #[tokio::test]
+        #[tokio::test(start_paused = true)]
         async fn rate_limit() {
             let provider = Arc::new(TestProvider {
                 fail: Some(crate::testing::TestFailure::RateLimit),
@@ -453,7 +453,7 @@ mod test {
             assert_eq!(response.body.choices[0].message.content, "A response");
         }
 
-        #[tokio::test]
+        #[tokio::test(start_paused = true)]
         async fn max_retries() {
             let provider = Arc::new(TestProvider {
                 fail: Some(crate::testing::TestFailure::Transient),
@@ -478,13 +478,15 @@ mod test {
     }
 
     mod multiple_choices {
+        use std::sync::Arc;
+
         use super::test_request;
         use crate::{
             testing::{TestFailure, TestProvider},
             ModelLookupChoice,
         };
 
-        #[tokio::test]
+        #[tokio::test(start_paused = true)]
         async fn success() {
             let response = test_request(vec![
                 ModelLookupChoice {
@@ -508,7 +510,7 @@ mod test {
             assert_eq!(response.body.choices[0].message.content, "A response");
         }
 
-        #[tokio::test]
+        #[tokio::test(start_paused = true)]
         async fn transient_failures() {
             let response = test_request(vec![
                 ModelLookupChoice {
@@ -545,7 +547,7 @@ mod test {
             assert_eq!(response.body.choices[0].message.content, "A response");
         }
 
-        #[tokio::test]
+        #[tokio::test(start_paused = true)]
         async fn rate_limit() {
             let response = test_request(vec![
                 ModelLookupChoice {
@@ -573,12 +575,88 @@ mod test {
             assert_eq!(response.body.choices[0].message.content, "A response");
         }
 
-        #[test]
-        #[ignore = "todo"]
-        fn all_failed_every_time() {}
+        #[tokio::test(start_paused = true)]
+        async fn all_failed_every_time() {
+            let response = test_request(vec![
+                ModelLookupChoice {
+                    model: "test-model".to_string(),
+                    provider: TestProvider {
+                        fail: Some(TestFailure::BadRequest),
+                        ..Default::default()
+                    }
+                    .into(),
+                    api_key: None,
+                },
+                ModelLookupChoice {
+                    model: "test-model-2".to_string(),
+                    provider: TestProvider {
+                        fail: Some(TestFailure::RateLimit),
+                        ..Default::default()
+                    }
+                    .into(),
+                    api_key: None,
+                },
+                ModelLookupChoice {
+                    model: "test-model-3".to_string(),
+                    provider: TestProvider {
+                        fail: Some(TestFailure::Transient),
+                        ..Default::default()
+                    }
+                    .into(),
+                    api_key: None,
+                },
+            ])
+            .await
+            .expect_err("Should have failed");
 
-        #[test]
-        #[ignore = "todo"]
-        fn all_failed_once() {}
+            assert_eq!(response.num_retries, 3);
+            assert_eq!(response.was_rate_limited, true);
+        }
+
+        #[tokio::test(start_paused = true)]
+        async fn all_failed_once() {
+            let p1 = Arc::new(TestProvider {
+                fail: Some(TestFailure::BadRequest),
+                fail_times: 1,
+                ..Default::default()
+            });
+            let p2 = Arc::new(TestProvider {
+                fail: Some(TestFailure::RateLimit),
+                ..Default::default()
+            });
+            let p3 = Arc::new(TestProvider {
+                fail: Some(TestFailure::Transient),
+                ..Default::default()
+            });
+
+            let response = test_request(vec![
+                ModelLookupChoice {
+                    model: "test-model".to_string(),
+                    provider: p1.clone(),
+                    api_key: None,
+                },
+                ModelLookupChoice {
+                    model: "test-model-2".to_string(),
+                    provider: p2.clone(),
+                    api_key: None,
+                },
+                ModelLookupChoice {
+                    model: "test-model-3".to_string(),
+                    provider: p3.clone(),
+                    api_key: None,
+                },
+            ])
+            .await
+            .expect("Should have succeeded");
+
+            assert_eq!(response.num_retries, 3);
+            assert_eq!(response.was_rate_limited, true);
+            assert_eq!(response.provider, "test");
+            // Should have wrapped around to the first one again.
+            assert_eq!(response.body.model.unwrap(), "test-model");
+            assert_eq!(p1.calls.load(std::sync::atomic::Ordering::Relaxed), 2);
+            assert_eq!(p2.calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+            assert_eq!(p3.calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+        }
     }
 }

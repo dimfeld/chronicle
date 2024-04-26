@@ -37,4 +37,5 @@ migrations = []
 
 [dev-dependencies]
 insta = { version = "1.38.0", features = ["json", "redactions"] }
+tokio = { version = "1.37.0", features = ["fs", "macros", "rt", "test-util", "time"] }
 wiremock = "0.6.0"
