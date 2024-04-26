@@ -158,6 +158,37 @@ impl Proxy {
         response.map(|r| r.body).map_err(|e| e.error)
     }
 
+    /// Add a provider to the system. This will replace any existing provider with the same `name`.
+    pub fn set_provider(&self, provider: Arc<dyn ChatModelProvider>) {
+        self.lookup.set_provider(provider);
+    }
+
+    /// Remove a provider
+    pub fn remove_provider(&self, name: &str) {
+        self.lookup.remove_provider(name);
+    }
+
+    /// Add an alias to the system. This will replace any existing alias with the same `name`.
+    pub fn set_alias(&self, alias: AliasConfig) {
+        self.lookup.set_alias(alias);
+    }
+
+    /// Remove an alias
+    pub fn remove_alias(&self, name: &str) {
+        self.lookup.remove_alias(name);
+    }
+
+    /// Add an API key to the system. This will replace any existing API key with the same `name`.
+    pub fn set_api_key(&self, api_key: ApiKeyConfig) {
+        self.lookup.set_api_key(api_key);
+    }
+
+    /// Remove an API key
+    pub fn remove_api_key(&self, name: &str) {
+        self.lookup.remove_api_key(name);
+    }
+
+    /// Shutdown the proxy, making sure to write any queued logging events
     pub async fn shutdown(&mut self) {
         let log_tx = self.log_tx.take();
         drop(log_tx);
