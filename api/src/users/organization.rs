@@ -14,10 +14,18 @@ use crate::{
 
 const ADMIN_DEFAULT_PERMISSIONS: &[&str] = &["org_admin"];
 const USER_DEFAULT_PERMISSIONS: &[&str] = &[
+    "AliasModel::read",
+    "AliasModel::write",
+    "Alias::read",
+    "Alias::write",
+    "CustomProvider::read",
+    "CustomProvider::write",
     "User::read",
     "User::write",
     "Organization::read",
     "Organization::write",
+    "ProviderApiKey::read",
+    "ProviderApiKey::write",
     "Role::read",
     "Role::write",
 ];

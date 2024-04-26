@@ -45,7 +45,7 @@ pub struct UsageResponse {
 
 /// For providers that conform almost, but not quite, to the OpenAI spec, these transformations
 /// apply small changes that can alter the request in place to the form needed for the provider.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub struct ChatRequestTransformation<'a> {
     /// True if the model provider supports a `name` for each message. False if name
     /// should be merged into the main content of the message when it is provided.

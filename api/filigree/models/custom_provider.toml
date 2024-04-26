@@ -1,0 +1,59 @@
+name = "CustomProvider"
+standard_endpoints = true
+
+[[fields]]
+name  = "name"
+type = "text"
+nullable = false
+description = "The name of the provider used in API calls"
+
+[[fields]]
+name = "label"
+type = "text"
+nullable = true
+description = "A user-friendly name for the provider"
+
+[[fields]]
+name = "url"
+type = "text"
+nullable = false
+description = "The URL to call for this provider"
+
+[[fields]]
+name = "token"
+type = "text"
+nullable = true
+description = "The authentication token for this provider. Can be omitted and instead provided at runtime"
+
+[[fields]]
+name = "api_key"
+type = "text"
+nullable = true
+description = "The API key for this provider, or where to get it if `api_key_source` is set"
+
+[[fields]]
+name = "api_key_source"
+type = "text"
+default = ""
+nullable = false
+
+[[fields]]
+name = "format"
+type = "json"
+rust_type = "ProviderRequestFormat"
+nullable = false
+
+[[fields]]
+name = "headers"
+description = "Extra HTTP headers to send"
+type = "json"
+rust_type = "std::collections::BTreeMap<String, String>"
+nullable = true
+
+[[fields]]
+name = "prefix"
+description = "A prefix that, on a model name, indicates to use this provider"
+type = "text"
+nullable = true
+
+

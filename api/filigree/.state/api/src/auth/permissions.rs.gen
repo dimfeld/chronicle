@@ -12,6 +12,51 @@ pub struct PermissionInfo {
 
 pub const PERMISSIONS: &[PermissionInfo] = &[
     PermissionInfo {
+        name: "Read AliasModels",
+        description: "List and read AliasModel objects",
+        key: "AliasModel::read",
+    },
+    PermissionInfo {
+        name: "Write AliasModels",
+        description: "Write AliasModel objects",
+        key: "AliasModel::write",
+    },
+    PermissionInfo {
+        name: "Administer AliasModels",
+        description: "Create and delete AliasModel objects",
+        key: "AliasModel::owner",
+    },
+    PermissionInfo {
+        name: "Read Aliases",
+        description: "List and read Alias objects",
+        key: "Alias::read",
+    },
+    PermissionInfo {
+        name: "Write Aliases",
+        description: "Write Alias objects",
+        key: "Alias::write",
+    },
+    PermissionInfo {
+        name: "Administer Aliases",
+        description: "Create and delete Alias objects",
+        key: "Alias::owner",
+    },
+    PermissionInfo {
+        name: "Read CustomProviders",
+        description: "List and read CustomProvider objects",
+        key: "CustomProvider::read",
+    },
+    PermissionInfo {
+        name: "Write CustomProviders",
+        description: "Write CustomProvider objects",
+        key: "CustomProvider::write",
+    },
+    PermissionInfo {
+        name: "Administer CustomProviders",
+        description: "Create and delete CustomProvider objects",
+        key: "CustomProvider::owner",
+    },
+    PermissionInfo {
         name: "Read Users",
         description: "List and read User objects",
         key: "User::read",
@@ -40,6 +85,21 @@ pub const PERMISSIONS: &[PermissionInfo] = &[
         name: "Administer Organizations",
         description: "Create and delete Organization objects",
         key: "Organization::owner",
+    },
+    PermissionInfo {
+        name: "Read ProviderApiKeys",
+        description: "List and read ProviderApiKey objects",
+        key: "ProviderApiKey::read",
+    },
+    PermissionInfo {
+        name: "Write ProviderApiKeys",
+        description: "Write ProviderApiKey objects",
+        key: "ProviderApiKey::write",
+    },
+    PermissionInfo {
+        name: "Administer ProviderApiKeys",
+        description: "Create and delete ProviderApiKey objects",
+        key: "ProviderApiKey::owner",
     },
     PermissionInfo {
         name: "Read Roles",

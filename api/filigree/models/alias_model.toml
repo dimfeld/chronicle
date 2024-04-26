@@ -1,0 +1,21 @@
+name = "AliasModel"
+belongs_to = "Alias"
+standard_endpoints = true
+
+[[fields]]
+name = "model"
+type = "text"
+nullable = false
+description = "The model to use"
+
+[[fields]]
+name = "provider"
+type = "text"
+nullable = false
+description = "The provider to use"
+
+[[fields]]
+name = "api_key_name"
+type = "text"
+nullable = true
+description = "An API key configuration to use"

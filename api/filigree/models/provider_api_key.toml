@@ -1,0 +1,21 @@
+name = "ProviderApiKey"
+standard_endpoints = true
+
+[[fields]]
+name  = "name"
+type = "text"
+nullable = false
+description = "The name of the API key, to reference it in API calls"
+
+[[fields]]
+name = "source"
+type = "text"
+default = ""
+nullable = false
+description = "Where to find this API key. 'env' for an environment variable, or blank if `value` is the key itself"
+
+[[fields]]
+name = "value"
+type = "text"
+nullable = false
+description = "The API key, or where to find it in the place indicated by `source`"

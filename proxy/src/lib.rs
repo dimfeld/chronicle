@@ -303,7 +303,7 @@ mod test {
     use crate::{
         config::CustomProviderConfig,
         format::{ChatChoice, ChatMessage, ChatRequest, ChatResponse, UsageResponse},
-        providers::custom::ProviderRequestFormat,
+        providers::custom::{OpenAiRequestFormatOptions, ProviderRequestFormat},
         ProxyRequestMetadata,
     };
 
@@ -366,13 +366,13 @@ mod test {
             .with_custom_provider(CustomProviderConfig {
                 name: "test".to_string(),
                 url,
-                format: ProviderRequestFormat::OpenAi {
+                format: ProviderRequestFormat::OpenAi(OpenAiRequestFormatOptions {
                     transforms: crate::format::ChatRequestTransformation {
                         supports_message_name: false,
                         system_in_messages: true,
                         strip_model_prefix: None,
                     },
-                },
+                }),
                 label: None,
                 api_key: None,
                 api_key_source: None,

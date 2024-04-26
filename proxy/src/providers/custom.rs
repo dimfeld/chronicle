@@ -15,14 +15,17 @@ pub struct CustomProvider {
     pub headers: HeaderMap,
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
+pub struct OpenAiRequestFormatOptions {
+    pub transforms: ChatRequestTransformation<'static>,
+}
+
 /// The format that this proider uses for requests
 /// todo move this somewhere else
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProviderRequestFormat {
-    OpenAi {
-        transforms: ChatRequestTransformation<'static>,
-    },
+    OpenAi(OpenAiRequestFormatOptions),
 }
 
 impl CustomProvider {
@@ -59,7 +62,7 @@ impl ChatModelProvider for CustomProvider {
         options: SendRequestOptions,
     ) -> Result<ProviderResponse, Report<Error>> {
         match &self.config.format {
-            ProviderRequestFormat::OpenAi { transforms } => {
+            ProviderRequestFormat::OpenAi(OpenAiRequestFormatOptions { transforms }) => {
                 send_openai_request(
                     &self.client,
                     &self.config.url,
