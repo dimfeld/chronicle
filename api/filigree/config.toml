@@ -9,6 +9,7 @@ provider = "none"
 [secrets]
 
 [server]
+default_port = 9782
 dotenv = true
 hosts = ["localhost"]
 

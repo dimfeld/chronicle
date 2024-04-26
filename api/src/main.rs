@@ -32,7 +32,7 @@ struct ServeCommand {
     host: String,
 
     /// The TCP port to listen on
-    #[clap(long, env = "PORT", default_value_t = 7823)]
+    #[clap(long, env = "PORT", default_value_t = 9782)]
     port: u16,
 
     /// The port to forward non-API frontend requests to
