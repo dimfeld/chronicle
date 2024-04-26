@@ -7,8 +7,8 @@ use axum::{
     Json, Router,
 };
 use chronicle_proxy::{
-    format::ChatRequest, request::RetryOptions, ProxyRequestInternalMetadata, ProxyRequestMetadata,
-    ProxyRequestOptions,
+    format::ChatRequest, request::RetryOptions, ModelAndProvider, ProxyRequestInternalMetadata,
+    ProxyRequestMetadata, ProxyRequestOptions,
 };
 use error_stack::ResultExt;
 use serde::Deserialize;
@@ -24,6 +24,12 @@ struct ProxyRequestPayload {
 
     /// Force a certain provider
     provider: Option<String>,
+
+    #[serde(default)]
+    models: Vec<ModelAndProvider>,
+    #[serde(default)]
+    random_choice: bool,
+
     /// Customize retry behavior
     retry: Option<RetryOptions>,
     /// Metadata about the request, which will be recorded
@@ -54,6 +60,8 @@ async fn proxy_request(
                 api_key,
                 // Don't need this when we're using send_to_provider
                 provider: body.provider,
+                models: body.models,
+                random_choice: body.random_choice,
                 retry: body.retry.unwrap_or_default(),
                 metadata: body.meta.unwrap_or_default(),
                 internal_metadata: ProxyRequestInternalMetadata {

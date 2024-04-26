@@ -66,6 +66,45 @@ impl ProviderLookup {
         options: &'a ProxyRequestOptions,
         body: &'a ChatRequest,
     ) -> Result<ModelLookupResult, Error> {
+        if !options.models.is_empty() {
+            let lookup = self.0.read().unwrap();
+            let choices = options
+                .models
+                .iter()
+                .map(|choice| {
+                    let provider = lookup
+                        .providers
+                        .iter()
+                        .find(|p| p.name() == choice.provider)
+                        .ok_or_else(|| Error::UnknownProvider(choice.provider.to_string()))?
+                        .clone();
+
+                    let api_key = match (&choice.api_key, &choice.api_key_name) {
+                        (Some(key), _) => Some(key.clone()),
+                        (None, Some(key_name)) => {
+                            let key = lookup
+                                .lookup_api_key(key_name)
+                                .ok_or_else(|| Error::NoApiKey(key_name.to_string()))?;
+                            Some(key)
+                        }
+                        (None, None) => None,
+                    };
+
+                    Ok::<ModelLookupChoice, Error>(ModelLookupChoice {
+                        model: choice.model.clone(),
+                        provider,
+                        api_key,
+                    })
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
+
+            return Ok(ModelLookupResult {
+                alias: String::new(),
+                random_order: options.random_choice,
+                choices,
+            });
+        }
+
         let model = if let Some(model) = &options.model {
             model.as_str()
         } else {

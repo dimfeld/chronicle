@@ -84,11 +84,13 @@ impl ProxyBuilder {
         Ok(self.with_config(config))
     }
 
+    /// Add an alias to the [Proxy]
     pub fn with_alias(mut self, alias: AliasConfig) -> Self {
         self.config.aliases.push(alias);
         self
     }
 
+    /// Add an [ApiKeyConfig] to the proxy
     pub fn with_api_key(mut self, key: ApiKeyConfig) -> Self {
         self.config.api_keys.push(key);
         self
@@ -147,12 +149,13 @@ impl ProxyBuilder {
         self
     }
 
-    /// Supply a custom [reqwest::Client]
+    /// Supply a custom [reqwest::Client] that the proxy will use to make requests.
     pub fn with_client(mut self, client: reqwest::Client) -> Self {
         self.client = Some(client);
         self
     }
 
+    /// Build the proxy from the supplied options.
     pub async fn build(self) -> Result<Proxy, Report<Error>> {
         let mut providers = self.providers;
         let mut provider_configs = self.config.providers;

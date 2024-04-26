@@ -240,7 +240,7 @@ mod test {
             .await
             .unwrap();
 
-        assert_eq!(user_info["name"], "Admin");
+        assert_eq!(user_info["user"]["name"], "Admin");
     }
 
     #[sqlx::test]
@@ -275,7 +275,7 @@ mod test {
             .await
             .unwrap();
 
-        assert_eq!(user_info["name"], "Not Admin");
-        assert_eq!(user_info["email"], "another-email@example.com");
+        assert_eq!(user_info["user"]["name"], "Not Admin");
+        assert_eq!(user_info["user"]["email"], "another-email@example.com");
     }
 }

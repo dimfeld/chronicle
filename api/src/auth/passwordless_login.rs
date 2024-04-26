@@ -37,7 +37,7 @@ pub async fn request_passwordless_login(
     >,
 ) -> Result<impl IntoResponse, Error> {
     if state.host_is_allowed(&host).is_err() {
-        tracing::event!(tracing::Level::ERROR, "Invalid host header: {}", host);
+        tracing::event!(tracing::Level::ERROR, %host, "Disallowed host header");
         // Bail due to some kind of hijinks
         return Err(Error::InvalidHostHeader);
     }
@@ -51,7 +51,7 @@ pub async fn request_passwordless_login(
                 // This means that the user does not exist and public signups are disabled.
                 // Don't do anything in that case, but also don't tell the user that the email
                 // doesn't exist.
-                event!(Level::INFO, %email, "Passwordless login user not found");
+                event!(Level::INFO, email, "Passwordless login user not found");
                 return Ok(());
             } else {
                 return Err(e.change_context(Error::AuthSubsystem).into());
@@ -234,8 +234,8 @@ mod test {
             .await
             .unwrap();
 
-        assert_eq!(response["email"], user.email);
-        assert_eq!(response["name"], "User");
+        assert_eq!(response["user"]["email"], user.email);
+        assert_eq!(response["user"]["name"], "User");
 
         // Using the token again should fail.
         let reuse_response = client.get(&url).send().await.unwrap();
@@ -376,7 +376,7 @@ mod test {
             .await
             .unwrap();
 
-        assert_eq!(response["email"], new_user_email);
+        assert_eq!(response["user"]["email"], new_user_email);
 
         let user_org = sqlx::query!(
             "SELECT organization_id FROM users WHERE email = $1",

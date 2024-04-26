@@ -152,7 +152,7 @@ impl ListQueryFilters {
             .min(MAX_PER_PAGE)
             .max(1);
         let offset = self.page.unwrap_or(0) * per_page;
-        event!(Level::DEBUG, %per_page, %offset);
+        event!(Level::DEBUG, per_page, offset);
         query = query.bind(per_page as i32).bind(offset as i32);
 
         if !self.id.is_empty() {
@@ -218,7 +218,7 @@ where
     let mut query = sqlx::query_as::<_, T>(q.as_str());
 
     let actor_ids = auth.actor_ids();
-    event!(Level::DEBUG, organization_id=?auth.organization_id, actor_ids=?actor_ids);
+    event!(Level::DEBUG, organization_id=%auth.organization_id, actor_ids=?actor_ids);
     query = query.bind(&actor_ids);
 
     query = filters.bind_to_query(query);

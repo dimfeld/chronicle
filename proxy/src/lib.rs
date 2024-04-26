@@ -169,11 +169,32 @@ impl Proxy {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ProxyRequestOptions {
-    /// Override the model from the request body.
-    pub model: Option<String>,
-    pub provider: Option<String>,
+pub struct ModelAndProvider {
+    pub model: String,
+    pub provider: String,
+    /// Supply an API key.
     pub api_key: Option<String>,
+    /// Get the API key from a preconfigured key
+    pub api_key_name: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProxyRequestOptions {
+    /// Override the model from the request body or select an alias.
+    pub model: Option<String>,
+    /// Override the provider from the request body
+    pub provider: Option<String>,
+    /// An API key to use
+    pub api_key: Option<String>,
+    /// Supply multiple provider/model choices, which will be tried in order.
+    /// If this is provided, the `model`, `provider`, and `api_key` fields are ignored.
+    /// This field can not reference model aliases.
+    #[serde(default)]
+    pub models: Vec<ModelAndProvider>,
+    /// When using `models` to supply multiple choices, start at a random choice instead of the
+    /// first one.
+    #[serde(default)]
+    pub random_choice: bool,
     pub timeout: Option<std::time::Duration>,
     pub retry: RetryOptions,
 
@@ -187,6 +208,8 @@ impl Default for ProxyRequestOptions {
             model: None,
             provider: None,
             api_key: None,
+            models: Vec::new(),
+            random_choice: false,
             retry: RetryOptions::default(),
             timeout: None,
             metadata: ProxyRequestMetadata::default(),

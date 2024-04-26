@@ -10,6 +10,8 @@ pub enum Error {
     AliasEmpty(String),
     #[error("Alias {0} references nonexistent API key {1}")]
     NoAliasApiKey(String, String),
+    #[error("Unknown API key name {0}")]
+    NoApiKey(String),
     #[error("Request is missing model name")]
     ModelNotSpecified,
     #[error("Model provider returned an error")]
