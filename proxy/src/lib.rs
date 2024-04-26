@@ -12,6 +12,7 @@ pub mod request;
 mod testing;
 
 use builder::ProxyBuilder;
+use config::{AliasConfig, ApiKeyConfig};
 use database::logging::ProxyLogEntry;
 pub use error::Error;
 use error_stack::Report;
@@ -36,20 +37,6 @@ pub struct Proxy {
     default_timeout: Option<Duration>,
 }
 
-#[derive(Debug)]
-struct ModelLookupResult {
-    alias: String,
-    random_order: bool,
-    choices: Vec<ModelLookupChoice>,
-}
-
-#[derive(Debug)]
-struct ModelLookupChoice {
-    model: String,
-    provider: Arc<dyn ChatModelProvider>,
-    api_key: Option<String>,
-}
-
 impl Proxy {
     pub fn builder() -> ProxyBuilder {
         ProxyBuilder::new()
@@ -57,8 +44,10 @@ impl Proxy {
 
     /// Send a request, choosing the provider based on the requested `model` and `provider`.
     ///
-    /// `options.provider` can be used to choose a specific provider.
-    /// `options.model` will be used next to choose a model to use
+    /// `options.models` can be used to specify a list of models and providers to use.
+    /// `options.model` will be used next to choose a model to use. This and body["model"] can be
+    /// an alias name.
+    /// `options.provider` can be used to choose a specific provider if the model is not an alias.
     /// `body["model"]` is used if options.model is empty.
     #[instrument(fields(
         provider,
@@ -69,7 +58,8 @@ impl Proxy {
         rate_limited,
         tokens_input,
         tokens_output,
-        status_code
+        status_code,
+        success
     ))]
     pub async fn send(
         &self,
@@ -99,9 +89,6 @@ impl Proxy {
 
         let send_time = send_start.elapsed().as_millis();
 
-        // Get response stats: latency, tokens used, etc.
-        // We want to record both the total latency and the latency of the final working request
-        // Hopefully we can do that in a way that allows Postgres to use a HOT update
         let current_span = tracing::Span::current();
         // In case of retries, this might be meaningfully different from the main latency.
         current_span.record("total_latency", send_time);
@@ -113,6 +100,7 @@ impl Proxy {
                 current_span.record("latency", response.latency.as_millis());
                 current_span.record("retries", response.num_retries);
                 current_span.record("rate_limited", response.was_rate_limited);
+                current_span.record("success", true);
                 if let Some(input_tokens) = response.body.usage.prompt_tokens {
                     current_span.record("tokens_input", input_tokens);
                 }
@@ -137,6 +125,10 @@ impl Proxy {
             }
             Err(e) => {
                 tracing::error!(?e, "Request failed");
+
+                current_span.record("retries", e.num_retries);
+                current_span.record("rate_limited", e.was_rate_limited);
+                current_span.record("success", false);
 
                 if let Some(log_tx) = &self.log_tx {
                     let log_entry = ProxyLogEntry {
@@ -163,7 +155,7 @@ impl Proxy {
         self.lookup.set_provider(provider);
     }
 
-    /// Remove a provider
+    /// Remove a provider. Any aliases that reference this provider's name will stop working.
     pub fn remove_provider(&self, name: &str) {
         self.lookup.remove_provider(name);
     }
@@ -183,7 +175,7 @@ impl Proxy {
         self.lookup.set_api_key(api_key);
     }
 
-    /// Remove an API key
+    /// Remove an API key. Any aliases that reference this API key's name will stop working.
     pub fn remove_api_key(&self, name: &str) {
         self.lookup.remove_api_key(name);
     }
@@ -196,6 +188,12 @@ impl Proxy {
         if let Some(log_task) = log_task {
             log_task.await.ok();
         }
+    }
+
+    /// Validate the loaded configuration, and return a list of problems found.
+    // todo this doesn't do anything yet
+    fn validate(&self) -> Vec<String> {
+        self.lookup.validate()
     }
 }
 
@@ -294,9 +292,20 @@ pub struct ProxyRequestMetadata {
 
 #[cfg(test)]
 mod test {
-    use serde_json::json;
+    use std::collections::BTreeMap;
 
-    use crate::ProxyRequestMetadata;
+    use serde_json::json;
+    use wiremock::{
+        matchers::{method, path},
+        Mock, ResponseTemplate,
+    };
+
+    use crate::{
+        config::CustomProviderConfig,
+        format::{ChatChoice, ChatMessage, ChatRequest, ChatResponse, UsageResponse},
+        providers::custom::ProviderRequestFormat,
+        ProxyRequestMetadata,
+    };
 
     #[test]
     /// Make sure extra flattening works as expected
@@ -322,5 +331,77 @@ mod test {
             value.extra.as_ref().unwrap().get("third").unwrap(),
             &json!("fourth")
         );
+    }
+
+    #[tokio::test]
+    async fn call_provider() {
+        let mock_server = wiremock::MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(ChatResponse {
+                created: 1,
+                model: None,
+                system_fingerprint: None,
+                usage: UsageResponse {
+                    prompt_tokens: Some(1),
+                    completion_tokens: Some(1),
+                    total_tokens: Some(2),
+                },
+                choices: vec![ChatChoice {
+                    index: 0,
+                    message: ChatMessage {
+                        role: "assistant".to_string(),
+                        content: "hello".to_string(),
+                        name: None,
+                    },
+                    finish_reason: "stop".to_string(),
+                }],
+            }))
+            .mount(&mock_server)
+            .await;
+
+        let url = format!("{}/v1/chat/completions", mock_server.uri());
+
+        let proxy = super::Proxy::builder()
+            .with_custom_provider(CustomProviderConfig {
+                name: "test".to_string(),
+                url,
+                format: ProviderRequestFormat::OpenAi {
+                    transforms: crate::format::ChatRequestTransformation {
+                        supports_message_name: false,
+                        system_in_messages: true,
+                        strip_model_prefix: None,
+                    },
+                },
+                label: None,
+                token: None,
+                token_env: None,
+                headers: BTreeMap::default(),
+                prefix: None,
+                default_for: vec!["a-test-model".to_string()],
+            })
+            .build()
+            .await
+            .expect("Building proxy");
+
+        let result = proxy
+            .send(
+                crate::ProxyRequestOptions {
+                    ..Default::default()
+                },
+                ChatRequest {
+                    model: Some("a-test-model".to_string()),
+                    messages: vec![ChatMessage {
+                        role: "user".to_string(),
+                        content: "hello".to_string(),
+                        name: None,
+                    }],
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("should have succeeded");
+
+        insta::assert_json_snapshot!(result);
     }
 }

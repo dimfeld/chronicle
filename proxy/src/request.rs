@@ -9,8 +9,9 @@ use tracing::instrument;
 
 use crate::{
     format::{ChatRequest, ChatResponse},
+    provider_lookup::{ModelLookupChoice, ModelLookupResult},
     providers::{ProviderError, ProviderErrorKind, SendRequestOptions},
-    Error, ModelLookupChoice, ModelLookupResult,
+    Error,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,8 +188,10 @@ pub async fn try_model_choices(
                 })
             }
             Err(e) => {
-                tracing::error!(err=?e, provider=provider_name, model, alias);
-                e.attach_printable(format!("Provider: {provider_name}, Model: {model}"))
+                tracing::error!(err=?e, "try"=current_try - 1, provider=provider_name, model, alias);
+                e.attach_printable(format!(
+                    "Try {current_try}, Provider: {provider_name}, Model: {model}"
+                ))
             }
         };
 
@@ -325,20 +328,18 @@ pub async fn send_standard_request<RESPONSE: DeserializeOwned>(
 mod test {
     use std::time::Duration;
 
-    use error_stack::Report;
-
     use super::ProxiedResultError;
     use crate::{
         format::{ChatMessage, ChatRequest},
+        provider_lookup::{ModelLookupChoice, ModelLookupResult},
         request::{try_model_choices, ProxiedResult, RetryOptions},
-        Error, ModelLookupChoice,
     };
 
     async fn test_request(
         choices: Vec<ModelLookupChoice>,
     ) -> Result<ProxiedResult, ProxiedResultError> {
         try_model_choices(
-            crate::ModelLookupResult {
+            ModelLookupResult {
                 alias: String::new(),
                 random_order: false,
                 choices,
@@ -361,7 +362,7 @@ mod test {
         use std::sync::Arc;
 
         use super::test_request;
-        use crate::{testing::TestProvider, ModelLookupChoice};
+        use crate::{provider_lookup::ModelLookupChoice, testing::TestProvider};
 
         #[tokio::test(start_paused = true)]
         async fn success() {
@@ -482,8 +483,8 @@ mod test {
 
         use super::test_request;
         use crate::{
+            provider_lookup::ModelLookupChoice,
             testing::{TestFailure, TestProvider},
-            ModelLookupChoice,
         };
 
         #[tokio::test(start_paused = true)]

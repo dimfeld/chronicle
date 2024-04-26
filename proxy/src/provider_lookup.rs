@@ -7,8 +7,22 @@ use crate::{
     config::{AliasConfig, ApiKeyConfig},
     format::ChatRequest,
     providers::ChatModelProvider,
-    Error, ModelLookupChoice, ModelLookupResult, ProxyRequestOptions,
+    Error, ProxyRequestOptions,
 };
+
+#[derive(Debug)]
+pub struct ModelLookupResult {
+    pub alias: String,
+    pub random_order: bool,
+    pub choices: Vec<ModelLookupChoice>,
+}
+
+#[derive(Debug)]
+pub struct ModelLookupChoice {
+    pub model: String,
+    pub provider: Arc<dyn ChatModelProvider>,
+    pub api_key: Option<String>,
+}
 
 #[derive(Debug)]
 struct ProviderLookupInternal {
@@ -188,18 +202,18 @@ impl ProviderLookup {
     }
 
     /// Add a provider to the system. This will replace any existing provider with the same `name`.
-    pub(crate) fn set_provider(&self, provider: Arc<dyn ChatModelProvider>) {
+    pub fn set_provider(&self, provider: Arc<dyn ChatModelProvider>) {
         let name = provider.name().to_string();
         self.0.write().unwrap().providers.insert(name, provider);
     }
 
     /// Remove a provider
-    pub(crate) fn remove_provider(&self, name: &str) {
+    pub fn remove_provider(&self, name: &str) {
         self.0.write().unwrap().providers.remove(name);
     }
 
     /// Add an alias to the system. This will replace any existing alias with the same `name`.
-    pub(crate) fn set_alias(&self, alias: AliasConfig) {
+    pub fn set_alias(&self, alias: AliasConfig) {
         self.0
             .write()
             .unwrap()
@@ -208,12 +222,12 @@ impl ProviderLookup {
     }
 
     /// Remove an alias
-    pub(crate) fn remove_alias(&self, name: &str) {
+    pub fn remove_alias(&self, name: &str) {
         self.0.write().unwrap().aliases.remove(name);
     }
 
     /// Add an API key to the system. This will replace any existing API key with the same `name`.
-    pub(crate) fn set_api_key(&self, api_key: ApiKeyConfig) {
+    pub fn set_api_key(&self, api_key: ApiKeyConfig) {
         self.0
             .write()
             .unwrap()
@@ -222,8 +236,13 @@ impl ProviderLookup {
     }
 
     /// Remove an API key
-    pub(crate) fn remove_api_key(&self, name: &str) {
+    pub fn remove_api_key(&self, name: &str) {
         self.0.write().unwrap().api_keys.remove(name);
+    }
+
+    pub(crate) fn validate(&self) -> Vec<String> {
+        todo!();
+        vec![]
     }
 }
 

@@ -1,0 +1,25 @@
+---
+source: proxy/src/lib.rs
+expression: result
+---
+{
+  "created": 1,
+  "model": null,
+  "system_fingerprint": null,
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "name": null,
+        "content": "hello"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 1,
+    "completion_tokens": 1,
+    "total_tokens": 2
+  }
+}
