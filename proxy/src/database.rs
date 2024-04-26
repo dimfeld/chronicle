@@ -49,12 +49,12 @@ pub async fn load_providers_from_database(
             name: row.name,
             label: row.label,
             url: row.url,
-            token: row.token,
+            api_key: row.token,
             format: row.format.0,
             headers: row.headers.unwrap_or_default().0,
             prefix: row.prefix,
             default_for: row.default_for.unwrap_or_default().0,
-            token_env: row.token_env,
+            api_key_source: row.token_env,
         })
         .collect();
     Ok(providers)

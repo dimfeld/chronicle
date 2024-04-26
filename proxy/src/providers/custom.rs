@@ -64,7 +64,7 @@ impl ChatModelProvider for CustomProvider {
                     &self.client,
                     &self.config.url,
                     Some(&self.headers),
-                    self.config.token.as_deref(),
+                    self.config.api_key.as_deref(),
                     &transforms,
                     options,
                 )

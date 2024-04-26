@@ -73,25 +73,31 @@ pub struct CustomProviderConfig {
     /// The url to use
     pub url: String,
     /// The API token to pass along
-    pub token: Option<String>,
+    pub api_key: Option<String>,
+    /// Where to retrieve the value for `api_key`.
+    /// If `api_key_source` is "env" then `api_key` is an environment variable.
+    /// If it is empty, then `api_key` is assumed to be the token itself, if provided.
+    pub api_key_source: Option<String>,
     pub format: ProviderRequestFormat,
     /// Extra headers to pass with the request
+    #[serde(default)]
     pub headers: BTreeMap<String, String>,
     pub prefix: Option<String>,
     /// A list of models that this provider should be the default for
     #[serde(default)]
     pub default_for: Vec<String>,
-    pub token_env: Option<String>,
 }
 
 impl CustomProviderConfig {
     pub fn into_provider(mut self, client: reqwest::Client) -> CustomProvider {
-        if let Some(token) = self
-            .token_env
-            .as_deref()
-            .and_then(|var| std::env::var(&var).ok())
-        {
-            self.token = Some(token);
+        if self.api_key_source.as_deref().unwrap_or_default() == "env" {
+            if let Some(token) = self
+                .api_key
+                .as_deref()
+                .and_then(|var| std::env::var(&var).ok())
+            {
+                self.api_key = Some(token);
+            }
         }
 
         CustomProvider::new(self, client)
