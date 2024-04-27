@@ -116,9 +116,10 @@ async fn accept_new_user_invite(
         email: Some(email),
         ..Default::default()
     };
-    let (user_id, _) = crate::users::users::UserCreator::create_user(&mut *tx, None, user_details)
-        .await
-        .change_context(Error::AuthSubsystem)?;
+    let (user_id, _) =
+        crate::users::users::UserCreator::create_user(&mut *tx, None, None, user_details)
+            .await
+            .change_context(Error::AuthSubsystem)?;
 
     tx.commit().await.change_context(Error::Db)?;
 

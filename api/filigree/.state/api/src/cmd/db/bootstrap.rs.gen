@@ -1,3 +1,5 @@
+use std::io::IsTerminal;
+
 use clap::Args;
 use error_stack::Report;
 use sqlx::PgPool;
@@ -5,10 +7,11 @@ use sqlx::PgPool;
 use crate::Error;
 
 #[derive(Args, Debug)]
+/// Add an initial organization and user to the database
 pub struct BootstrapCommand {
     /// The email for the admin user
     #[clap(long = "email", env = "BOOTSTRAP_ADMIN_EMAIL")]
-    admin_email: String,
+    admin_email: Option<String>,
 
     /// The name for the admin user
     /// Defaults to "Admin"
@@ -45,8 +48,27 @@ pub struct BootstrapCommand {
     force: bool,
 }
 
+fn ask_question(prompt: &str) -> Option<String> {
+    if !std::io::stdin().is_terminal() {
+        return None;
+    }
+
+    let answer = dialoguer::Input::<String>::new()
+        .with_prompt(prompt)
+        .interact_text()
+        .unwrap();
+
+    Some(answer)
+}
+
 impl BootstrapCommand {
     pub async fn handle(self, pg_pool: PgPool) -> Result<(), Report<Error>> {
+        let admin_email = self
+            .admin_email
+            .or_else(|| ask_question("What email should the admin user have"))
+            .ok_or(Error::Config)
+            .attach_printable("Admin email is required")?;
+
         let password = match (self.admin_password_hash, self.admin_password) {
             (Some(hash), _) => Some(filigree::auth::password::HashedPassword(hash)),
             (None, Some(pass)) => {
@@ -55,15 +77,46 @@ impl BootstrapCommand {
                     .map_err(Error::from)?;
                 Some(hash)
             }
-            (None, None) => None,
+            (None, None) => {
+                let password = loop {
+                    let password = dialoguer::Password::new()
+                        .allow_empty_password(true)
+                        .with_prompt(
+                            "What password should the admin user have? You may leave this blank",
+                        )
+                        .with_confirmation("Confirm password", "Passwords do not match")
+                        .interact()
+                        .ok();
+
+                    if let Some(password) = password {
+                        break password;
+                    }
+                };
+
+                if password.is_empty() {
+                    None
+                } else {
+                    let hash = filigree::auth::password::new_hash(password)
+                        .await
+                        .map_err(Error::from)?;
+                    Some(hash)
+                }
+            }
         };
+
+        let admin_name = self
+            .admin_name
+            .or_else(|| ask_question("What name should the admin user have"));
+        let organization_name = self
+            .organization_name
+            .or_else(|| ask_question("What is the organization named"));
 
         let data = crate::db::BootstrapData {
             force: self.force,
-            admin_email: self.admin_email,
-            admin_name: self.admin_name,
+            admin_email,
+            admin_name,
             admin_password: password,
-            organization_name: self.organization_name,
+            organization_name,
         };
 
         let bootstrapped = crate::db::bootstrap(pg_pool, data).await?;

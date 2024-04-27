@@ -21,6 +21,7 @@ bytes = "1.5.0"
 chronicle-proxy = { path = "../proxy", version = "0.1.0", default-features = false, features = ["postgres", "migrations", "schemars", "filigree"] }
 chrono = "0.4.33"
 clap = { version = "4.4.11", features = ["env", "derive"] }
+dialoguer = "0.11.0"
 dotenvy = "0.15.7"
 error-stack = { version = "0.4.1", features = ["spantrace"] }
 eyre = "0.6.11"

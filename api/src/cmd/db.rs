@@ -118,6 +118,7 @@ async fn create_anon_user(pool: &PgPool, can_write: bool) -> Result<(), Report<E
         UserCreator::create_user(
             &mut *tx,
             Some(org),
+            Some(ANON_USER_ID),
             CreateUserDetails {
                 name: Some("Anonymous User".to_string()),
                 ..Default::default()
@@ -141,6 +142,13 @@ async fn create_anon_user(pool: &PgPool, can_write: bool) -> Result<(), Report<E
         .change_context(Error::Db)?;
     }
 
+    let read_role = sqlx::query_scalar!(
+        "SELECT id FROM roles WHERE organization_id=$1 AND name='Reader'",
+        org.as_uuid()
+    )
+    .fetch_one(&mut *tx)
+    .await
+    .change_context(Error::Db)?;
     let write_role = sqlx::query_scalar!(
         "SELECT id FROM roles WHERE organization_id=$1 AND name='Writer'",
         org.as_uuid()
@@ -148,6 +156,7 @@ async fn create_anon_user(pool: &PgPool, can_write: bool) -> Result<(), Report<E
     .fetch_one(&mut *tx)
     .await
     .change_context(Error::Db)?;
+    let read_role = RoleId::from_uuid(read_role);
     let write_role = RoleId::from_uuid(write_role);
     if can_write {
         add_roles_to_user(&mut *tx, org, ANON_USER_ID, &[write_role])
@@ -155,6 +164,9 @@ async fn create_anon_user(pool: &PgPool, can_write: bool) -> Result<(), Report<E
             .change_context(Error::Db)?;
     } else {
         remove_roles_from_user(&mut *tx, org, ANON_USER_ID, &[write_role])
+            .await
+            .change_context(Error::Db)?;
+        add_roles_to_user(&mut *tx, org, ANON_USER_ID, &[read_role])
             .await
             .change_context(Error::Db)?;
     }

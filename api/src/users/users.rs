@@ -79,9 +79,10 @@ impl UserCreator {
     pub async fn create_user(
         tx: &mut PgConnection,
         add_to_organization: Option<OrganizationId>,
+        user_id: Option<UserId>,
         details: CreateUserDetails,
     ) -> Result<(UserId, OrganizationId), Report<UserCreatorError>> {
-        let user_id = UserId::new();
+        let user_id = user_id.unwrap_or_else(|| UserId::new());
         let organization_fut = async {
             match add_to_organization {
                 Some(organization_id) => {
@@ -164,7 +165,7 @@ impl filigree::users::users::UserCreator for UserCreator {
         add_to_organization: Option<OrganizationId>,
         details: CreateUserDetails,
     ) -> Result<UserId, Report<UserCreatorError>> {
-        Self::create_user(tx, add_to_organization, details)
+        Self::create_user(tx, add_to_organization, None, details)
             .await
             .map(|(user_id, _)| user_id)
     }

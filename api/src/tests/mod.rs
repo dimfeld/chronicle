@@ -210,8 +210,9 @@ async fn bootstrap_data(pg_pool: &sqlx::PgPool, base_client: &TestClient) -> Boo
     let admin_user_id = testing::ADMIN_USER_ID;
     let CreatedOrganization {
         organization,
-        user_role,
+        write_role,
         admin_role,
+        ..
     } = crate::users::organization::create_new_organization(
         &mut *tx,
         "Test Org".into(),
@@ -240,7 +241,7 @@ async fn bootstrap_data(pg_pool: &sqlx::PgPool, base_client: &TestClient) -> Boo
         &mut *tx,
         organization.id,
         regular_user.user_id,
-        &[user_role],
+        &[write_role],
     )
     .await
     .expect("Adding user role to regular user");
@@ -258,7 +259,7 @@ async fn bootstrap_data(pg_pool: &sqlx::PgPool, base_client: &TestClient) -> Boo
 
     BootstrappedData {
         organization,
-        user_role,
+        user_role: write_role,
         admin_role,
         admin_user,
         user: regular_user,
