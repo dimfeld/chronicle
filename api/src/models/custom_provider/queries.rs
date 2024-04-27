@@ -1,4 +1,7 @@
 #![allow(unused_imports, unused_variables, dead_code)]
+use std::str::FromStr;
+
+use chronicle_proxy::providers::custom::ProviderRequestFormat;
 use error_stack::ResultExt;
 use filigree::{
     auth::ObjectPermission,
@@ -11,16 +14,8 @@ use sqlx::{
 };
 use tracing::{event, instrument, Level};
 
-use std::str::FromStr;
-
-use super::CustomProviderId;
-
-use crate::models::organization::OrganizationId;
-
-use super::types::*;
-
-use crate::auth::AuthInfo;
-use crate::Error;
+use super::{types::*, CustomProviderId};
+use crate::{auth::AuthInfo, models::organization::OrganizationId, Error};
 
 type QueryAs<'q, T> = sqlx::query::QueryAs<
     'q,
@@ -261,7 +256,7 @@ pub async fn create_raw(
         payload.api_key.as_ref(),
         &payload.api_key_source,
         sqlx::types::Json(&payload.format) as _,
-        sqlx::types::Json(payload.headers.as_ref()) as _,
+        payload.headers.as_ref(),
         payload.prefix.as_ref(),
     )
     .fetch_one(&mut *db)
@@ -291,7 +286,7 @@ pub async fn update(
         payload.api_key.as_ref() as _,
         &payload.api_key_source as _,
         sqlx::types::Json(&payload.format) as _,
-        sqlx::types::Json(payload.headers.as_ref()) as _,
+        payload.headers.as_ref() as _,
         payload.prefix.as_ref() as _,
     )
     .fetch_optional(&mut *db)

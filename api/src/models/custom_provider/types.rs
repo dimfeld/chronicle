@@ -24,7 +24,7 @@ pub struct CustomProvider {
     pub api_key: Option<String>,
     pub api_key_source: String,
     pub format: ProviderRequestFormat,
-    pub headers: Option<std::collections::BTreeMap<String, String>>,
+    pub headers: Option<serde_json::Value>,
     pub prefix: Option<String>,
     pub _permission: ObjectPermission,
 }
@@ -85,7 +85,7 @@ impl CustomProvider {
         <ProviderRequestFormat as Default>::default().into()
     }
 
-    pub fn default_headers() -> Option<std::collections::BTreeMap<String, String>> {
+    pub fn default_headers() -> Option<serde_json::Value> {
         None
     }
 
@@ -152,7 +152,7 @@ pub struct CustomProviderCreatePayloadAndUpdatePayload {
     pub api_key: Option<String>,
     pub api_key_source: String,
     pub format: ProviderRequestFormat,
-    pub headers: Option<std::collections::BTreeMap<String, String>>,
+    pub headers: Option<serde_json::Value>,
     pub prefix: Option<String>,
 }
 
@@ -196,7 +196,7 @@ impl CustomProviderCreatePayloadAndUpdatePayload {
         <ProviderRequestFormat as Default>::default().into()
     }
 
-    pub fn default_headers() -> Option<std::collections::BTreeMap<String, String>> {
+    pub fn default_headers() -> Option<serde_json::Value> {
         None
     }
 

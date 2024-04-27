@@ -15,7 +15,8 @@ pub struct CustomProvider {
     pub headers: HeaderMap,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
+#[derive(Serialize, Deserialize, Default, PartialEq, Eq, Debug, Clone)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct OpenAiRequestFormatOptions {
     pub transforms: ChatRequestTransformation<'static>,
 }
@@ -23,9 +24,18 @@ pub struct OpenAiRequestFormatOptions {
 /// The format that this proider uses for requests
 /// todo move this somewhere else
 #[derive(Serialize, Deserialize, Eq, PartialEq, Debug, Clone)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProviderRequestFormat {
     OpenAi(OpenAiRequestFormatOptions),
+}
+
+sqlx_transparent_json_decode::sqlx_json_decode!(ProviderRequestFormat);
+
+impl Default for ProviderRequestFormat {
+    fn default() -> Self {
+        Self::OpenAi(OpenAiRequestFormatOptions::default())
+    }
 }
 
 impl CustomProvider {

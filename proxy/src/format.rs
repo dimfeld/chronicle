@@ -46,6 +46,7 @@ pub struct UsageResponse {
 /// For providers that conform almost, but not quite, to the OpenAI spec, these transformations
 /// apply small changes that can alter the request in place to the form needed for the provider.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
+#[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 pub struct ChatRequestTransformation<'a> {
     /// True if the model provider supports a `name` for each message. False if name
     /// should be merged into the main content of the message when it is provided.
@@ -55,6 +56,17 @@ pub struct ChatRequestTransformation<'a> {
     pub system_in_messages: bool,
     /// If the model starts with this prefix, strip it off.
     pub strip_model_prefix: Option<Cow<'a, str>>,
+}
+
+impl<'a> Default for ChatRequestTransformation<'a> {
+    /// The default values match OpenAI's behavior
+    fn default() -> Self {
+        Self {
+            supports_message_name: false,
+            system_in_messages: true,
+            strip_model_prefix: Default::default(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]

@@ -1,4 +1,6 @@
 #![allow(unused_imports, unused_variables, dead_code)]
+use chronicle_proxy::providers::custom::{OpenAiRequestFormatOptions, ProviderRequestFormat};
+
 use super::{CustomProviderCreatePayload, CustomProviderId, CustomProviderUpdatePayload};
 
 /// Generate a CustomProviderCreatePayload for testing.
@@ -13,9 +15,8 @@ pub fn make_create_payload(i: usize) -> CustomProviderCreatePayload {
         token: (i > 1).then(|| format!("Test object {i}")),
         api_key: (i > 1).then(|| format!("Test object {i}")),
         api_key_source: format!("Test object {i}"),
-        format: <ProviderRequestFormat as Default>::default(),
-        headers: (i > 1)
-            .then(|| <std::collections::BTreeMap<String, String> as Default>::default()),
+        format: ProviderRequestFormat::OpenAi(OpenAiRequestFormatOptions::default()),
+        headers: (i > 1).then(|| serde_json::json!({ "key": i })),
         prefix: (i > 1).then(|| format!("Test object {i}")),
     }
 }
@@ -32,8 +33,8 @@ pub fn make_update_payload(i: usize) -> CustomProviderUpdatePayload {
         token: Some(format!("Test object {i}")),
         api_key: Some(format!("Test object {i}")),
         api_key_source: format!("Test object {i}"),
-        format: <ProviderRequestFormat as Default>::default(),
-        headers: Some(<std::collections::BTreeMap<String, String> as Default>::default()),
+        format: ProviderRequestFormat::OpenAi(OpenAiRequestFormatOptions::default()),
+        headers: Some(serde_json::json!({ "key": i })),
         prefix: Some(format!("Test object {i}")),
     }
 }

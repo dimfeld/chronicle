@@ -10,7 +10,7 @@ SELECT
   api_key,
   api_key_source,
   format AS "format: ProviderRequestFormat",
-  headers AS "headers: std::collections::BTreeMap<String, String>",
+  headers,
   prefix,
   _permission AS "_permission!: filigree::auth::ObjectPermission"
 FROM

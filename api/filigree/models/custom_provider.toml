@@ -47,7 +47,6 @@ nullable = false
 name = "headers"
 description = "Extra HTTP headers to send"
 type = "json"
-rust_type = "std::collections::BTreeMap<String, String>"
 nullable = true
 
 [[fields]]
