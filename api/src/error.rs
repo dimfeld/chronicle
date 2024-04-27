@@ -69,6 +69,8 @@ pub enum Error {
 
     #[error("Model provider error")]
     Proxy,
+    #[error("Failed to build proxy")]
+    BuildingProxy,
 }
 
 impl From<Report<Error>> for Error {
@@ -171,6 +173,7 @@ impl HttpError for Error {
             Error::MissingModel => "missing_model",
             Error::MissingProvider(_) => "missing_provider",
             Error::Proxy => "proxy",
+            Error::BuildingProxy => "building_proxy",
             // These aren't ever returned, we just need some value to fill out the match
             Error::Config => "config",
             Error::TypeExport => "cli",
@@ -219,6 +222,7 @@ impl HttpError for Error {
             Error::MissingModel => StatusCode::BAD_REQUEST,
             Error::MissingProvider(_) => StatusCode::BAD_REQUEST,
             Error::Proxy => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::BuildingProxy => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 

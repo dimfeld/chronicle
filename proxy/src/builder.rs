@@ -84,9 +84,15 @@ impl ProxyBuilder {
         Ok(self.with_config(config))
     }
 
-    /// Add an alias to the [Proxy]
+    /// Add an [AliasConfig] to the [Proxy]
     pub fn with_alias(mut self, alias: AliasConfig) -> Self {
         self.config.aliases.push(alias);
+        self
+    }
+
+    /// Add multiple [AliasConfig] objects to the [Proxy]
+    pub fn with_aliases(mut self, aliases: Vec<AliasConfig>) -> Self {
+        self.config.aliases.extend(aliases);
         self
     }
 
@@ -96,9 +102,21 @@ impl ProxyBuilder {
         self
     }
 
+    /// Add multiple [ApiKeyConfig] objects to the proxy
+    pub fn with_api_keys(mut self, keys: Vec<ApiKeyConfig>) -> Self {
+        self.config.api_keys.extend(keys);
+        self
+    }
+
     /// Add a custom provider to the list of providers
     pub fn with_custom_provider(mut self, config: CustomProviderConfig) -> Self {
         self.config.providers.push(config);
+        self
+    }
+
+    /// Add multiple custom providers to the list of providers
+    pub fn with_custom_providers(mut self, configs: Vec<CustomProviderConfig>) -> Self {
+        self.config.providers.extend(configs);
         self
     }
 
@@ -163,9 +181,16 @@ impl ProxyBuilder {
         let mut aliases = self.config.aliases;
         let logger = if let Some(pool) = &self.pool {
             if self.load_config_from_database {
-                let db_providers = load_providers_from_database(&pool).await?;
-                let db_aliases = load_aliases_from_database(&pool).await?;
-                let db_api_keys = load_api_key_configs_from_database(&pool).await?;
+                let db_providers =
+                    load_providers_from_database(&pool, "chronicle_custom_providers").await?;
+                let db_aliases = load_aliases_from_database(
+                    &pool,
+                    "chronicle_aliases",
+                    "chronicle_alias_providers",
+                )
+                .await?;
+                let db_api_keys =
+                    load_api_key_configs_from_database(&pool, "chronicle_api_keys").await?;
 
                 provider_configs.extend(db_providers);
                 aliases.extend(db_aliases);

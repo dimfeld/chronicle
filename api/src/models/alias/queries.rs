@@ -1,4 +1,6 @@
 #![allow(unused_imports, unused_variables, dead_code)]
+use std::str::FromStr;
+
 use error_stack::ResultExt;
 use filigree::{
     auth::ObjectPermission,
@@ -11,20 +13,15 @@ use sqlx::{
 };
 use tracing::{event, instrument, Level};
 
-use std::str::FromStr;
-
-use super::AliasId;
-
-use crate::models::organization::OrganizationId;
-
-use super::types::*;
-
-use crate::auth::AuthInfo;
-use crate::models::alias_model::AliasModel;
-use crate::models::alias_model::AliasModelCreatePayload;
-use crate::models::alias_model::AliasModelId;
-use crate::models::alias_model::AliasModelUpdatePayload;
-use crate::Error;
+use super::{types::*, AliasId};
+use crate::{
+    auth::AuthInfo,
+    models::{
+        alias_model::{AliasModel, AliasModelCreatePayload, AliasModelId, AliasModelUpdatePayload},
+        organization::OrganizationId,
+    },
+    Error,
+};
 
 type QueryAs<'q, T> = sqlx::query::QueryAs<
     'q,

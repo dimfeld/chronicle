@@ -1,3 +1,5 @@
+pub mod build;
+
 use std::time::Duration;
 
 use axum::{
@@ -7,11 +9,12 @@ use axum::{
     Json, Router,
 };
 use chronicle_proxy::{
-    format::ChatRequest, request::RetryOptions, ModelAndProvider, ProxyRequestInternalMetadata,
-    ProxyRequestMetadata, ProxyRequestOptions,
+    format::ChatRequest, request::RetryOptions, ModelAndProvider, Proxy,
+    ProxyRequestInternalMetadata, ProxyRequestMetadata, ProxyRequestOptions,
 };
-use error_stack::ResultExt;
+use error_stack::{Report, ResultExt};
 use serde::Deserialize;
+use sqlx::PgPool;
 
 use crate::{auth::Authed, server::ServerState, Error};
 

@@ -29,7 +29,7 @@ use tower_http::{
 };
 use tracing::{event, Level};
 
-use crate::error::Error;
+use crate::{error::Error, proxy::build::build_proxy};
 
 mod health;
 mod meta;
@@ -261,10 +261,6 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
         .build()
         .unwrap();
 
-    chronicle_proxy::database::migrations::run_default_migrations(&config.pg_pool)
-        .await
-        .change_context(Error::ServerStart)?;
-
     let state = ServerState(Arc::new(ServerStateInner {
         production,
         filigree: Arc::new(FiligreeState {
@@ -291,12 +287,7 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
         db: config.pg_pool.clone(),
         secrets: config.secrets,
 
-        proxy: Proxy::builder()
-            .with_database(config.pg_pool.clone())
-            .log_to_database(true)
-            .build()
-            .await
-            .change_context(Error::ServerStart)?,
+        proxy: build_proxy(config.pg_pool.clone()).await?,
     }));
 
     let auth_queries = Arc::new(crate::auth::AuthQueries::new(

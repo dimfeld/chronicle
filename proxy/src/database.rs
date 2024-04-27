@@ -37,11 +37,15 @@ struct DbProvider {
 /// Load provider configuration from the database
 pub async fn load_providers_from_database(
     pool: &Pool,
+    providers_table: &str,
 ) -> Result<Vec<CustomProviderConfig>, Report<Error>> {
-    let rows: Vec<DbProvider> = sqlx::query_as("SELECT name, label, url, token, format, headers, prefix, default_for, token_env FROM chronicle_custom_providers")
-        .fetch_all(pool)
-        .await
-        .change_context(Error::LoadingDatabase)?;
+    let rows: Vec<DbProvider> = sqlx::query_as(&format!(
+        "SELECT name, label, url, token, format, headers, prefix, default_for, token_env
+        FROM {providers_table}"
+    ))
+    .fetch_all(pool)
+    .await
+    .change_context(Error::LoadingDatabase)?;
 
     let providers = rows
         .into_iter()
@@ -60,46 +64,33 @@ pub async fn load_providers_from_database(
     Ok(providers)
 }
 
-pub async fn load_aliases_from_database(pool: &Pool) -> Result<Vec<AliasConfig>, Report<Error>> {
-    #[derive(sqlx::FromRow)]
-    struct DbAliasConfig {
-        name: String,
-        random_order: bool,
-        models: Vec<sqlx::types::Json<AliasConfigProvider>>,
-    }
-
-    let rows: Vec<DbAliasConfig> = sqlx::query_as(
+pub async fn load_aliases_from_database(
+    pool: &Pool,
+    alias_table: &str,
+    providers_table: &str,
+) -> Result<Vec<AliasConfig>, Report<Error>> {
+    sqlx::query_as(&format!(
         "SELECT name, random_order,
                 array_agg(jsonb_build_object(
                 'provider', ap.provider,
                 'model', ap.model,
                 'api_key_name', ap.api_key_name
                 ) order by ap.sort) as models
-            FROM chronicle_aliases al
-            JOIN chronicle_alias_providers ap ON ap.alias_id = al.id
+            FROM {alias_table} al
+            JOIN {providers_table} ap ON ap.alias_id = al.id
             GROUP BY al.id",
-    )
+    ))
     .fetch_all(pool)
     .await
-    .change_context(Error::LoadingDatabase)?;
-
-    let rows = rows
-        .into_iter()
-        .map(|row| AliasConfig {
-            name: row.name,
-            random_order: row.random_order,
-            models: row.models.into_iter().map(|model| model.0).collect(),
-        })
-        .collect();
-
-    Ok(rows)
+    .change_context(Error::LoadingDatabase)
 }
 
 pub async fn load_api_key_configs_from_database(
     pool: &Pool,
+    table: &str,
 ) -> Result<Vec<ApiKeyConfig>, Report<Error>> {
     let rows: Vec<ApiKeyConfig> =
-        sqlx::query_as("SELECT name, source, value FROM chronicle_api_keys")
+        sqlx::query_as(&format!("SELECT name, source, value FROM {table}"))
             .fetch_all(pool)
             .await
             .change_context(Error::LoadingDatabase)?;

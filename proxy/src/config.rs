@@ -38,6 +38,8 @@ pub struct AliasConfigProvider {
     pub api_key_name: Option<String>,
 }
 
+sqlx_transparent_json_decode::sqlx_json_decode!(AliasConfigProvider);
+
 #[derive(Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct ApiKeyConfig {
     /// A name for this key
