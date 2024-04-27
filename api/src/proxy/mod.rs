@@ -89,5 +89,6 @@ pub fn create_routes() -> Router<ServerState> {
         .route("/chat", axum::routing::post(proxy_request))
         // We don't use the wildcard path, but allow calling with any path for compatibility with clients
         // that always append an API path to a base url.
-        .route("/char/*path", axum::routing::post(proxy_request))
+        .route("/chat/*path", axum::routing::post(proxy_request))
+        .route("/v1/chat/*path", axum::routing::post(proxy_request))
 }

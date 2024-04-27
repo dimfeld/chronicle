@@ -44,3 +44,4 @@ ENV ALLOW_INVITE_TO_NEW_ORG=false
 ENV QUEUE_PATH=/data/queue.db
 
 ENTRYPOINT [ "/app/chronicle" ]
+CMD [ "serve" ]

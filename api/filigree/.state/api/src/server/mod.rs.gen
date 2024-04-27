@@ -136,7 +136,8 @@ pub struct Server {
     pub listener: tokio::net::TcpListener,
 
     /// Vite manifest watcher for replacing web builds at runtime
-    manifest_watcher: Option<filigree::vite_manifest::watch::ManifestWatcher>,
+    /// We don't do anything with this here, but need to keep a reference to it.
+    _manifest_watcher: Option<filigree::vite_manifest::watch::ManifestWatcher>,
 }
 
 impl Server {
@@ -447,6 +448,6 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
         app,
         state,
         listener,
-        manifest_watcher,
+        _manifest_watcher: manifest_watcher,
     })
 }

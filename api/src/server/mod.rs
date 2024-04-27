@@ -5,13 +5,13 @@ use std::{
     time::Duration,
 };
 
-use axum::{extract::FromRef, handler::Handler, routing::get, Router};
+use axum::{extract::FromRef, handler::Handler, routing::get, Extension, Router};
 use chronicle_proxy::Proxy;
 use error_stack::{Report, ResultExt};
 use filigree::{
     auth::{
-        oauth::providers::OAuthProvider, CorsSetting, ExpiryStyle, SessionBackend,
-        SessionCookieBuilder,
+        oauth::providers::OAuthProvider, CorsSetting, ExpiryStyle, FallbackAnonymousUser,
+        SessionBackend, SessionCookieBuilder,
     },
     error_reporting::ErrorReporter,
     errors::{panic_handler, ObfuscateErrorLayer, ObfuscateErrorLayerSettings},
@@ -29,7 +29,7 @@ use tower_http::{
 };
 use tracing::{event, Level};
 
-use crate::{error::Error, proxy::build::build_proxy};
+use crate::{auth::ANON_USER_ID, error::Error, proxy::build::build_proxy};
 
 mod health;
 mod meta;
@@ -140,7 +140,8 @@ pub struct Server {
     pub listener: tokio::net::TcpListener,
 
     /// Vite manifest watcher for replacing web builds at runtime
-    manifest_watcher: Option<filigree::vite_manifest::watch::ManifestWatcher>,
+    /// We don't do anything with this here, but need to keep a reference to it.
+    _manifest_watcher: Option<filigree::vite_manifest::watch::ManifestWatcher>,
 }
 
 impl Server {
@@ -312,7 +313,7 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
         .merge(crate::models::create_routes())
         .merge(crate::users::users::create_routes())
         .merge(crate::auth::create_routes())
-        .nest("/proxy", crate::proxy::create_routes())
+        .merge(crate::proxy::create_routes())
         // Return not found here so we don't run the other non-API fallbacks
         .fallback(|| async { Error::NotFound("Route") });
 
@@ -414,6 +415,7 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
             .layer(tower_cookies::CookieManagerLayer::new())
             .propagate_x_request_id()
             .layer(CompressionLayer::new())
+            .layer(Extension(FallbackAnonymousUser(ANON_USER_ID)))
             .layer(filigree::auth::middleware::AuthLayer::new(auth_queries))
             .into_inner(),
     );
@@ -454,6 +456,6 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
         app,
         state,
         listener,
-        manifest_watcher,
+        _manifest_watcher: manifest_watcher,
     })
 }

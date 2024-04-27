@@ -95,7 +95,12 @@ pub async fn bootstrap(db: PgPool, data: BootstrapData) -> Result<bool, Report<E
         &mut *tx,
         org.organization.id,
         admin_user_id,
-        &[org.admin_role, org.user_role, superuser_role],
+        &[
+            org.admin_role,
+            org.read_role,
+            org.write_role,
+            superuser_role,
+        ],
     )
     .await
     .change_context(Error::Db)?;

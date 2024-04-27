@@ -13,7 +13,17 @@ use crate::{
 };
 
 const ADMIN_DEFAULT_PERMISSIONS: &[&str] = &["org_admin"];
-const USER_DEFAULT_PERMISSIONS: &[&str] = &[
+const READ_PERMISSIONS: &[&str] = &[
+    "AliasModel::read",
+    "Alias::read",
+    "CustomProvider::read",
+    "User::read",
+    "Organization::read",
+    "ProviderApiKey::read",
+    "Role::read",
+];
+
+const WRITE_PERMISSIONS: &[&str] = &[
     "AliasModel::read",
     "AliasModel::write",
     "Alias::read",
@@ -21,19 +31,17 @@ const USER_DEFAULT_PERMISSIONS: &[&str] = &[
     "CustomProvider::read",
     "CustomProvider::write",
     "User::read",
-    "User::write",
     "Organization::read",
-    "Organization::write",
     "ProviderApiKey::read",
     "ProviderApiKey::write",
     "Role::read",
-    "Role::write",
 ];
 
 pub struct CreatedOrganization {
     pub organization: Organization,
     pub admin_role: RoleId,
-    pub user_role: RoleId,
+    pub write_role: RoleId,
+    pub read_role: RoleId,
 }
 
 /// Creates a new organization containing the specified user. The user doesn't
@@ -52,13 +60,14 @@ pub async fn create_new_organization(
         .change_context(Error::Db)?;
 
     let admin_role_id = role::RoleId::new();
-    let user_role_id = role::RoleId::new();
+    let read_role_id = role::RoleId::new();
+    let write_role_id = role::RoleId::new();
 
     let org_id = OrganizationId::new();
     let new_org = OrganizationCreatePayload {
         name,
         owner: Some(owner),
-        default_role: Some(user_role_id),
+        default_role: Some(write_role_id),
         ..Default::default()
     };
 
@@ -74,23 +83,39 @@ pub async fn create_new_organization(
         description: None,
     };
 
-    let user_role = role::RoleCreatePayload {
+    let write_role = role::RoleCreatePayload {
         id: None,
-        name: "User".to_string(),
+        name: "Writer".to_string(),
+        description: None,
+    };
+
+    let read_role = role::RoleCreatePayload {
+        id: None,
+        name: "Reader".to_string(),
         description: None,
     };
 
     role::queries::create_raw(&mut *db, admin_role_id, org_id, admin_role).await?;
-    role::queries::create_raw(&mut *db, user_role_id, org_id, user_role).await?;
-    add_roles_to_user(&mut *db, org_id, owner, &[admin_role_id, user_role_id])
-        .await
-        .change_context(Error::Db)?;
+    role::queries::create_raw(&mut *db, write_role_id, org_id, write_role).await?;
+    role::queries::create_raw(&mut *db, read_role_id, org_id, read_role).await?;
+    add_roles_to_user(
+        &mut *db,
+        org_id,
+        owner,
+        &[admin_role_id, write_role_id, read_role_id],
+    )
+    .await
+    .change_context(Error::Db)?;
 
     let admin_permissions = ADMIN_DEFAULT_PERMISSIONS
         .iter()
         .map(|p| p.to_string())
         .collect::<Vec<_>>();
-    let user_permissions = USER_DEFAULT_PERMISSIONS
+    let read_permissions = READ_PERMISSIONS
+        .iter()
+        .map(|p| p.to_string())
+        .collect::<Vec<_>>();
+    let write_permissions = WRITE_PERMISSIONS
         .iter()
         .map(|p| p.to_string())
         .collect::<Vec<_>>();
@@ -98,13 +123,17 @@ pub async fn create_new_organization(
     add_permissions_to_role(&mut *db, org_id, admin_role_id, &admin_permissions)
         .await
         .change_context(Error::Db)?;
-    add_permissions_to_role(&mut *db, org_id, user_role_id, &user_permissions)
+    add_permissions_to_role(&mut *db, org_id, write_role_id, &write_permissions)
+        .await
+        .change_context(Error::Db)?;
+    add_permissions_to_role(&mut *db, org_id, read_role_id, &read_permissions)
         .await
         .change_context(Error::Db)?;
 
     Ok(CreatedOrganization {
         organization: new_org,
         admin_role: admin_role_id,
-        user_role: user_role_id,
+        write_role: write_role_id,
+        read_role: read_role_id,
     })
 }

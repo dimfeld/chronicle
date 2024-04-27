@@ -18,6 +18,9 @@ mod tests;
 
 pub type Authed = filigree::auth::Authed<AuthInfo>;
 
+pub const ANON_USER_ID: UserId =
+    UserId::from_uuid(Uuid::from_u128(0x5BF6B394CD5849C3AEC29F78E55617F1));
+
 #[derive(Debug, sqlx::FromRow)]
 pub struct AuthInfo {
     /// The user id of this user
