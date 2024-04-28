@@ -15,6 +15,7 @@ use filigree::{
     },
     error_reporting::ErrorReporter,
     errors::{panic_handler, ObfuscateErrorLayer, ObfuscateErrorLayerSettings},
+    propagate_http_span::extract_request_parent,
     requests::MakeRequestUuidV7,
     server::FiligreeState,
 };
@@ -28,6 +29,7 @@ use tower_http::{
     ServiceBuilderExt,
 };
 use tracing::{event, Level};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::{auth::ANON_USER_ID, error::Error, proxy::build::build_proxy};
 
@@ -402,7 +404,11 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
                             .and_then(|s| s.to_str().ok())
                             .unwrap_or("");
 
-                        tracing::info_span!("request", ?request_id, %method, %uri, route)
+
+                        let span = tracing::info_span!("request", ?request_id, http.method=%method, http.uri=%uri, app.route=route);
+                        let context = extract_request_parent(req);
+                        span.set_parent(context);
+                        span
                     })
                     .on_response(
                         DefaultOnResponse::new()

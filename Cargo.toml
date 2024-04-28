@@ -11,7 +11,7 @@ license = "Apache-2.0"
 
 [workspace.dependencies]
 # filigree = { version = "0.1.0", features = ["htmx", "maud", "watch-manifest"] }
-filigree = { "path" = "../filigree/filigree", features = ["htmx", "maud", "watch-manifest"] }
+filigree = { "path" = "../filigree/filigree", features = ["htmx", "maud", "watch-manifest", "tracing"] }
 
 [profile.dev.package.maud_macros]
 opt-level = 3
