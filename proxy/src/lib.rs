@@ -22,10 +22,25 @@ use providers::ChatModelProvider;
 use request::RetryOptions;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
+use uuid::Uuid;
 
 use crate::request::try_model_choices;
 
 pub type AnyChatModelProvider = Arc<dyn ChatModelProvider>;
+
+#[derive(Debug, Serialize)]
+pub struct ProxiedChatResponseMeta {
+    pub id: Uuid,
+    pub response_meta: Option<serde_json::Value>,
+    pub was_rate_limited: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProxiedChatResponse {
+    #[serde(flatten)]
+    pub response: ChatResponse,
+    pub meta: ProxiedChatResponseMeta,
+}
 
 #[derive(Debug)]
 pub struct Proxy {
@@ -53,6 +68,7 @@ impl Proxy {
         skip(self),
         fields(
             error,
+            llm.item_id,
             llm.latency,
             llm.total_latency,
             llm.retries,
@@ -95,8 +111,10 @@ impl Proxy {
         &self,
         options: ProxyRequestOptions,
         body: ChatRequest,
-    ) -> Result<ChatResponse, Report<Error>> {
+    ) -> Result<ProxiedChatResponse, Report<Error>> {
+        let id = uuid::Uuid::now_v7();
         let current_span = tracing::Span::current();
+        current_span.record("llm.item_id", id.to_string());
         if !body.stop.is_empty() {
             current_span.record("llm.chat.stop_sequences", body.stop.join(", "));
         }
@@ -172,6 +190,7 @@ impl Proxy {
 
                 if let Some(log_tx) = &self.log_tx {
                     let log_entry = ProxyLogEntry {
+                        id,
                         timestamp,
                         request: body.clone(),
                         response: Some(response.clone()),
@@ -194,6 +213,7 @@ impl Proxy {
 
                 if let Some(log_tx) = &self.log_tx {
                     let log_entry = ProxyLogEntry {
+                        id,
                         timestamp,
                         request: body,
                         response: None,
@@ -209,7 +229,16 @@ impl Proxy {
             }
         }
 
-        response.map(|r| r.body).map_err(|e| e.error)
+        response
+            .map(|r| ProxiedChatResponse {
+                response: r.body,
+                meta: ProxiedChatResponseMeta {
+                    id,
+                    response_meta: r.meta,
+                    was_rate_limited: r.was_rate_limited,
+                },
+            })
+            .map_err(|e| e.error)
     }
 
     /// Add a provider to the system. This will replace any existing provider with the same `name`.

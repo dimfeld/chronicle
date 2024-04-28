@@ -1,5 +1,4 @@
 use std::{
-    cell::Cell,
     sync::{atomic::AtomicUsize, Arc},
     time::Duration,
 };

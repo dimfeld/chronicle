@@ -5,10 +5,12 @@ use std::{
 };
 
 use chrono::Utc;
+use uuid::Uuid;
 
 use super::Pool;
 use crate::{format::ChatRequest, request::ProxiedResult, ProxyRequestOptions};
 pub struct ProxyLogEntry {
+    pub id: Uuid,
     pub timestamp: chrono::DateTime<Utc>,
     pub request: ChatRequest,
     pub response: Option<ProxiedResult>,
@@ -85,7 +87,7 @@ async fn write_batch(pool: &Pool, items: Vec<ProxyLogEntry>) {
     );
 
     for (i, item) in items.into_iter().enumerate() {
-        let id = uuid::Uuid::now_v7();
+        let id = item.id;
         let organization_id = EscapedNullable(item.options.internal_metadata.organization_id);
         let project_id = EscapedNullable(item.options.internal_metadata.project_id);
         let user_id = EscapedNullable(item.options.internal_metadata.user_id);
