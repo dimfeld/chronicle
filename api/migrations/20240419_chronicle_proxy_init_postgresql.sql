@@ -10,7 +10,8 @@ INSERT INTO chronicle_meta (
 VALUES (
   'migration_version',
   '1' ::jsonb)
-ON CONFLICT DO NOTHING;
+ON CONFLICT
+  DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS chronicle_pricing_plans (
   id uuid PRIMARY KEY,
@@ -42,6 +43,8 @@ CREATE TABLE IF NOT EXISTS chronicle_events (
   run_id text,
   step text,
   step_index int,
+  prompt_id text,
+  prompt_version int,
   extra_meta jsonb,
   response_meta jsonb,
   retries int,

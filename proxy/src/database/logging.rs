@@ -82,6 +82,7 @@ async fn write_batch(pool: &Pool, items: Vec<ProxyLogEntry>) {
         (id, organization_id, project_id, user_id, chat_request, chat_response,
          error, provider, model, application, environment, request_organization_id, request_project_id,
          request_user_id, workflow_id, workflow_name, run_id, step, step_index,
+         prompt_id, prompt_version,
          extra_meta, response_meta, retries, rate_limited, request_latency_ms,
          total_latency_ms, created_at) VALUES\n",
     );
@@ -117,6 +118,8 @@ async fn write_batch(pool: &Pool, items: Vec<ProxyLogEntry>) {
         let run_id = EscapedNullable(item.options.metadata.run_id);
         let step = EscapedNullable(item.options.metadata.step);
         let step_index = Nullable(item.options.metadata.step_index);
+        let prompt_id = EscapedNullable(item.options.metadata.prompt_id);
+        let prompt_version = Nullable(item.options.metadata.prompt_version);
         let extra_meta = EscapedNullable(
             item.options
                 .metadata
@@ -147,6 +150,7 @@ async fn write_batch(pool: &Pool, items: Vec<ProxyLogEntry>) {
                 {model}, {application}, {environment},
                 {request_organization_id}, {request_project_id}, {request_user_id},
                 {workflow_id}, {workflow_name}, {run_id}, {step}, {step_index},
+                {prompt_id}, {prompt_version},
                 {extra_meta}, {response_meta}, {retries}, {rate_limited},
                 {request_latency_ms}, {total_latency_ms}, {created_at}
             )"

@@ -1,4 +1,4 @@
-use std::{fmt::Debug, sync::Arc, time::Duration};
+use std::{borrow::Cow, fmt::Debug, sync::Arc, time::Duration};
 
 pub mod builder;
 pub mod config;
@@ -84,6 +84,8 @@ impl Proxy {
             llm.meta.run_id = options.metadata.run_id,
             llm.meta.step = options.metadata.step,
             llm.meta.step_index = options.metadata.step_index,
+            llm.meta.prompt_id = options.metadata.prompt_id,
+            llm.meta.prompt_version = options.metadata.prompt_version,
             llm.meta.extra = ?options.metadata.extra,
             llm.meta.internal_organization_id = options.internal_metadata.organization_id,
             llm.meta.internal_project_id = options.internal_metadata.project_id,
@@ -118,14 +120,21 @@ impl Proxy {
         if !body.stop.is_empty() {
             current_span.record("llm.chat.stop_sequences", body.stop.join(", "));
         }
-        current_span.record(
-            "llm.prompts",
+
+        let messages_field = if body.messages.len() > 1 {
+            Some(Cow::Owned(
+                body.messages
+                    .iter()
+                    .map(|m| format!("{}: {}", m.name.as_ref().unwrap_or(&m.role), m.content))
+                    .collect::<Vec<_>>()
+                    .join("\n\n"),
+            ))
+        } else {
             body.messages
-                .iter()
-                .map(|m| format!("{}: {}", m.name.as_ref().unwrap_or(&m.role), m.content))
-                .collect::<Vec<_>>()
-                .join("\n\n"),
-        );
+                .get(0)
+                .map(|m| Cow::Borrowed(m.content.as_str()))
+        };
+        current_span.record("llm.prompts", messages_field.as_deref());
 
         let models = self.lookup.find_model_and_provider(&options, &body)?;
 
@@ -375,6 +384,10 @@ pub struct ProxyRequestMetadata {
     pub step: Option<String>,
     /// The index of the step within the workflow.
     pub step_index: Option<u32>,
+    /// A unique ID for this prompt
+    pub prompt_id: Option<String>,
+    /// The version of this prompt
+    pub prompt_version: Option<u32>,
 
     /// Any other metadata to include.
     #[serde(flatten)]

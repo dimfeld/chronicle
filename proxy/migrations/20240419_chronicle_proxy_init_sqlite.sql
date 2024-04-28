@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS chronicle_events (
   run_id text,
   step text,
   step_index int,
+  prompt_id text,
+  prompt_version int,
   extra_meta text,
   response_meta text,
   retries int,
