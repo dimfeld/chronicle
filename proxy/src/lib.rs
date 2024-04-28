@@ -52,16 +52,29 @@ impl Proxy {
     #[instrument(
         skip(self),
         fields(
-            provider,
-            model,
-            latency,
-            total_latency,
-            retries,
-            rate_limited,
-            tokens_input,
-            tokens_output,
-            status_code,
-            success
+            error,
+            llm.latency,
+            llm.total_latency,
+            llm.retries,
+            llm.rate_limited,
+            llm.status_code,
+            // The fields below are using the OpenLLMetry field names
+            llm.vendor,
+            llm.request.tyoe,
+            llm.request.model,
+            llm.prompts,
+            llm.request.max_tokens,
+            llm.response.model,
+            llm.usage.prompt_tokens,
+            llm.usage.completion_tokens,
+            llm.usage.total_tokens,
+            llm.completions,
+            llm.temperature,
+            llm.top_p,
+            llm.frequency_penalty,
+            llm.presence_penalty,
+            llm.chat.stop_sequences,
+            llm.user,
         )
     )]
     pub async fn send(
@@ -69,10 +82,37 @@ impl Proxy {
         options: ProxyRequestOptions,
         body: ChatRequest,
     ) -> Result<ChatResponse, Report<Error>> {
+        let current_span = tracing::Span::current();
+        current_span.record("llm.request.tyoe", "chat");
+        current_span.record("llm.request.model", &body.model);
+        current_span.record("llm.request.max_tokens", body.max_tokens);
+        current_span.record("llm.temperature", body.temperature);
+        current_span.record("llm.top_p", body.top_p);
+        current_span.record("llm.frequency_penalty", body.frequency_penalty);
+        current_span.record("llm.presence_penalty", body.presence_penalty);
+        if !body.stop.is_empty() {
+            current_span.record("llm.chat.stop_sequences", body.stop.join(", "));
+        }
+        current_span.record("llm.user", &body.user);
+        current_span.record(
+            "llm.prompts",
+            body.messages
+                .iter()
+                .map(|m| format!("{}: {}", m.name.as_ref().unwrap_or(&m.role), m.content))
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+        );
+
         let models = self.lookup.find_model_and_provider(&options, &body)?;
 
         if models.choices.is_empty() {
             return Err(Report::new(Error::AliasEmpty(models.alias)));
+        }
+
+        if models.choices.len() == 1 {
+            // If there's just one provider we can record this in advance to get it even in case of
+            // error.
+            current_span.record("llm.vendor", models.choices[0].provider.name());
         }
 
         tracing::info!(?body, "Starting request");
@@ -92,24 +132,37 @@ impl Proxy {
 
         let send_time = send_start.elapsed().as_millis();
 
-        let current_span = tracing::Span::current();
         // In case of retries, this might be meaningfully different from the main latency.
-        current_span.record("total_latency", send_time);
+        current_span.record("llm.total_latency", send_time);
 
         match &response {
             Ok(response) => {
-                current_span.record("provider", &response.provider);
-                current_span.record("model", &response.body.model);
-                current_span.record("latency", response.latency.as_millis());
-                current_span.record("retries", response.num_retries);
-                current_span.record("rate_limited", response.was_rate_limited);
-                current_span.record("success", true);
-                if let Some(input_tokens) = response.body.usage.prompt_tokens {
-                    current_span.record("tokens_input", input_tokens);
-                }
-                if let Some(output_tokens) = response.body.usage.completion_tokens {
-                    current_span.record("tokens_output", output_tokens);
-                }
+                current_span.record("error", false);
+                current_span.record(
+                    "llm.completions",
+                    response
+                        .body
+                        .choices
+                        .iter()
+                        .map(|c| c.message.content.as_str())
+                        .collect::<Vec<_>>()
+                        .join("\n\n"),
+                );
+                current_span.record("llm.vendor", &response.provider);
+                current_span.record("llm.response.model", &response.body.model);
+                current_span.record("llm.latency", response.latency.as_millis());
+                current_span.record("llm.retries", response.num_retries);
+                current_span.record("llm.rate_limited", response.was_rate_limited);
+                current_span.record("llm.usage.prompt_tokens", response.body.usage.prompt_tokens);
+                current_span.record(
+                    "llm.usage.completion_tokens",
+                    response.body.usage.completion_tokens,
+                );
+                let total_tokens = response.body.usage.total_tokens.unwrap_or_else(|| {
+                    response.body.usage.prompt_tokens.unwrap_or(0)
+                        + response.body.usage.completion_tokens.unwrap_or(0)
+                });
+                current_span.record("llm.usage.total_tokens", total_tokens);
 
                 if let Some(log_tx) = &self.log_tx {
                     let log_entry = ProxyLogEntry {
@@ -129,9 +182,9 @@ impl Proxy {
             Err(e) => {
                 tracing::error!(?e, "Request failed");
 
-                current_span.record("retries", e.num_retries);
-                current_span.record("rate_limited", e.was_rate_limited);
-                current_span.record("success", false);
+                current_span.record("error", true);
+                current_span.record("llm.retries", e.num_retries);
+                current_span.record("llm.rate_limited", e.was_rate_limited);
 
                 if let Some(log_tx) = &self.log_tx {
                     let log_entry = ProxyLogEntry {

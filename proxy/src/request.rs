@@ -188,7 +188,7 @@ pub async fn try_model_choices(
                 })
             }
             Err(e) => {
-                tracing::error!(err=?e, "try"=current_try - 1, provider=provider_name, model, alias);
+                tracing::error!(err=?e, "llm.try"=current_try - 1, llm.vendor=provider_name, llm.request.model = model, llm.alias=alias);
                 e.attach_printable(format!(
                     "Try {current_try}, Provider: {provider_name}, Model: {model}"
                 ))

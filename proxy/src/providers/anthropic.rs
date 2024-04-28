@@ -126,12 +126,12 @@ fn handle_retry_after(res: &reqwest::Response) -> Option<Duration> {
         .get("anthropic-ratelimit-tokens-reset")
         .and_then(|s| s.to_str().ok());
     tracing::warn!(
-        req_limit,
-        req_remaining,
-        req_reset,
-        token_limit,
-        token_remaining,
-        token_reset,
+        llm.rate_limiting.req_limit = req_limit,
+        llm.rate_liting.req_remaining = req_remaining,
+        llm.rate_limiting.req_reset = req_reset,
+        llm.rate_limiting.token_limit = token_limit,
+        llm.rate_liting.token_remaining = token_remaining,
+        llm.rate_limiting.token_reset = token_reset,
         "Hit Anthropic rate limit"
     );
 

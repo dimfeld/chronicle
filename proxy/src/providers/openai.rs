@@ -143,12 +143,12 @@ pub fn handle_rate_limit_headers(res: &Response) -> Option<Duration> {
         .get("x-ratelimit-reset-tokens")
         .and_then(|s| s.to_str().ok());
     tracing::warn!(
-        req_limit,
-        req_remaining,
-        req_reset,
-        token_limit,
-        token_remaining,
-        token_reset,
+        llm.rate_limiting.req_limit = req_limit,
+        llm.rate_liting.req_remaining = req_remaining,
+        llm.rate_limiting.req_reset = req_reset,
+        llm.rate_limiting.token_limit = token_limit,
+        llm.rate_liting.token_remaining = token_remaining,
+        llm.rate_limiting.token_reset = token_reset,
         "Hit OpenAI rate limit"
     );
 
