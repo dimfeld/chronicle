@@ -4,6 +4,7 @@ INSERT INTO alias_models (
   model,
   provider,
   api_key_name,
+  sort,
   alias_id)
 VALUES (
   $1,
@@ -11,7 +12,8 @@ VALUES (
   $3,
   $4,
   $5,
-  $6)
+  $6,
+  $7)
 RETURNING
   id AS "id: AliasModelId",
   organization_id AS "organization_id: crate::models::organization::OrganizationId",
@@ -20,5 +22,6 @@ RETURNING
   model,
   provider,
   api_key_name,
+  sort,
   alias_id AS "alias_id: AliasId",
   'owner' AS "_permission!: filigree::auth::ObjectPermission"

@@ -84,10 +84,8 @@ pub struct CustomProviderConfig {
     /// Extra headers to pass with the request
     #[serde(default)]
     pub headers: BTreeMap<String, String>,
+    /// Models starting with this prefix will use this provider by default.
     pub prefix: Option<String>,
-    /// A list of models that this provider should be the default for
-    #[serde(default)]
-    pub default_for: Vec<String>,
 }
 
 impl CustomProviderConfig {

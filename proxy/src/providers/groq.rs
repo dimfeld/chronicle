@@ -5,7 +5,11 @@ use reqwest::header::CONTENT_TYPE;
 use super::{
     openai::handle_rate_limit_headers, ChatModelProvider, ProviderResponse, SendRequestOptions,
 };
-use crate::{format::ChatRequestTransformation, request::send_standard_request, Error};
+use crate::{
+    format::{ChatRequestTransformation, ChatResponse},
+    request::send_standard_request,
+    Error,
+};
 
 #[derive(Debug)]
 pub struct Groq {
@@ -52,15 +56,15 @@ impl ChatModelProvider for Groq {
         body.top_logprobs = None;
         body.n = None;
 
-        let body = serde_json::to_vec(&body).change_context(Error::TransformingRequest)?;
-        let body = Bytes::from(body);
+        let bytes = serde_json::to_vec(&body).change_context(Error::TransformingRequest)?;
+        let bytes = Bytes::from(bytes);
 
         let api_token = api_key
             .as_deref()
             .or(self.token.as_deref())
             .ok_or(Error::MissingApiKey)?;
 
-        let result = send_standard_request(
+        let result = send_standard_request::<ChatResponse>(
             timeout,
             || {
                 self.client
@@ -69,12 +73,13 @@ impl ChatModelProvider for Groq {
                     .header(CONTENT_TYPE, "application/json; charset=utf8")
             },
             handle_rate_limit_headers,
-            body,
+            bytes,
         )
         .await
         .change_context(Error::ModelError)?;
 
         Ok(ProviderResponse {
+            model: result.0.model.clone().or(body.model).unwrap_or_default(),
             body: result.0,
             latency: result.1,
             meta: None,

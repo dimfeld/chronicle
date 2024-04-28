@@ -96,7 +96,7 @@ impl ChatModelProvider for Ollama {
 
         let response = ChatResponse {
             created: now as u64,
-            model: Some(result.0.model),
+            model: Some(result.0.model.clone()),
             system_fingerprint: None,
             choices: vec![ChatChoice {
                 index: 0,
@@ -111,6 +111,7 @@ impl ChatModelProvider for Ollama {
         };
 
         Ok(ProviderResponse {
+            model: result.0.model,
             body: response,
             meta: Some(meta),
             latency: result.1,

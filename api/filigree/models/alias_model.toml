@@ -19,3 +19,10 @@ name = "api_key_name"
 type = "text"
 nullable = true
 description = "An API key configuration to use"
+
+[[fields]]
+name = "sort"
+type = "int"
+nullable = false
+default = 0
+description = "The order in which providers will be tried"

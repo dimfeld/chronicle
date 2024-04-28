@@ -6,6 +6,7 @@ SELECT
   model,
   provider,
   api_key_name,
+  sort,
   alias_id,
   perm._permission
 FROM

@@ -6,6 +6,7 @@ SELECT
   model,
   provider,
   api_key_name,
+  sort,
   alias_id AS "alias_id: AliasId",
   _permission AS "_permission!: filigree::auth::ObjectPermission"
 FROM

@@ -6,7 +6,11 @@ use reqwest::{header::CONTENT_TYPE, Response};
 use tracing::instrument;
 
 use super::{ChatModelProvider, ProviderResponse, SendRequestOptions};
-use crate::{format::ChatRequestTransformation, request::send_standard_request, Error};
+use crate::{
+    format::{ChatRequestTransformation, ChatResponse},
+    request::send_standard_request,
+    Error,
+};
 
 /// OpenAI or fully-compatible provider
 #[derive(Debug)]
@@ -82,8 +86,8 @@ pub async fn send_openai_request(
 ) -> Result<ProviderResponse, Report<Error>> {
     body.transform(transform);
 
-    let body = serde_json::to_vec(&body).change_context(Error::TransformingRequest)?;
-    let body = Bytes::from(body);
+    let bytes = serde_json::to_vec(&body).change_context(Error::TransformingRequest)?;
+    let bytes = Bytes::from(bytes);
 
     let token = api_key
         .as_deref()
@@ -91,7 +95,7 @@ pub async fn send_openai_request(
         // Allow no API key since we could be sending to an internal OpenAI-compatible service.
         .unwrap_or_default();
 
-    let result = send_standard_request(
+    let result = send_standard_request::<ChatResponse>(
         timeout,
         || {
             client
@@ -101,12 +105,13 @@ pub async fn send_openai_request(
                 .headers(headers.cloned().unwrap_or_default())
         },
         handle_rate_limit_headers,
-        body,
+        bytes,
     )
     .await
     .change_context(Error::ModelError)?;
 
     Ok(ProviderResponse {
+        model: result.0.model.clone().or(body.model).unwrap_or_default(),
         body: result.0,
         latency: result.1,
         meta: None,

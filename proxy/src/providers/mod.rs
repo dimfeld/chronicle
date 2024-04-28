@@ -45,6 +45,8 @@ pub trait ChatModelProvider: Debug + Send + Sync {
 #[derive(Debug, Clone)]
 pub struct ProviderResponse {
     pub body: ChatResponse,
+    /// The model actually used.
+    pub model: String,
     /// Any other metadata from the provider that should be logged.
     pub meta: Option<serde_json::Value>,
     /// The latency of the request. If the request was retried this should only count the

@@ -98,7 +98,13 @@ async fn write_batch(pool: &Pool, items: Vec<ProxyLogEntry>) {
         );
         let error = EscapedNullable(item.error.map(|e| format!("{:?}", e)));
         let provider = EscapedNullable(item.response.as_ref().map(|r| r.provider.clone()));
-        let model = Escaped(item.request.model.unwrap_or_default());
+        let model = Escaped(
+            item.response
+                .as_ref()
+                .and_then(|r| r.body.model.clone())
+                .or(item.request.model)
+                .unwrap_or_default(),
+        );
         let application = EscapedNullable(item.options.metadata.application);
         let environment = EscapedNullable(item.options.metadata.environment);
         let request_organization_id = EscapedNullable(item.options.metadata.organization_id);
@@ -118,7 +124,8 @@ async fn write_batch(pool: &Pool, items: Vec<ProxyLogEntry>) {
         let response_meta = EscapedNullable(
             item.response
                 .as_ref()
-                .and_then(|r| serde_json::to_string(&r.body).ok()),
+                .and_then(|r| r.meta.as_ref())
+                .and_then(|meta| serde_json::to_string(&meta).ok()),
         );
         let retries = item.num_retries;
         let rate_limited = item.was_rate_limited;
@@ -133,7 +140,7 @@ async fn write_batch(pool: &Pool, items: Vec<ProxyLogEntry>) {
         write!(
             query,
             "(
-                {id}, {organization_id}, {project_id}, {user_id},
+                '{id}'::uuid, {organization_id}, {project_id}, {user_id},
                 {chat_request}, {chat_response}, {error}, {provider},
                 {model}, {application}, {environment},
                 {request_organization_id}, {request_project_id}, {request_user_id},

@@ -14,7 +14,8 @@ SET
   model = $4,
   provider = $5,
   api_key_name = $6,
-  alias_id = $7,
+  sort = $7,
+  alias_id = $8,
   updated_at = now()
 FROM
   permissions

@@ -4,6 +4,7 @@ INSERT INTO alias_models (
   model,
   provider,
   api_key_name,
+  sort,
   alias_id)
 VALUES (
   $1,
@@ -11,13 +12,15 @@ VALUES (
   $3,
   $4,
   $5,
-  $6)
+  $6,
+  $7)
 ON CONFLICT (
   id)
   DO UPDATE SET
     model = EXCLUDED.model,
     provider = EXCLUDED.provider,
     api_key_name = EXCLUDED.api_key_name,
+    sort = EXCLUDED.sort,
     alias_id = EXCLUDED.alias_id,
     updated_at = now()
   WHERE
@@ -31,5 +34,6 @@ ON CONFLICT (
     model,
     provider,
     api_key_name,
+    sort,
     alias_id AS "alias_id: AliasId",
     'owner' AS "_permission!: filigree::auth::ObjectPermission"

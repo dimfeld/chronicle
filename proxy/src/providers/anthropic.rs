@@ -89,6 +89,7 @@ impl ChatModelProvider for Anthropic {
         .change_context(Error::ModelError)?;
 
         Ok(ProviderResponse {
+            model: result.0.model.clone(),
             body: result.0.into(),
             latency: result.1,
             meta: None,

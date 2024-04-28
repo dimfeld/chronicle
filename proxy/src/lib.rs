@@ -49,18 +49,21 @@ impl Proxy {
     /// an alias name.
     /// `options.provider` can be used to choose a specific provider if the model is not an alias.
     /// `body["model"]` is used if options.model is empty.
-    #[instrument(fields(
-        provider,
-        model,
-        latency,
-        total_latency,
-        retries,
-        rate_limited,
-        tokens_input,
-        tokens_output,
-        status_code,
-        success
-    ))]
+    #[instrument(
+        skip(self),
+        fields(
+            provider,
+            model,
+            latency,
+            total_latency,
+            retries,
+            rate_limited,
+            tokens_input,
+            tokens_output,
+            status_code,
+            success
+        )
+    )]
     pub async fn send(
         &self,
         options: ProxyRequestOptions,
@@ -370,15 +373,14 @@ mod test {
                     transforms: crate::format::ChatRequestTransformation {
                         supports_message_name: false,
                         system_in_messages: true,
-                        strip_model_prefix: None,
+                        strip_model_prefix: Some("me/".into()),
                     },
                 }),
                 label: None,
                 api_key: None,
                 api_key_source: None,
                 headers: BTreeMap::default(),
-                prefix: None,
-                default_for: vec!["a-test-model".to_string()],
+                prefix: Some("me/".to_string()),
             })
             .build()
             .await
@@ -390,7 +392,7 @@ mod test {
                     ..Default::default()
                 },
                 ChatRequest {
-                    model: Some("a-test-model".to_string()),
+                    model: Some("me/a-test-model".to_string()),
                     messages: vec![ChatMessage {
                         role: "user".to_string(),
                         content: "hello".to_string(),

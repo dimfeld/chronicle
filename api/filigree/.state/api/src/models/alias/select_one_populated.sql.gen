@@ -9,8 +9,8 @@ SELECT
     SELECT
       COALESCE(ARRAY_AGG(JSONB_BUILD_OBJECT('id', id, 'organization_id', organization_id,
 	'updated_at', updated_at, 'created_at', created_at, 'model', model,
-	'provider', provider, 'api_key_name', api_key_name, 'alias_id', alias_id,
-	'_permission', _permission)), ARRAY[]::jsonb[])
+	'provider', provider, 'api_key_name', api_key_name, 'sort', sort,
+	'alias_id', alias_id, '_permission', _permission)), ARRAY[]::jsonb[])
     FROM
       alias_models
     WHERE

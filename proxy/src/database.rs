@@ -26,12 +26,11 @@ struct DbProvider {
     name: String,
     label: Option<String>,
     url: String,
-    token: Option<String>,
+    api_key: Option<String>,
     format: sqlx::types::Json<ProviderRequestFormat>,
     headers: Option<sqlx::types::Json<BTreeMap<String, String>>>,
     prefix: Option<String>,
-    default_for: Option<sqlx::types::Json<Vec<String>>>,
-    token_env: Option<String>,
+    api_key_source: Option<String>,
 }
 
 /// Load provider configuration from the database
@@ -40,12 +39,13 @@ pub async fn load_providers_from_database(
     providers_table: &str,
 ) -> Result<Vec<CustomProviderConfig>, Report<Error>> {
     let rows: Vec<DbProvider> = sqlx::query_as(&format!(
-        "SELECT name, label, url, token, format, headers, prefix, default_for, token_env
+        "SELECT name, label, url, api_key, format, headers, prefix, api_key_source
         FROM {providers_table}"
     ))
     .fetch_all(pool)
     .await
-    .change_context(Error::LoadingDatabase)?;
+    .change_context(Error::LoadingDatabase)
+    .attach_printable("Failed to load providers from database")?;
 
     let providers = rows
         .into_iter()
@@ -53,12 +53,11 @@ pub async fn load_providers_from_database(
             name: row.name,
             label: row.label,
             url: row.url,
-            api_key: row.token,
+            api_key: row.api_key,
             format: row.format.0,
             headers: row.headers.unwrap_or_default().0,
             prefix: row.prefix,
-            default_for: row.default_for.unwrap_or_default().0,
-            api_key_source: row.token_env,
+            api_key_source: row.api_key_source,
         })
         .collect();
     Ok(providers)
@@ -83,6 +82,7 @@ pub async fn load_aliases_from_database(
     .fetch_all(pool)
     .await
     .change_context(Error::LoadingDatabase)
+    .attach_printable("Failed to load aliases from database")
 }
 
 pub async fn load_api_key_configs_from_database(
@@ -93,7 +93,8 @@ pub async fn load_api_key_configs_from_database(
         sqlx::query_as(&format!("SELECT name, source, value FROM {table}"))
             .fetch_all(pool)
             .await
-            .change_context(Error::LoadingDatabase)?;
+            .change_context(Error::LoadingDatabase)
+            .attach_printable("Failed to load API keys from database")?;
 
     Ok(rows)
 }

@@ -92,6 +92,5 @@ impl ChatModelProvider for CustomProvider {
             .as_deref()
             .map(|s| model.starts_with(s))
             .unwrap_or(false)
-            || self.config.default_for.iter().any(|s| s.as_str() == model)
     }
 }

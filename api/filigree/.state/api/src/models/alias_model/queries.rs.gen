@@ -280,6 +280,7 @@ pub async fn create_raw(
         &payload.model,
         &payload.provider,
         payload.api_key_name.as_ref(),
+        &payload.sort,
         &payload.alias_id as _,
     )
     .fetch_one(&mut *db)
@@ -306,6 +307,7 @@ pub async fn update(
         &payload.model as _,
         &payload.provider as _,
         payload.api_key_name.as_ref() as _,
+        &payload.sort as _,
         &payload.alias_id as _,
     )
     .fetch_optional(&mut *db)
@@ -377,6 +379,7 @@ pub async fn upsert_with_parent(
         &payload.model,
         &payload.provider,
         payload.api_key_name.as_ref(),
+        &payload.sort,
         &payload.alias_id as _,
     )
     .fetch_one(db)
@@ -406,6 +409,7 @@ pub async fn update_one_with_parent(
         &payload.model as _,
         &payload.provider as _,
         payload.api_key_name.as_ref(),
+        &payload.sort as _,
     )
     .execute(db)
     .await
@@ -434,7 +438,7 @@ pub async fn update_all_with_parent(
         let bindings = ValuesBuilder {
             first_parameter: 4,
             num_values: payload.len(),
-            num_columns: 2 + 4,
+            num_columns: 2 + 5,
         };
         let q = q.replace("__insertion_point_insert_values", &bindings.to_string());
 
@@ -453,6 +457,7 @@ pub async fn update_all_with_parent(
                 .bind(&p.model)
                 .bind(&p.provider)
                 .bind(p.api_key_name.as_ref())
+                .bind(&p.sort)
                 .bind(&p.alias_id)
         }
 

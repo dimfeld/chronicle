@@ -95,6 +95,7 @@ impl ChatModelProvider for TestProvider {
         }
 
         Ok(ProviderResponse {
+            model: options.body.model.clone().unwrap_or_default(),
             body: ChatResponse {
                 created: 1,
                 model: options.body.model.clone(),

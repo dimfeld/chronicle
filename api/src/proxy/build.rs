@@ -15,16 +15,13 @@ use crate::Error;
 pub async fn build_proxy(pool: PgPool) -> Result<Proxy, Report<Error>> {
     let aliases = load_aliases_from_database(&pool, "aliases", "alias_models")
         .await
-        .change_context(Error::BuildingProxy)
-        .attach_printable("Failed to load aliases from database")?;
+        .change_context(Error::BuildingProxy)?;
     let providers = load_providers_from_database(&pool, "custom_providers")
         .await
-        .change_context(Error::BuildingProxy)
-        .attach_printable("Failed to load custom providers from database")?;
-    let api_keys = load_api_key_configs_from_database(&pool, "api_keys")
+        .change_context(Error::BuildingProxy)?;
+    let api_keys = load_api_key_configs_from_database(&pool, "provider_api_keys")
         .await
-        .change_context(Error::BuildingProxy)
-        .attach_printable("Failed to load API keys from database")?;
+        .change_context(Error::BuildingProxy)?;
 
     Proxy::builder()
         .with_database(pool.clone())

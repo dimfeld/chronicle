@@ -59,6 +59,7 @@ CREATE TABLE alias_models (
   model text NOT NULL,
   provider text NOT NULL,
   api_key_name text,
+  sort integer NOT NULL,
   alias_id uuid NOT NULL REFERENCES aliases (id) ON DELETE CASCADE
 );
 

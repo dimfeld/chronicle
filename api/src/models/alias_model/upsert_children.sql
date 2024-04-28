@@ -7,6 +7,7 @@ INSERT INTO alias_models (
   model,
   provider,
   api_key_name,
+  sort,
   alias_id)
 VALUES
   __insertion_point_insert_values
@@ -16,6 +17,7 @@ ON CONFLICT (
     model = EXCLUDED.model,
     provider = EXCLUDED.provider,
     api_key_name = EXCLUDED.api_key_name,
+    sort = EXCLUDED.sort,
     alias_id = EXCLUDED.alias_id,
     updated_at = now()
   WHERE
@@ -29,5 +31,6 @@ ON CONFLICT (
     model,
     provider,
     api_key_name,
+    sort,
     alias_id,
     'owner' AS "_permission"

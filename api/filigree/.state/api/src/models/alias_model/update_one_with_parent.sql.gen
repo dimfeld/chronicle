@@ -14,6 +14,7 @@ SET
   model = $5,
   provider = $6,
   api_key_name = $7,
+  sort = $8,
   updated_at = now()
 FROM
   permissions

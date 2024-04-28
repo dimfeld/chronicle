@@ -19,6 +19,7 @@ pub struct AliasModel {
     pub model: String,
     pub provider: String,
     pub api_key_name: Option<String>,
+    pub sort: i32,
     pub alias_id: AliasId,
     pub _permission: ObjectPermission,
 }
@@ -63,6 +64,10 @@ impl AliasModel {
         None
     }
 
+    pub fn default_sort() -> i32 {
+        <i32 as Default>::default().into()
+    }
+
     pub fn default_alias_id() -> AliasId {
         <AliasId as Default>::default().into()
     }
@@ -80,6 +85,7 @@ impl Default for AliasModel {
             model: Self::default_model(),
             provider: Self::default_provider(),
             api_key_name: Self::default_api_key_name(),
+            sort: Self::default_sort(),
             alias_id: Self::default_alias_id(),
             _permission: ObjectPermission::Owner,
         }
@@ -91,7 +97,7 @@ impl Serialize for AliasModel {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("AliasModel", 9)?;
+        let mut state = serializer.serialize_struct("AliasModel", 10)?;
         state.serialize_field("id", &self.id)?;
         state.serialize_field("organization_id", &self.organization_id)?;
         state.serialize_field("updated_at", &self.updated_at)?;
@@ -99,6 +105,7 @@ impl Serialize for AliasModel {
         state.serialize_field("model", &self.model)?;
         state.serialize_field("provider", &self.provider)?;
         state.serialize_field("api_key_name", &self.api_key_name)?;
+        state.serialize_field("sort", &self.sort)?;
         state.serialize_field("alias_id", &self.alias_id)?;
         state.serialize_field("_permission", &self._permission)?;
         state.end()
@@ -112,6 +119,7 @@ pub struct AliasModelCreatePayloadAndUpdatePayload {
     pub model: String,
     pub provider: String,
     pub api_key_name: Option<String>,
+    pub sort: i32,
     pub alias_id: AliasId,
 }
 
@@ -139,6 +147,10 @@ impl AliasModelCreatePayloadAndUpdatePayload {
         None
     }
 
+    pub fn default_sort() -> i32 {
+        <i32 as Default>::default().into()
+    }
+
     pub fn default_alias_id() -> AliasId {
         <AliasId as Default>::default().into()
     }
@@ -151,6 +163,7 @@ impl Default for AliasModelCreatePayloadAndUpdatePayload {
             model: Self::default_model(),
             provider: Self::default_provider(),
             api_key_name: Self::default_api_key_name(),
+            sort: Self::default_sort(),
             alias_id: Self::default_alias_id(),
         }
     }

@@ -4,12 +4,11 @@ CREATE TABLE IF NOT EXISTS chronicle_custom_providers (
   name text,
   label text,
   url text NOT NULL,
-  token text,
-  token_env text,
+  api_key text,
+  api_key_source text,
   format jsonb NOT NULL,
   headers jsonb,
-  prefix text,
-  default_for jsonb
+  prefix text
 );
 
 CREATE TABLE IF NOT EXISTS chronicle_aliases (

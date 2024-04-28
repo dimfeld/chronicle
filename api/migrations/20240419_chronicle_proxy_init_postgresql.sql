@@ -1,12 +1,18 @@
 -- basic tables required for general proxy use
+CREATE TABLE IF NOT EXISTS chronicle_meta (
+  key text PRIMARY KEY,
+  value jsonb
+);
+
 INSERT INTO chronicle_meta (
   key,
   value)
 VALUES (
   'migration_version',
-  '1' ::jsonb);
+  '1' ::jsonb)
+ON CONFLICT DO NOTHING;
 
-CREATE TABLE chronicle_pricing_plans (
+CREATE TABLE IF NOT EXISTS chronicle_pricing_plans (
   id uuid PRIMARY KEY,
   provider uuid,
   start_date date,

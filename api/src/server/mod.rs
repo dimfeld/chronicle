@@ -313,13 +313,15 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
         .merge(crate::models::create_routes())
         .merge(crate::users::users::create_routes())
         .merge(crate::auth::create_routes())
-        .merge(crate::proxy::create_routes())
         // Return not found here so we don't run the other non-API fallbacks
         .fallback(|| async { Error::NotFound("Route") });
 
     let web_routes = crate::pages::create_routes();
 
-    let app = Router::new().nest("/api", api_routes).merge(web_routes);
+    let app = Router::new()
+        .nest("/api", api_routes)
+        .merge(web_routes)
+        .merge(crate::proxy::create_routes());
 
     let ServeFrontend {
         port: mut web_port,

@@ -98,7 +98,7 @@ pub struct ChatRequest {
     pub response_format: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<i64>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     // todo this should be a string or a vec
     pub stop: Vec<String>,
     // stream not supported yet
@@ -107,7 +107,7 @@ pub struct ChatRequest {
     pub temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_p: Option<f32>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     // todo need to look up the format here
     pub tools: Vec<()>,
     #[serde(skip_serializing_if = "Option::is_none")]

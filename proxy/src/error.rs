@@ -28,6 +28,6 @@ pub enum Error {
     ResultParseError,
     #[error("Failed to read configuration file")]
     ReadingConfig,
-    #[error("Failed to load provider profiles from the database")]
+    #[error("Failed to load from the database")]
     LoadingDatabase,
 }

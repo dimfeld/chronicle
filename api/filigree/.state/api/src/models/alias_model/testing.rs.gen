@@ -11,6 +11,7 @@ pub fn make_create_payload(i: usize) -> AliasModelCreatePayload {
         model: format!("Test object {i}"),
         provider: format!("Test object {i}"),
         api_key_name: (i > 1).then(|| format!("Test object {i}")),
+        sort: i as i32,
         alias_id: <AliasId as Default>::default(),
     }
 }
@@ -24,6 +25,7 @@ pub fn make_update_payload(i: usize) -> AliasModelUpdatePayload {
         model: format!("Test object {i}"),
         provider: format!("Test object {i}"),
         api_key_name: Some(format!("Test object {i}")),
+        sort: i as i32,
         alias_id: <AliasId as Default>::default(),
     }
 }
