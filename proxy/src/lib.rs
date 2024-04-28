@@ -58,23 +58,37 @@ impl Proxy {
             llm.retries,
             llm.rate_limited,
             llm.status_code,
+            llm.meta.application = options.metadata.application,
+            llm.meta.environment = options.metadata.environment,
+            llm.meta.organization_id = options.metadata.organization_id,
+            llm.meta.project_id = options.metadata.project_id,
+            llm.meta.user_id = options.metadata.user_id,
+            llm.meta.workflow_id = options.metadata.workflow_id,
+            llm.meta.workflow_name = options.metadata.workflow_name,
+            llm.meta.run_id = options.metadata.run_id,
+            llm.meta.step = options.metadata.step,
+            llm.meta.step_index = options.metadata.step_index,
+            llm.meta.extra = ?options.metadata.extra,
+            llm.meta.internal_organization_id = options.internal_metadata.organization_id,
+            llm.meta.internal_project_id = options.internal_metadata.project_id,
+            llm.meta.internal_user_id = options.internal_metadata.user_id,
             // The fields below are using the OpenLLMetry field names
             llm.vendor,
-            llm.request.tyoe,
-            llm.request.model,
+            llm.request.tyoe = "chat",
+            llm.request.model = body.model,
             llm.prompts,
-            llm.request.max_tokens,
+            llm.request.max_tokens = body.max_tokens,
             llm.response.model,
             llm.usage.prompt_tokens,
             llm.usage.completion_tokens,
             llm.usage.total_tokens,
             llm.completions,
-            llm.temperature,
-            llm.top_p,
-            llm.frequency_penalty,
-            llm.presence_penalty,
+            llm.temperature = body.temperature,
+            llm.top_p = body.top_p,
+            llm.frequency_penalty = body.frequency_penalty,
+            llm.presence_penalty = body.presence_penalty,
             llm.chat.stop_sequences,
-            llm.user,
+            llm.user = body.user,
         )
     )]
     pub async fn send(
@@ -83,17 +97,9 @@ impl Proxy {
         body: ChatRequest,
     ) -> Result<ChatResponse, Report<Error>> {
         let current_span = tracing::Span::current();
-        current_span.record("llm.request.tyoe", "chat");
-        current_span.record("llm.request.model", &body.model);
-        current_span.record("llm.request.max_tokens", body.max_tokens);
-        current_span.record("llm.temperature", body.temperature);
-        current_span.record("llm.top_p", body.top_p);
-        current_span.record("llm.frequency_penalty", body.frequency_penalty);
-        current_span.record("llm.presence_penalty", body.presence_penalty);
         if !body.stop.is_empty() {
             current_span.record("llm.chat.stop_sequences", body.stop.join(", "));
         }
-        current_span.record("llm.user", &body.user);
         current_span.record(
             "llm.prompts",
             body.messages
