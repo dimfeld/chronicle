@@ -393,7 +393,17 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
                             .and_then(|s| s.to_str().ok())
                             .unwrap_or("");
 
-                        tracing::info_span!("request", ?request_id, %method, %uri, route)
+                        let span = tracing::info_span!("request",
+                            request_id,
+                            http.host=host,
+                            http.method=%method,
+                            http.uri=%uri,
+                            http.route=route,
+                            http.status_code = tracing::field::Empty,
+                            error = tracing::field::Empty
+                        );
+
+                        span
                     })
                     .on_response(|res: &http::Response<_>, latency: Duration, span: &Span| {
                         let status = res.status();

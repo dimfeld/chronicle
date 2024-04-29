@@ -407,7 +407,7 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
                             .unwrap_or("");
 
                         let span = tracing::info_span!("request",
-                            ?request_id,
+                            request_id,
                             http.host=host,
                             http.method=%method,
                             http.uri=%uri,
