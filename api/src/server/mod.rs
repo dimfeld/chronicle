@@ -427,7 +427,7 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
                         }
 
                         tracing::info!(
-                            latency = format!("{} ms", latency.as_millis()),
+                            latency = %format!("{} ms", latency.as_millis()),
                             http.status_code = status.as_u16(),
                             "finished processing request"
                         );
