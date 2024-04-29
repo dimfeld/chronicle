@@ -28,7 +28,7 @@ use tower_http::{
     trace::{DefaultOnFailure, DefaultOnRequest, DefaultOnResponse, TraceLayer},
     ServiceBuilderExt,
 };
-use tracing::{event, Level};
+use tracing::{event, Level, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::{auth::ANON_USER_ID, error::Error, proxy::build::build_proxy};
@@ -398,23 +398,40 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
                             .get::<axum::extract::MatchedPath>()
                             .map(|matched_path| matched_path.as_str());
 
+                        let host = req.headers().get("host").and_then(|s| s.to_str().ok());
+
                         let request_id = req
                             .headers()
                             .get("X-Request-Id")
                             .and_then(|s| s.to_str().ok())
                             .unwrap_or("");
 
-
-                        let span = tracing::info_span!("request", ?request_id, http.method=%method, http.uri=%uri, app.route=route);
+                        let span = tracing::info_span!("request",
+                            ?request_id,
+                            http.host=host,
+                            http.method=%method,
+                            http.uri=%uri,
+                            http.route=route,
+                            http.status_code = tracing::field::Empty,
+                            error = tracing::field::Empty
+                        );
                         let context = extract_request_parent(req);
                         span.set_parent(context);
                         span
                     })
-                    .on_response(
-                        DefaultOnResponse::new()
-                            .level(Level::INFO)
-                            .latency_unit(tower_http::LatencyUnit::Millis),
-                    )
+                    .on_response(|res: &http::Response<_>, latency: Duration, span: &Span| {
+                        let status = res.status();
+                        span.record("http.status_code", status.as_u16());
+                        if status.is_client_error() || status.is_server_error() {
+                            span.record("error", "true");
+                        }
+
+                        tracing::info!(
+                            latency = format!("{} ms", latency.as_millis()),
+                            http.status_code = status.as_u16(),
+                            "finished processing request"
+                        );
+                    })
                     .on_request(DefaultOnRequest::new().level(Level::INFO))
                     .on_failure(DefaultOnFailure::new().level(Level::ERROR)),
             )

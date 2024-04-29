@@ -395,11 +395,19 @@ pub async fn create_server(config: Config) -> Result<Server, Report<Error>> {
 
                         tracing::info_span!("request", ?request_id, %method, %uri, route)
                     })
-                    .on_response(
-                        DefaultOnResponse::new()
-                            .level(Level::INFO)
-                            .latency_unit(tower_http::LatencyUnit::Millis),
-                    )
+                    .on_response(|res: &http::Response<_>, latency: Duration, span: &Span| {
+                        let status = res.status();
+                        span.record("http.status_code", status.as_u16());
+                        if status.is_client_error() || status.is_server_error() {
+                            span.record("error", "true");
+                        }
+
+                        tracing::info!(
+                            latency = format!("{} ms", latency.as_millis()),
+                            http.status_code = status.as_u16(),
+                            "finished processing request"
+                        );
+                    })
                     .on_request(DefaultOnRequest::new().level(Level::INFO))
                     .on_failure(DefaultOnFailure::new().level(Level::ERROR)),
             )
