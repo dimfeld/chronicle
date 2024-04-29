@@ -31,6 +31,7 @@ pub struct ChatMessage {
     pub role: String,
     /// Some providers support this natively. For those that don't, the name
     /// will be prepended to the message using the format "{name}: {content}".
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     // TODO add support for images.
     pub content: String,

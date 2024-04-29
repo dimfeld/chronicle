@@ -17,8 +17,8 @@ hosts = ["localhost"]
 framework = "htmx"
 
 [tracing]
-provider = "none"
-api_service_name = "chronicle-api"
+provider = "honeycomb"
+api_service_name = "chronicle"
 
 
 [formatter]

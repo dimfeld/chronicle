@@ -133,8 +133,8 @@ async fn serve(cmd: ServeCommand) -> Result<(), Report<Error>> {
 
     let tracing_config = filigree::tracing_config::create_tracing_config(
         "",
-        TracingProvider::None,
-        Some("chronicle-api".to_string()),
+        TracingProvider::Honeycomb,
+        Some("chronicle".to_string()),
         None,
     )
     .change_context(Error::ServerStart)?;

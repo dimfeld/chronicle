@@ -65,10 +65,13 @@ impl Proxy {
     /// `options.provider` can be used to choose a specific provider if the model is not an alias.
     /// `body["model"]` is used if options.model is empty.
     #[instrument(
-        skip(self),
+        name = "llm.send_request",
+        skip(self, options),
         fields(
             error,
+            llm.options=serde_json::to_string(&options).ok(),
             llm.item_id,
+            llm.finish_reason,
             llm.latency,
             llm.total_latency,
             llm.retries,
@@ -86,21 +89,24 @@ impl Proxy {
             llm.meta.step_index = options.metadata.step_index,
             llm.meta.prompt_id = options.metadata.prompt_id,
             llm.meta.prompt_version = options.metadata.prompt_version,
-            llm.meta.extra = ?options.metadata.extra,
+            llm.meta.extra = serde_json::to_string(&options.metadata.extra).ok(),
             llm.meta.internal_organization_id = options.internal_metadata.organization_id,
             llm.meta.internal_project_id = options.internal_metadata.project_id,
             llm.meta.internal_user_id = options.internal_metadata.user_id,
             // The fields below are using the OpenLLMetry field names
             llm.vendor,
-            llm.request.tyoe = "chat",
+            // This will work once https://github.com/tokio-rs/tracing/pull/2925 is merged
+            // llm.request.type = "chat",
             llm.request.model = body.model,
             llm.prompts,
+            llm.prompts.raw = serde_json::to_string(&body.messages).ok(),
             llm.request.max_tokens = body.max_tokens,
             llm.response.model,
             llm.usage.prompt_tokens,
             llm.usage.completion_tokens,
             llm.usage.total_tokens,
             llm.completions,
+            llm.completions.raw,
             llm.temperature = body.temperature,
             llm.top_p = body.top_p,
             llm.frequency_penalty = body.frequency_penalty,
@@ -118,7 +124,10 @@ impl Proxy {
         let current_span = tracing::Span::current();
         current_span.record("llm.item_id", id.to_string());
         if !body.stop.is_empty() {
-            current_span.record("llm.chat.stop_sequences", body.stop.join(", "));
+            current_span.record(
+                "llm.chat.stop_sequences",
+                serde_json::to_string(&body.stop).ok(),
+            );
         }
 
         let messages_field = if body.messages.len() > 1 {
@@ -181,12 +190,20 @@ impl Proxy {
                         .collect::<Vec<_>>()
                         .join("\n\n"),
                 );
+                current_span.record(
+                    "llm.completions.raw",
+                    serde_json::to_string(&response.body.choices).ok(),
+                );
                 current_span.record("llm.vendor", &response.provider);
                 current_span.record("llm.response.model", &response.body.model);
                 current_span.record("llm.latency", response.latency.as_millis());
                 current_span.record("llm.retries", response.num_retries);
                 current_span.record("llm.rate_limited", response.was_rate_limited);
                 current_span.record("llm.usage.prompt_tokens", response.body.usage.prompt_tokens);
+                current_span.record(
+                    "llm.finish_reason",
+                    response.body.choices.get(0).map(|c| &c.finish_reason),
+                );
                 current_span.record(
                     "llm.usage.completion_tokens",
                     response.body.usage.completion_tokens,
