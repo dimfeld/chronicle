@@ -183,7 +183,6 @@ impl Proxy {
 
         match &response {
             Ok(response) => {
-                current_span.record("error", false);
                 current_span.record(
                     "llm.completions",
                     response
@@ -235,9 +234,9 @@ impl Proxy {
                 }
             }
             Err(e) => {
-                tracing::error!(?e, "Request failed");
+                tracing::error!(error.full=?e.error, "Request failed");
 
-                current_span.record("error", true);
+                current_span.record("error", e.error.to_string());
                 current_span.record("llm.retries", e.num_retries);
                 current_span.record("llm.rate_limited", e.was_rate_limited);
 
