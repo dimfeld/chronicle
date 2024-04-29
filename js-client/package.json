@@ -9,9 +9,12 @@
   },
   "devDependencies": {
     "@types/node": "*",
-    "publint": "^0.2.7"
-  },
-  "peerDependencies": {
+    "publint": "^0.2.7",
     "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.8.0",
+    "@opentelemetry/core": "^1.24.0",
+    "openai": "^4"
   }
 }
