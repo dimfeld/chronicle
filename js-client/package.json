@@ -1,12 +1,19 @@
 {
   "name": "chronicle-proxy",
-  "module": "src/index.ts",
+  "module": "dist/index.js",
   "license": "Apache-2.0",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "build": "rm -rf dist && tsc",
+    "build": "rm -rf dist && tsc && publint",
     "dev": "tsc --watch"
   },
+  "files": ["dist", "package.json"],
   "devDependencies": {
     "@types/node": "*",
     "publint": "^0.2.7",
