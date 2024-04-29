@@ -1,0 +1,17 @@
+{
+  "name": "chronicle-proxy",
+  "module": "src/index.ts",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "rm -rf dist && tsc",
+    "dev": "tsc --watch"
+  },
+  "devDependencies": {
+    "@types/node": "*",
+    "publint": "^0.2.7"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
