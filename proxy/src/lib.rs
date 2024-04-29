@@ -89,7 +89,7 @@ impl Proxy {
             llm.meta.step_index = options.metadata.step_index,
             llm.meta.prompt_id = options.metadata.prompt_id,
             llm.meta.prompt_version = options.metadata.prompt_version,
-            llm.meta.extra = serde_json::to_string(&options.metadata.extra).ok(),
+            llm.meta.extra,
             llm.meta.internal_organization_id = options.internal_metadata.organization_id,
             llm.meta.internal_project_id = options.internal_metadata.project_id,
             llm.meta.internal_user_id = options.internal_metadata.user_id,
@@ -128,6 +128,10 @@ impl Proxy {
                 "llm.chat.stop_sequences",
                 serde_json::to_string(&body.stop).ok(),
             );
+        }
+
+        if let Some(extra) = options.metadata.extra.as_ref().filter(|e| !e.is_empty()) {
+            current_span.record("llm.meta.extra", &serde_json::to_string(extra).ok());
         }
 
         let messages_field = if body.messages.len() > 1 {
