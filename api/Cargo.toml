@@ -8,6 +8,7 @@ authors.workspace = true
 readme.workspace = true
 repository.workspace = true
 keywords.workspace = true
+documentation = "https://docs.rs/chronicle-api"
 
 [[bin]]
 name = "chronicle"
