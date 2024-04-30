@@ -1,7 +1,9 @@
 import type * as openai from 'openai';
 
 /** A chat request. This is the same as the arguments to OpenAI's chat.completions.create function. */
-export type ChronicleChatRequest = openai.OpenAI.Chat.ChatCompletionCreateParamsNonStreaming;
+export type ChronicleChatRequest = openai.OpenAI.Chat.ChatCompletionCreateParamsNonStreaming & {
+  max_tokens: number;
+};
 
 export interface ChronicleModelAndProvider {
   /** The model to use */
@@ -121,15 +123,19 @@ export interface ChronicleRequestOptions {
      x-chronicle-retry HTTP header. */
   retry?: ChronicleRetryOptions;
 
-  meta?: ChronicleRequestMetadata;
+  metadata?: ChronicleRequestMetadata;
 
   /** An AbortSignal for this request */
   signal?: AbortSignal;
 }
 
 export interface ChronicleResponseMeta {
-  /** A UUID linked to the logged information about the request. */
+  /** A UUID assigned by Chronicle to the request, which is linked to the logged information.
+     This is different from the `id` returned at the top level of the `ChronicleChatResponse`, which
+     comes from the provider itself. */
   id: string;
+  /** Which provider was useed for the request. */
+  provider: string;
   /** Any provider-specific metadata returned from the provider that doesn't fit in with
    * the regular fields. */
   response_meta?: object;

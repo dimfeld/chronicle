@@ -1,4 +1,4 @@
-import { defaultUrl, propagateSpan } from './internal.js';
+import { proxyUrl, propagateSpan } from './internal.js';
 import type {
   ChronicleChatRequest,
   ChronicleChatResponse,
@@ -24,11 +24,9 @@ export type ChronicleClient = (
 ) => Promise<ChronicleChatResponse>;
 
 /** Create a Chronicle proxy client. This returns a function which will call the Chronicle proxy */
-export function createChronicleClient(options: ChronicleClientOptions): ChronicleClient {
-  let { fetch = globalThis.fetch, url, token, defaults = {} } = options;
-  if (!url) {
-    url = defaultUrl();
-  }
+export function createChronicleClient(options?: ChronicleClientOptions): ChronicleClient {
+  let { fetch = globalThis.fetch, token, defaults = {} } = options ?? {};
+  let url = proxyUrl(options?.url);
 
   return async (
     chat: ChronicleChatRequest & Partial<ChronicleRequestOptions>,
@@ -40,6 +38,11 @@ export function createChronicleClient(options: ChronicleClientOptions): Chronicl
       ...defaults,
       ...chat,
       ...reqOptions,
+      metadata: {
+        ...defaults.metadata,
+        ...chat.metadata,
+        ...reqOptions.metadata,
+      },
     };
 
     let req = new Request(url, {
@@ -58,12 +61,29 @@ export function createChronicleClient(options: ChronicleClientOptions): Chronicl
     propagateSpan(req);
 
     let res = await fetch(req);
-    let responseBody = await res.json();
     if (res.ok) {
-      return responseBody as ChronicleChatResponse;
+      return (await res.json()) as ChronicleChatResponse;
     } else {
+      let message = '';
+      const err = await res.text();
+      try {
+        const { error } = JSON.parse(err);
+
+        let errorBody = error?.details.body;
+        if (errorBody?.error) {
+          errorBody = errorBody.error;
+        }
+
+        if (errorBody) {
+          message = typeof errorBody === 'string' ? errorBody : JSON.stringify(errorBody);
+        }
+      } catch (e) {
+        message = err;
+      }
+
+      console.error(err);
       // TODO The api returns a bunch of other error details, so integrate them here.
-      throw new Error(responseBody?.error?.message || 'An error occurred');
+      throw new Error(message || 'An error occurred');
     }
   };
 }

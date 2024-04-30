@@ -13,6 +13,11 @@ export function propagateSpan(req: Request) {
   propagator.inject(context.active(), req, setter);
 }
 
-export function defaultUrl() {
-  return process.env.CHRONICLE_PROXY_URL || 'http://localhost:9782';
+export function proxyUrl(configured?: string) {
+  let url = new URL(configured || process.env.CHRONICLE_PROXY_URL || 'http://localhost:9782');
+  if (url.pathname.length <= 1) {
+    url.pathname = '/chat';
+  }
+
+  return url;
 }

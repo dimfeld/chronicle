@@ -1,13 +1,13 @@
 /** Functions for wrapping the OpenAI SDK client */
 
 import { ChronicleClientOptions } from './client.js';
-import { defaultUrl, propagateSpan } from './internal.js';
+import { proxyUrl, propagateSpan } from './internal.js';
 
 /** Return a custom fetch function that calls Chronicle instead. This can be passed to
  * the OpenAI client's `fetch` parameter. */
 export function fetchChronicle(options?: ChronicleClientOptions) {
   let thisFetch = options?.fetch ?? globalThis.fetch;
-  const url = `${options?.url ?? defaultUrl()}/chat`;
+  const url = proxyUrl(options?.url);
   const { token, defaults } = options ?? {};
 
   const headers = [
@@ -20,43 +20,34 @@ export function fetchChronicle(options?: ChronicleClientOptions) {
     ['x-chronicle-random-choice', defaults?.random_choice],
     ['x-chronicle-retry', JSON.stringify(defaults?.retry)],
     ['x-chronicle-timeout', defaults?.timeout],
-    ['x-chronicle-application', defaults?.meta?.application],
-    ['x-chronicle-environment', defaults?.meta?.environment],
-    ['x-chronicle-organization-id', defaults?.meta?.organization_id],
-    ['x-chronicle-project-id', defaults?.meta?.project_id],
-    ['x-chronicle-user-id', defaults?.meta?.user_id],
-    ['x-chronicle-workflow-id', defaults?.meta?.workflow_id],
-    ['x-chronicle-workflow-name', defaults?.meta?.workflow_name],
-    ['x-chronicle-run-id', defaults?.meta?.run_id],
-    ['x-chronicle-step', defaults?.meta?.step],
-    ['x-chronicle-step-index', defaults?.meta?.step_index],
-    ['x-chronicle-prompt-id', defaults?.meta?.prompt_id],
-    ['x-chronicle-prompt-version', defaults?.meta?.prompt_version],
-    ['x-chronicle-extra-meta', JSON.stringify(defaults?.meta?.extra)],
+    ['x-chronicle-application', defaults?.metadata?.application],
+    ['x-chronicle-environment', defaults?.metadata?.environment],
+    ['x-chronicle-organization-id', defaults?.metadata?.organization_id],
+    ['x-chronicle-project-id', defaults?.metadata?.project_id],
+    ['x-chronicle-user-id', defaults?.metadata?.user_id],
+    ['x-chronicle-workflow-id', defaults?.metadata?.workflow_id],
+    ['x-chronicle-workflow-name', defaults?.metadata?.workflow_name],
+    ['x-chronicle-run-id', defaults?.metadata?.run_id],
+    ['x-chronicle-step', defaults?.metadata?.step],
+    ['x-chronicle-step-index', defaults?.metadata?.step_index],
+    ['x-chronicle-prompt-id', defaults?.metadata?.prompt_id],
+    ['x-chronicle-prompt-version', defaults?.metadata?.prompt_version],
+    ['x-chronicle-extra-meta', JSON.stringify(defaults?.metadata?.extra)],
   ]
     .filter(([_, v]) => v !== undefined)
     .map(([k, v]) => [k, v!.toString()]) as [string, string][];
 
-  const setOverrideUrl = !defaults?.override_url;
-  const setProvider = !defaults?.provider;
-
   return async function (requestInfo: RequestInfo, init?: RequestInit) {
-    let req = new Request(url, init);
+    // First just coalesce requestInfo and init into a single request
+    let req = new Request(requestInfo, init);
+    // If Chronicle updates to support other types of endpoints then we should look at the URL to decide
+    // which endpoint it's trying to call.
+    req = new Request(url, req);
+
     propagateSpan(req);
 
     for (const [k, v] of headers) {
       req.headers.set(k, v);
-    }
-
-    if (setOverrideUrl) {
-      req.headers.set(
-        'x-chronicle-override-url',
-        typeof requestInfo === 'string' ? requestInfo : requestInfo.url
-      );
-    }
-
-    if (setProvider) {
-      req.headers.set('x-chronicle-provider', 'openai');
     }
 
     if (token) {
