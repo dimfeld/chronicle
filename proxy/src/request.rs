@@ -5,6 +5,7 @@ use bytes::Bytes;
 use error_stack::{Report, ResultExt};
 use rand::Rng;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_with::{serde_as, DurationMilliSeconds};
 use tracing::instrument;
 
 use crate::{
@@ -14,58 +15,98 @@ use crate::{
     Error,
 };
 
+#[serde_as]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RetryOptions {
     /// How long to wait after the first failure.
     /// The default value is 200ms.
+    #[serde_as(as = "DurationMilliSeconds")]
+    #[serde(default = "default_initial_backoff")]
     initial_backoff: Duration,
 
     /// How to increase the backoff duration as additional retries occur. The default value
     /// is an exponential backoff with a multiplier of `2.0`.
+    #[serde(default)]
     increase: RepeatBackoffBehavior,
 
     /// The number of times to try the request, including the first try.
     /// Defaults to 4.
+    #[serde(default = "default_max_tries")]
     max_tries: u32,
 
     /// Maximum amount of jitter to add. The added jitter will be a random value between 0 and this
     /// value.
     /// Defaults to 100ms.
+    #[serde_as(as = "DurationMilliSeconds")]
+    #[serde(default = "default_jitter")]
     jitter: Duration,
 
     /// Never wait more than this amount of time. The behavior of this flag may be modified by the
     /// `fail_if_rate_limit_exceeds_max_backoff` flag.
+    #[serde_as(as = "DurationMilliSeconds")]
+    #[serde(default = "default_max_backoff")]
     max_backoff: Duration,
 
     /// If a rate limit response asks to wait longer than the `max_backoff`, then stop retrying.
     /// Otherwise it will wait for the requested time even if it is longer than max_backoff.
     /// Defaults to true.
+    #[serde(default = "true_t")]
     fail_if_rate_limit_exceeds_max_backoff: bool,
 }
 
 impl Default for RetryOptions {
     fn default() -> Self {
         Self {
-            initial_backoff: Duration::from_millis(200),
-            increase: RepeatBackoffBehavior::Exponential { multiplier: 2.0 },
-            max_backoff: Duration::from_millis(5000),
-            max_tries: 4,
-            jitter: Duration::from_millis(100),
+            initial_backoff: default_initial_backoff(),
+            increase: RepeatBackoffBehavior::default(),
+            max_backoff: default_max_backoff(),
+            max_tries: default_max_tries(),
+            jitter: default_jitter(),
             fail_if_rate_limit_exceeds_max_backoff: true,
         }
     }
 }
 
+const fn default_max_tries() -> u32 {
+    4
+}
+
+const fn default_initial_backoff() -> Duration {
+    Duration::from_millis(200)
+}
+
+const fn default_jitter() -> Duration {
+    Duration::from_millis(100)
+}
+
+const fn default_max_backoff() -> Duration {
+    Duration::from_millis(5000)
+}
+
+const fn true_t() -> bool {
+    true
+}
+
 /// How to increase the backoff duration as additional retries occur.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-#[serde(tag = "type")]
+#[serde_as]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum RepeatBackoffBehavior {
     /// Use the initial backoff duration for additional retries as well.
     Constant,
     /// Add this duration to the backoff duration after each retry.
-    Additive { amount: Duration },
+    Additive {
+        #[serde_as(as = "DurationMilliSeconds")]
+        amount: Duration,
+    },
     /// Multiply the backoff duration by this value after each retry.
     Exponential { multiplier: f64 },
+}
+
+impl Default for RepeatBackoffBehavior {
+    fn default() -> Self {
+        Self::Exponential { multiplier: 2.0 }
+    }
 }
 
 impl RepeatBackoffBehavior {
@@ -346,6 +387,7 @@ mod test {
                 random_order: false,
                 choices,
             },
+            None,
             RetryOptions::default(),
             Duration::from_secs(5),
             ChatRequest {

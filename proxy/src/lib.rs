@@ -22,6 +22,7 @@ use provider_lookup::ProviderLookup;
 use providers::ChatModelProvider;
 use request::RetryOptions;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde_with::{serde_as, DurationMilliSeconds};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -31,6 +32,7 @@ pub type AnyChatModelProvider = Arc<dyn ChatModelProvider>;
 
 #[derive(Debug, Serialize)]
 pub struct ProxiedChatResponseMeta {
+    /// A UUID linked to the logged information about the request.
     pub id: Uuid,
     pub response_meta: Option<serde_json::Value>,
     pub was_rate_limited: bool,
@@ -331,29 +333,45 @@ pub struct ModelAndProvider {
     pub api_key_name: Option<String>,
 }
 
+#[serde_as]
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ProxyRequestOptions {
     /// Override the model from the request body or select an alias.
+    /// This can also be set by passing the x-chronicle-model HTTP header.
     pub model: Option<String>,
-    /// Override the provider from the request body
+    /// Choose a specific provider to use. This can also be set by passing the
+    /// x-chronicle-provider HTTP header.
     pub provider: Option<String>,
-    /// Override the URL that the provider will call
+    /// Force the provider to use a specific URL instead of its default. This can also be set
+    /// by passing the x-chronicle-override-url HTTP header.
     pub override_url: Option<String>,
-    /// An API key to use
+    /// An API key to pass to the provider. This can also be set by passing the
+    /// x-chronicle-provider-api-key HTTP header.
     pub api_key: Option<String>,
     /// Supply multiple provider/model choices, which will be tried in order.
     /// If this is provided, the `model`, `provider`, and `api_key` fields are ignored.
     /// This field can not reference model aliases.
+    /// This can also be set by passing the x-chronicle-models HTTP header using JSON syntax.
     #[serde(default)]
     pub models: Vec<ModelAndProvider>,
     /// When using `models` to supply multiple choices, start at a random choice instead of the
     /// first one.
+    /// This can also be set by passing the x-chronicle-random-choice HTTP header.
     pub random_choice: Option<bool>,
+    #[serde_as(as = "Option<DurationMilliSeconds>")]
+    /// Customize the proxy's timeout when waiting for the request.
+    /// This can also be set by passing the x-chronicle-timeout HTTP header.
     pub timeout: Option<std::time::Duration>,
+    /// Customize the retry behavior. This can also be set by passing the
+    /// x-chronicle-retry HTTP header.
     pub retry: Option<RetryOptions>,
 
+    /// Metadata to record for the request
     #[serde(default)]
     pub metadata: ProxyRequestMetadata,
+
+    /// Internal user authentication metadata for the request. This can be useful if you have a
+    /// different set of internal users and organizations than what gets recorded in `metadata`.
     #[serde(skip, default)]
     pub internal_metadata: ProxyRequestInternalMetadata,
 }
@@ -415,32 +433,46 @@ pub struct ProxyRequestInternalMetadata {
 /// fields are optional, and the `extra` field can be used to add anything else that useful
 /// for your use case.
 pub struct ProxyRequestMetadata {
-    /// The application making this call
+    /// The application making this call. This can also be set by passing the
+    /// x-chronicle-application HTTP header.
     pub application: Option<String>,
-    /// The environment the application is running in
+    /// The environment the application is running in. This can also be set by passing the
+    /// x-chronicle-environment HTTP header.
     pub environment: Option<String>,
-    /// The organization related to the request
+    /// The organization related to the request. This can also be set by passing the
+    /// x-chronicle-organization-id HTTP header.
     pub organization_id: Option<String>,
-    /// The project related to the request
+    /// The project related to the request. This can also be set by passing the
+    /// x-chronicle-project-id HTTP header.
     pub project_id: Option<String>,
-    /// The id of the user that triggered the request
+    /// The id of the user that triggered the request. This can also be set by passing the
+    /// x-chronicle-user-id HTTP header.
     pub user_id: Option<String>,
-    /// The id of the workflow that this request belongs to
+    /// The id of the workflow that this request belongs to. This can also be set by passing the
+    /// x-chronicle-workflow-id HTTP header.
     pub workflow_id: Option<String>,
-    /// A readable name of the workflow that this request belongs to
+    /// A readable name of the workflow that this request belongs to. This can also be set by
+    /// passing the x-chronicle-workflow-name HTTP header.
     pub workflow_name: Option<String>,
-    /// The id of of the specific run that this request belongs to.
+    /// The id of of the specific run that this request belongs to. This can also be set by
+    /// passing the x-chronicle-run-id HTTP header.
     pub run_id: Option<String>,
-    /// The name of the workflow step
+    /// The name of the workflow step. This can also be set by passing the
+    /// x-chronicle-step HTTP header.
     pub step: Option<String>,
-    /// The index of the step within the workflow.
+    /// The index of the step within the workflow. This can also be set by passing the
+    /// x-chronicle-step-index HTTP header.
     pub step_index: Option<u32>,
-    /// A unique ID for this prompt
+    /// A unique ID for this prompt. This can also be set by passing the
+    /// x-chronicle-prompt-id HTTP header.
     pub prompt_id: Option<String>,
-    /// The version of this prompt
+    /// The version of this prompt. This can also be set by passing the
+    /// x-chronicle-prompt-version HTTP header.
     pub prompt_version: Option<u32>,
 
-    /// Any other metadata to include.
+    /// Any other metadata to include. When passing this in the request body, any unknown fields
+    /// are collected here. This can also be set by passing a JSON object to the
+    /// x-chronicle-extra-meta HTTP header.
     #[serde(flatten)]
     pub extra: Option<serde_json::Map<String, serde_json::Value>>,
 }
