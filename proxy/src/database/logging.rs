@@ -87,165 +87,79 @@ async fn write_batch(pool: &Pool, items: Vec<ProxyLogEntry>) {
          total_latency_ms, created_at) VALUES\n",
     );
 
-    for (i, item) in items.into_iter().enumerate() {
-        let id = item.id;
-        let organization_id = EscapedNullable(item.options.internal_metadata.organization_id);
-        let project_id = EscapedNullable(item.options.internal_metadata.project_id);
-        let user_id = EscapedNullable(item.options.internal_metadata.user_id);
-
-        let chat_request = Escaped(serde_json::to_string(&item.request).unwrap_or_default());
-        let chat_response = EscapedNullable(
-            item.response
-                .as_ref()
-                .and_then(|r| serde_json::to_string(&r.body).ok()),
-        );
-        let error = EscapedNullable(item.error.map(|e| format!("{:?}", e)));
-        let provider = EscapedNullable(item.response.as_ref().map(|r| r.provider.clone()));
-        let model = Escaped(
-            item.response
-                .as_ref()
-                .and_then(|r| r.body.model.clone())
-                .or(item.request.model)
-                .unwrap_or_default(),
-        );
-        let application = EscapedNullable(item.options.metadata.application);
-        let environment = EscapedNullable(item.options.metadata.environment);
-        let request_organization_id = EscapedNullable(item.options.metadata.organization_id);
-        let request_project_id = EscapedNullable(item.options.metadata.project_id);
-        let request_user_id = EscapedNullable(item.options.metadata.user_id);
-        let workflow_id = EscapedNullable(item.options.metadata.workflow_id);
-        let workflow_name = EscapedNullable(item.options.metadata.workflow_name);
-        let run_id = EscapedNullable(item.options.metadata.run_id);
-        let step = EscapedNullable(item.options.metadata.step);
-        let step_index = Nullable(item.options.metadata.step_index);
-        let prompt_id = EscapedNullable(item.options.metadata.prompt_id);
-        let prompt_version = Nullable(item.options.metadata.prompt_version);
-        let extra_meta = EscapedNullable(
-            item.options
-                .metadata
-                .extra
-                .and_then(|m| serde_json::to_string(&m).ok()),
-        );
-        let response_meta = EscapedNullable(
-            item.response
-                .as_ref()
-                .and_then(|r| r.meta.as_ref())
-                .and_then(|meta| serde_json::to_string(&meta).ok()),
-        );
-        let retries = item.num_retries;
-        let rate_limited = item.was_rate_limited;
-        let request_latency_ms = Nullable(item.response.map(|r| r.latency.as_millis() as u64));
-        let total_latency_ms = item.total_latency.as_millis() as u64;
-        let created_at = super::any_layer::timestamp_value(&item.timestamp);
-
+    for i in 0..items.len() {
         if i > 0 {
             query.push_str(",\n");
         }
 
-        write!(
-            query,
-            "(
-                '{id}'::uuid, {organization_id}, {project_id}, {user_id},
-                {chat_request}, {chat_response}, {error}, {provider},
-                {model}, {application}, {environment},
-                {request_organization_id}, {request_project_id}, {request_user_id},
-                {workflow_id}, {workflow_name}, {run_id}, {step}, {step_index},
-                {prompt_id}, {prompt_version},
-                {extra_meta}, {response_meta}, {retries}, {rate_limited},
-                {request_latency_ms}, {total_latency_ms}, {created_at}
-            )"
-        )
-        .ok();
+        let base_param = i * 28 + 1;
+        query.push_str("($");
+        query.push_str(&base_param.to_string());
+        for param in (base_param + 1)..(base_param + 28) {
+            query.push_str(",$");
+            query.push_str(&param.to_string());
+        }
+        query.push(')');
     }
 
-    let result = sqlx::query(&query).execute(pool).await;
+    let mut query = sqlx::query(&query);
+
+    for item in items.into_iter() {
+        let (rmodel, rprovider, rbody, rmeta, rlatency) = match item.response.map(|r| {
+            (
+                r.body.model.clone(),
+                r.provider,
+                r.body,
+                r.meta,
+                r.latency.as_millis() as i64,
+            )
+        }) {
+            Some((rmodel, rprovider, rbody, rmeta, rlatency)) => {
+                (rmodel, Some(rprovider), Some(rbody), rmeta, Some(rlatency))
+            }
+            None => (None, None, None, None, None),
+        };
+
+        let model = rmodel
+            .or_else(|| item.request.model.clone())
+            .unwrap_or_default();
+
+        let extra = item.options.metadata.extra.filter(|m| !m.is_empty());
+
+        query = query
+            .bind(item.id)
+            .bind(item.options.internal_metadata.organization_id)
+            .bind(item.options.internal_metadata.project_id)
+            .bind(item.options.internal_metadata.user_id)
+            .bind(sqlx::types::Json(item.request))
+            .bind(sqlx::types::Json(rbody))
+            .bind(sqlx::types::Json(item.error))
+            .bind(rprovider)
+            .bind(model)
+            .bind(item.options.metadata.application)
+            .bind(item.options.metadata.environment)
+            .bind(item.options.metadata.organization_id)
+            .bind(item.options.metadata.project_id)
+            .bind(item.options.metadata.user_id)
+            .bind(item.options.metadata.workflow_id)
+            .bind(item.options.metadata.workflow_name)
+            .bind(item.options.metadata.run_id)
+            .bind(item.options.metadata.step)
+            .bind(item.options.metadata.step_index.map(|i| i as i32))
+            .bind(item.options.metadata.prompt_id)
+            .bind(item.options.metadata.prompt_version.map(|i| i as i32))
+            .bind(sqlx::types::Json(extra))
+            .bind(rmeta)
+            .bind(item.num_retries as i32)
+            .bind(item.was_rate_limited)
+            .bind(rlatency)
+            .bind(item.total_latency.as_millis() as i64)
+            .bind(item.timestamp);
+    }
+
+    let result = query.execute(pool).await;
 
     if let Err(e) = result {
         tracing::error!(error = ?e, "Failed to write logs to database");
-    }
-}
-
-pub(super) struct Escaped<T: AsRef<str>>(pub T);
-
-impl<T: AsRef<str>> std::fmt::Display for Escaped<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_char('\'')?;
-
-        let mut segments = self.0.as_ref().split('\'');
-        if let Some(c) = segments.next() {
-            f.write_str(c)?;
-        }
-        for c in segments {
-            f.write_char('\'')?;
-            f.write_char('\'')?;
-            f.write_str(c)?;
-        }
-
-        f.write_char('\'')?;
-        Ok(())
-    }
-}
-
-struct EscapedNullable<T: AsRef<str>>(Option<T>);
-
-impl<T: AsRef<str>> std::fmt::Display for EscapedNullable<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(value) = self.0.as_ref() {
-            Escaped(value).fmt(f)
-        } else {
-            f.write_str("NULL")
-        }
-    }
-}
-
-// The UpperExp bound is an easy way to ensure that you can only pass in a number.
-struct Nullable<T: Display + std::fmt::UpperExp>(Option<T>);
-
-impl<T: Display + std::fmt::UpperExp> std::fmt::Display for Nullable<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(value) = self.0.as_ref() {
-            std::fmt::Display::fmt(value, f)
-        } else {
-            f.write_str("NULL")
-        }
-    }
-}
-
-fn nullable_bool(value: Option<bool>) -> &'static str {
-    value
-        .map(|b| if b { "true" } else { "false" })
-        .unwrap_or("NULL")
-}
-
-#[cfg(test)]
-mod test {
-    use super::{Escaped, EscapedNullable, Nullable};
-
-    #[test]
-    fn escaped() {
-        assert_eq!(Escaped("foo").to_string(), "'foo'");
-        assert_eq!(Escaped("foo'bar").to_string(), "'foo''bar'");
-        assert_eq!(Escaped("foo''bar").to_string(), "'foo''''bar'");
-        assert_eq!(Escaped("foo''bar'").to_string(), "'foo''''bar'''");
-        assert_eq!(Escaped("foobar'").to_string(), "'foobar'''");
-        assert_eq!(Escaped("foobar''").to_string(), "'foobar'''''");
-        assert_eq!(Escaped("'foobar").to_string(), "'''foobar'");
-
-        assert_eq!(EscapedNullable::<String>(None).to_string(), "NULL");
-        assert_eq!(EscapedNullable(Some("foo")).to_string(), "'foo'");
-        assert_eq!(EscapedNullable(Some("foo'bar")).to_string(), "'foo''bar'");
-    }
-
-    #[test]
-    fn nullable() {
-        assert_eq!(Nullable::<i32>(None).to_string(), "NULL");
-        assert_eq!(Nullable::<i32>(Some(3)).to_string(), "3");
-    }
-
-    #[test]
-    fn nullable_bool() {
-        assert_eq!(super::nullable_bool(None), "NULL");
-        assert_eq!(super::nullable_bool(Some(true)), "true");
-        assert_eq!(super::nullable_bool(Some(false)), "false");
     }
 }

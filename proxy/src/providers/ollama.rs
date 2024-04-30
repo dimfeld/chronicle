@@ -144,7 +144,7 @@ struct OllamaModelOptions {
     top_p: Option<f32>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     stop: Vec<String>,
-    num_predict: u32,
+    num_predict: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     frequency_penalty: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]

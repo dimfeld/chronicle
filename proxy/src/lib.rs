@@ -32,8 +32,12 @@ pub type AnyChatModelProvider = Arc<dyn ChatModelProvider>;
 
 #[derive(Debug, Serialize)]
 pub struct ProxiedChatResponseMeta {
-    /// A UUID linked to the logged information about the request.
+    /// A UUID assigned by Chronicle to the request, which is linked to the logged information.
+    /// This is different from the `id` returned at the top level of the [ChatResponse], which
+    /// comes from the provider itself.
     pub id: Uuid,
+    /// Which provider was used for the request.
+    pub provider: String,
     pub response_meta: Option<serde_json::Value>,
     pub was_rate_limited: bool,
 }
@@ -269,6 +273,7 @@ impl Proxy {
                 response: r.body,
                 meta: ProxiedChatResponseMeta {
                     id,
+                    provider: r.provider,
                     response_meta: r.meta,
                     was_rate_limited: r.was_rate_limited,
                 },

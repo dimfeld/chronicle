@@ -8,7 +8,6 @@ use crate::{
     Error,
 };
 
-mod any_layer;
 pub mod logging;
 #[cfg(feature = "migrations")]
 pub mod migrations;
