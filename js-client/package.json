@@ -1,17 +1,27 @@
 {
   "name": "chronicle-proxy",
-  "module": "src/index.ts",
+  "module": "dist/index.js",
   "license": "Apache-2.0",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "build": "rm -rf dist && tsc",
+    "build": "rm -rf dist && tsc && publint",
     "dev": "tsc --watch"
   },
+  "files": ["dist", "package.json"],
   "devDependencies": {
     "@types/node": "*",
-    "publint": "^0.2.7"
-  },
-  "peerDependencies": {
+    "publint": "^0.2.7",
     "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@opentelemetry/api": "^1.8.0",
+    "@opentelemetry/core": "^1.24.0",
+    "openai": "^4"
   }
 }
