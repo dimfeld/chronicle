@@ -6,12 +6,15 @@ members = [
 resolver = "2"
 
 [workspace.package]
-authors = ["Daniel Imfeld"]
+authors = ["Daniel Imfeld <dimfeld>"]
 license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/dimfeld/chronicle"
+keywords = ["llm", "proxy", "logging", "observability"]
 
 [workspace.dependencies]
-# filigree = { version = "0.1.0", features = ["htmx", "maud", "watch-manifest"] }
-filigree = { "path" = "../filigree/filigree", features = ["htmx", "maud", "watch-manifest", "tracing"] }
+filigree = { version = "0.1.2", features = ["htmx", "maud", "watch-manifest"] }
+# filigree = { "path" = "../filigree/filigree", features = ["htmx", "maud", "watch-manifest", "tracing"] }
 
 [profile.dev.package.maud_macros]
 opt-level = 3

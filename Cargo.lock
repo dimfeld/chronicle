@@ -1205,7 +1205,9 @@ dependencies = [
 
 [[package]]
 name = "filigree"
-version = "0.1.1"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "12c289c66815b38011b8a542222d730935e289521a3eafa916cc2cf454e6e9a9"
 dependencies = [
  "argon2",
  "async-trait",

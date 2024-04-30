@@ -2,7 +2,12 @@
 name = "chronicle-api"
 version = "0.1.0"
 edition = "2021"
-license = "Apache-2.0"
+description = "LLM Provider Abstraction and Logging"
+license.workspace = true
+authors.workspace = true
+readme.workspace = true
+repository.workspace = true
+keywords.workspace = true
 
 [[bin]]
 name = "chronicle"

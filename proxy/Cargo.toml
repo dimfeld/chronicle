@@ -2,8 +2,13 @@
 name = "chronicle-proxy"
 version = "0.1.0"
 edition = "2021"
-description = "LLM Abstraction and Logging"
-license = "Apache-2.0"
+description = "LLM Provider Abstraction and Logging"
+documentation = "https://docs.rs/chronicle-proxy"
+license.workspace = true
+authors.workspace = true
+readme.workspace = true
+repository.workspace = true
+keywords.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
