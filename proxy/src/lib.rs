@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Debug, sync::Arc, time::Duration};
+use std::{borrow::Cow, fmt::Debug, str::FromStr, sync::Arc, time::Duration};
 
 pub mod builder;
 pub mod config;
@@ -15,12 +15,13 @@ use builder::ProxyBuilder;
 use config::{AliasConfig, ApiKeyConfig};
 use database::logging::ProxyLogEntry;
 pub use error::Error;
-use error_stack::Report;
+use error_stack::{Report, ResultExt};
 use format::{ChatRequest, ChatResponse};
+use http::HeaderMap;
 use provider_lookup::ProviderLookup;
 use providers::ChatModelProvider;
 use request::RetryOptions;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use tracing::instrument;
 use uuid::Uuid;
 
@@ -163,11 +164,13 @@ impl Proxy {
 
         tracing::info!(?body, "Starting request");
 
+        let retry = options.retry.clone().unwrap_or_default();
+
         let timestamp = chrono::Utc::now();
         let send_start = tokio::time::Instant::now();
         let response = try_model_choices(
             models,
-            options.retry.clone(),
+            retry,
             options
                 .timeout
                 .or(self.default_timeout)
@@ -327,7 +330,7 @@ pub struct ModelAndProvider {
     pub api_key_name: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct ProxyRequestOptions {
     /// Override the model from the request body or select an alias.
     pub model: Option<String>,
@@ -342,28 +345,52 @@ pub struct ProxyRequestOptions {
     pub models: Vec<ModelAndProvider>,
     /// When using `models` to supply multiple choices, start at a random choice instead of the
     /// first one.
-    #[serde(default)]
-    pub random_choice: bool,
+    pub random_choice: Option<bool>,
     pub timeout: Option<std::time::Duration>,
-    pub retry: RetryOptions,
+    pub retry: Option<RetryOptions>,
 
+    #[serde(default)]
     pub metadata: ProxyRequestMetadata,
+    #[serde(skip, default)]
     pub internal_metadata: ProxyRequestInternalMetadata,
 }
 
-impl Default for ProxyRequestOptions {
-    fn default() -> Self {
-        Self {
-            model: None,
-            provider: None,
-            api_key: None,
-            models: Vec::new(),
-            random_choice: false,
-            retry: RetryOptions::default(),
-            timeout: None,
-            metadata: ProxyRequestMetadata::default(),
-            internal_metadata: ProxyRequestInternalMetadata::default(),
+impl ProxyRequestOptions {
+    pub fn merge_request_headers(&mut self, headers: &HeaderMap) -> Result<(), Report<Error>> {
+        get_header_str(&mut self.api_key, headers, "x-chronicle-provider-api-key");
+        get_header_str(&mut self.provider, headers, "x-chronicle-provider");
+        get_header_str(&mut self.model, headers, "x-chronicle-model");
+
+        let models_header = headers
+            .get("x-chronicle-models")
+            .map(|s| serde_json::from_slice::<Vec<ModelAndProvider>>(s.as_bytes()))
+            .transpose()
+            .change_context_lazy(|| Error::ReadingHeader("x-chronicle-models".to_string()))?;
+        if let Some(models_header) = models_header {
+            self.models = models_header;
         }
+
+        get_header_t(
+            &mut self.random_choice,
+            headers,
+            "x-chronicle-random-choice",
+        )?;
+        get_header_json(&mut self.retry, headers, "x-chronicle-retry")?;
+
+        let timeout = headers
+            .get("x-chronicle-timeout")
+            .and_then(|s| s.to_str().ok())
+            .map(|s| s.parse::<u64>())
+            .transpose()
+            .change_context_lazy(|| Error::ReadingHeader("x-chronicle-timeout".to_string()))?
+            .map(|s| std::time::Duration::from_millis(s));
+        if timeout.is_some() {
+            self.timeout = timeout;
+        }
+
+        self.metadata.merge_request_headers(headers)?;
+
+        Ok(())
     }
 }
 
@@ -412,6 +439,102 @@ pub struct ProxyRequestMetadata {
     /// Any other metadata to include.
     #[serde(flatten)]
     pub extra: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+impl ProxyRequestMetadata {
+    pub fn merge_request_headers(&mut self, headers: &HeaderMap) -> Result<(), Report<Error>> {
+        get_header_str(&mut self.application, headers, "x-chronicle-application");
+        get_header_str(&mut self.environment, headers, "x-chronicle-environment");
+        get_header_str(
+            &mut self.organization_id,
+            headers,
+            "x-chronicle-organization-id",
+        );
+        get_header_str(&mut self.project_id, headers, "x-chronicle-project-id");
+        get_header_str(&mut self.user_id, headers, "x-chronicle-user-id");
+        get_header_str(&mut self.workflow_id, headers, "x-chronicle-workflow-id");
+        get_header_str(
+            &mut self.workflow_name,
+            headers,
+            "x-chronicle-workflow-name",
+        );
+        get_header_str(&mut self.run_id, headers, "x-chronicle-run-id");
+        get_header_str(&mut self.step, headers, "x-chronicle-step");
+        get_header_t(&mut self.step_index, headers, "x-chronicle-step-index")?;
+        get_header_str(&mut self.prompt_id, headers, "x-chronicle-prompt-id");
+        get_header_t(
+            &mut self.prompt_version,
+            headers,
+            "x-chronicle-prompt-version",
+        )?;
+        get_header_json(&mut self.extra, headers, "x-chronicle-extra-meta")?;
+        Ok(())
+    }
+}
+
+fn get_header_str(body_value: &mut Option<String>, headers: &HeaderMap, key: &str) {
+    if body_value.is_some() {
+        return;
+    }
+
+    let value = headers
+        .get(key)
+        .and_then(|s| s.to_str().ok())
+        .map(|s| s.to_string());
+
+    if value.is_some() {
+        *body_value = value;
+    }
+}
+
+fn get_header_t<T>(
+    body_value: &mut Option<T>,
+    headers: &HeaderMap,
+    key: &str,
+) -> Result<(), Report<Error>>
+where
+    T: FromStr,
+    T::Err: std::error::Error + Send + Sync + 'static,
+{
+    if body_value.is_some() {
+        return Ok(());
+    }
+
+    let value = headers
+        .get(key)
+        .and_then(|s| s.to_str().ok())
+        .map(|s| s.parse::<T>())
+        .transpose()
+        .change_context_lazy(|| Error::ReadingHeader(key.to_string()))?;
+
+    if value.is_some() {
+        *body_value = value;
+    }
+
+    Ok(())
+}
+
+fn get_header_json<T: DeserializeOwned>(
+    body_value: &mut Option<T>,
+    headers: &HeaderMap,
+    key: &str,
+) -> Result<(), Report<Error>> {
+    if body_value.is_some() {
+        return Ok(());
+    }
+
+    let value = headers
+        .get(key)
+        .and_then(|s| s.to_str().ok())
+        .map(|s| serde_json::from_str(s))
+        .transpose()
+        .change_context_lazy(|| Error::ReadingHeader(key.to_string()))?;
+
+    if value.is_some() {
+        *body_value = value;
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

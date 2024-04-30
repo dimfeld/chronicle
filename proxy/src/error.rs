@@ -30,4 +30,6 @@ pub enum Error {
     ReadingConfig,
     #[error("Failed to load from the database")]
     LoadingDatabase,
+    #[error("Failed to parse header value {0}")]
+    ReadingHeader(String),
 }

@@ -637,6 +637,7 @@ dependencies = [
  "error-stack",
  "filigree",
  "flume",
+ "http 1.1.0",
  "insta",
  "itertools 0.12.1",
  "rand",

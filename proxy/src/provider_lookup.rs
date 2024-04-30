@@ -125,7 +125,7 @@ impl ProviderLookup {
 
             return Ok(ModelLookupResult {
                 alias: String::new(),
-                random_order: options.random_choice,
+                random_order: options.random_choice.unwrap_or(false),
                 choices,
             });
         }
@@ -349,7 +349,7 @@ mod test {
         let result = lookup
             .find_model_and_provider(
                 &ProxyRequestOptions {
-                    random_choice: true,
+                    random_choice: Some(true),
                     models: vec![
                         ModelAndProvider {
                             model: "abc".to_string(),
@@ -396,7 +396,7 @@ mod test {
         let result = lookup
             .find_model_and_provider(
                 &ProxyRequestOptions {
-                    random_choice: true,
+                    random_choice: Some(true),
                     models: vec![
                         ModelAndProvider {
                             model: "abc".to_string(),
@@ -429,7 +429,7 @@ mod test {
         let result = lookup
             .find_model_and_provider(
                 &ProxyRequestOptions {
-                    random_choice: true,
+                    random_choice: Some(true),
                     models: vec![
                         ModelAndProvider {
                             model: "abc".to_string(),

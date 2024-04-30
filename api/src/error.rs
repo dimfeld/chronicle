@@ -71,8 +71,8 @@ pub enum Error {
     Proxy,
     #[error("Failed to build proxy")]
     BuildingProxy,
-    #[error("Failed to parse proxy header value {0}")]
-    InvalidProxyHeader(String),
+    #[error("Failed to read proxy request options")]
+    InvalidProxyHeader,
 }
 
 impl From<Report<Error>> for Error {
@@ -176,7 +176,7 @@ impl HttpError for Error {
             Error::MissingProvider(_) => "missing_provider",
             Error::Proxy => "proxy",
             Error::BuildingProxy => "building_proxy",
-            Error::InvalidProxyHeader(_) => "invalid_proxy_header",
+            Error::InvalidProxyHeader => "invalid_proxy_headers",
             // These aren't ever returned, we just need some value to fill out the match
             Error::Config => "config",
             Error::TypeExport => "cli",
@@ -224,7 +224,7 @@ impl HttpError for Error {
             Error::TypeExport => StatusCode::INTERNAL_SERVER_ERROR,
             Error::MissingModel => StatusCode::BAD_REQUEST,
             Error::MissingProvider(_) => StatusCode::BAD_REQUEST,
-            Error::InvalidProxyHeader(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            Error::InvalidProxyHeader => StatusCode::UNPROCESSABLE_ENTITY,
             Error::Proxy => StatusCode::INTERNAL_SERVER_ERROR,
             Error::BuildingProxy => StatusCode::INTERNAL_SERVER_ERROR,
         }
