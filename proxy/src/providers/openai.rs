@@ -29,12 +29,6 @@ impl OpenAi {
             url: "https://api.openai.com/v1/chat/completions".into(),
         }
     }
-
-    /// Change the URL that the request will be sent to.
-    pub(crate) fn with_url(mut self, url: String) -> Self {
-        self.url = url;
-        self
-    }
 }
 
 #[async_trait::async_trait]
@@ -79,6 +73,7 @@ pub async fn send_openai_request(
     provider_token: Option<&str>,
     transform: &ChatRequestTransformation<'_>,
     SendRequestOptions {
+        override_url,
         timeout,
         api_key,
         mut body,
@@ -99,7 +94,7 @@ pub async fn send_openai_request(
         timeout,
         || {
             client
-                .post(url)
+                .post(override_url.as_deref().unwrap_or(url))
                 .bearer_auth(token)
                 .header(CONTENT_TYPE, "application/json; charset=utf8")
                 .headers(headers.cloned().unwrap_or_default())

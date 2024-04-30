@@ -139,6 +139,7 @@ pub async fn try_model_choices(
         random_order,
         choices,
     }: ModelLookupResult,
+    override_url: Option<String>,
     options: RetryOptions,
     timeout: Duration,
     request: ChatRequest,
@@ -169,6 +170,7 @@ pub async fn try_model_choices(
         body.model = Some(model.to_string());
         let result = provider
             .send_request(SendRequestOptions {
+                override_url: override_url.clone(),
                 timeout,
                 api_key: api_key.clone(),
                 body,

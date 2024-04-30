@@ -39,6 +39,7 @@ impl ChatModelProvider for Groq {
     async fn send_request(
         &self,
         SendRequestOptions {
+            override_url,
             timeout,
             api_key,
             mut body,
@@ -68,7 +69,11 @@ impl ChatModelProvider for Groq {
             timeout,
             || {
                 self.client
-                    .post("https://api.groq.com/openai/v1/chat/completions")
+                    .post(
+                        override_url
+                            .as_deref()
+                            .unwrap_or("https://api.groq.com/openai/v1/chat/completions"),
+                    )
                     .bearer_auth(api_token)
                     .header(CONTENT_TYPE, "application/json; charset=utf8")
             },

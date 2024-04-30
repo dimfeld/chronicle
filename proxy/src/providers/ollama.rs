@@ -42,7 +42,10 @@ impl ChatModelProvider for Ollama {
     async fn send_request(
         &self,
         SendRequestOptions {
-            timeout, mut body, ..
+            timeout,
+            override_url,
+            mut body,
+            ..
         }: SendRequestOptions,
     ) -> Result<ProviderResponse, Report<Error>> {
         body.transform(&ChatRequestTransformation {
@@ -77,7 +80,7 @@ impl ChatModelProvider for Ollama {
             timeout,
             || {
                 self.client
-                    .post(&self.url)
+                    .post(override_url.as_deref().unwrap_or(&self.url.as_str()))
                     .timeout(timeout)
                     .header(CONTENT_TYPE, "application/json; charset=utf8")
             },

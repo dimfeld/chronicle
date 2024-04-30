@@ -170,6 +170,7 @@ impl Proxy {
         let send_start = tokio::time::Instant::now();
         let response = try_model_choices(
             models,
+            options.override_url.clone(),
             retry,
             options
                 .timeout
@@ -336,6 +337,8 @@ pub struct ProxyRequestOptions {
     pub model: Option<String>,
     /// Override the provider from the request body
     pub provider: Option<String>,
+    /// Override the URL that the provider will call
+    pub override_url: Option<String>,
     /// An API key to use
     pub api_key: Option<String>,
     /// Supply multiple provider/model choices, which will be tried in order.
@@ -360,6 +363,7 @@ impl ProxyRequestOptions {
         get_header_str(&mut self.api_key, headers, "x-chronicle-provider-api-key");
         get_header_str(&mut self.provider, headers, "x-chronicle-provider");
         get_header_str(&mut self.model, headers, "x-chronicle-model");
+        get_header_str(&mut self.override_url, headers, "x-chronicle-override-url");
 
         let models_header = headers
             .get("x-chronicle-models")

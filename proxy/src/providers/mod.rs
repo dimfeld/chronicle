@@ -18,6 +18,7 @@ use crate::{
 #[derive(Debug)]
 pub struct SendRequestOptions {
     pub timeout: Duration,
+    pub override_url: Option<String>,
     pub api_key: Option<String>,
     pub body: ChatRequest,
 }

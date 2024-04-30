@@ -44,6 +44,7 @@ impl ChatModelProvider for Anthropic {
             timeout,
             api_key,
             mut body,
+            ..
         }: SendRequestOptions,
     ) -> Result<ProviderResponse, Report<Error>> {
         body.transform(&ChatRequestTransformation {
