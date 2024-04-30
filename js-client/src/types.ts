@@ -49,6 +49,50 @@ export interface ChronicleRetryOptions {
   fail_if_rate_limit_exceeds_max_backoff?: boolean;
 }
 
+export interface ChronicleRequestMetadata {
+  /** application making this call. This can also be set by passing the
+    chronicle-application HTTP header. */
+  application?: string;
+  /** The environment the application is running in. This can also be set by passing the
+     x-chronicle-environment HTTP header. */
+  environment?: string;
+  /** The organization related to the request. This can also be set by passing the
+     x-chronicle-organization-id HTTP header. */
+  organization_id?: string;
+  /** The project related to the request. This can also be set by passing the
+     x-chronicle-project-id HTTP header. */
+  project_id?: string;
+  /** The id of the user that triggered the request. This can also be set by passing the
+     x-chronicle-user-id HTTP header. */
+  user_id?: string;
+  /** The id of the workflow that this request belongs to. This can also be set by passing the
+     x-chronicle-workflow-id HTTP header. */
+  workflow_id?: string;
+  /** A readable name of the workflow that this request belongs to. This can also be set by
+     passing the x-chronicle-workflow-name HTTP header. */
+  workflow_name?: string;
+  /** The id of of the specific run that this request belongs to. This can also be set by
+     passing the x-chronicle-run-id HTTP header. */
+  run_id?: string;
+  /** The name of the workflow step. This can also be set by passing the
+     x-chronicle-step HTTP header. */
+  step?: string;
+  /** The index of the step within the workflow. This can also be set by passing the
+     x-chronicle-step-index HTTP header. */
+  step_index?: number;
+  /** A unique ID for this prompt. This can also be set by passing the
+     x-chronicle-prompt-id HTTP header. */
+  prompt_id?: string;
+  /** The version of this prompt. This can also be set by passing the
+     x-chronicle-prompt-version HTTP header. */
+  prompt_version?: number;
+
+  /** Any other metadata to include. When passing this in the request body, any unknown fields
+     are collected here. This can also be set by passing a JSON object to the
+     x-chronicle-extra-meta HTTP header. */
+  extra?: Record<string, number | string | boolean>;
+}
+
 export interface ChronicleRequestOptions {
   /** Override the model from the request body or select an alias.
      This can also be set by passing the x-chronicle-model HTTP header. */
@@ -76,6 +120,11 @@ export interface ChronicleRequestOptions {
   /** Customize the retry behavior. This can also be set by passing the
      x-chronicle-retry HTTP header. */
   retry?: ChronicleRetryOptions;
+
+  meta?: ChronicleRequestMetadata;
+
+  /** An AbortSignal for this request */
+  signal?: AbortSignal;
 }
 
 export interface ChronicleResponseMeta {
