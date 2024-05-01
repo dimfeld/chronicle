@@ -45,13 +45,13 @@ async fn run_migrations(pool: &Pool, migrations: &[&str]) -> Result<(), sqlx::Er
     .await?;
 
     let migration_version = sqlx::query_scalar::<_, i32>(
-        "SELECT value::int FROM chronicle_meta WHERE key='migration_version'",
+        "SELECT cast(value as int) FROM chronicle_meta WHERE key='migration_version'",
     )
     .fetch_optional(&mut *tx)
-    .await
-    .ok()
-    .flatten()
+    .await?
     .unwrap_or(0) as usize;
+
+    tracing::info!("Migration version is {}", migration_version);
 
     let start_migration = migration_version.min(migrations.len());
     for migration in &migrations[start_migration..] {
@@ -60,10 +60,11 @@ async fn run_migrations(pool: &Pool, migrations: &[&str]) -> Result<(), sqlx::Er
 
     let new_version = migrations.len();
 
-    #[cfg(feature = "sqlite")]
-    let query = "UPDATE chronicle_meta SET value=$1 WHERE key='migration_version'";
-    #[cfg(feature = "postgres")]
-    let query = "UPDATE chronicle_meta SET value=$1::jsonb WHERE key='migration_version'";
+    let query = if cfg!(feature = "postgres") {
+        "UPDATE chronicle_meta SET value=$1::jsonb WHERE key='migration_version'"
+    } else {
+        "UPDATE chronicle_meta SET value=$1 WHERE key='migration_version'"
+    };
 
     sqlx::query(query)
         .bind(new_version.to_string())

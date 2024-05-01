@@ -1,8 +1,5 @@
 //! Logging events to the database
-use std::{
-    fmt::{Display, Write},
-    time::Duration,
-};
+use std::time::Duration;
 
 use chrono::Utc;
 use uuid::Uuid;
@@ -126,8 +123,13 @@ async fn write_batch(pool: &Pool, items: Vec<ProxyLogEntry>) {
 
         let extra = item.options.metadata.extra.filter(|m| !m.is_empty());
 
+        if cfg!(feature = "sqlite") {
+            query = query.bind(item.id.to_string());
+        } else {
+            query = query.bind(item.id);
+        }
+
         query = query
-            .bind(item.id)
             .bind(item.options.internal_metadata.organization_id)
             .bind(item.options.internal_metadata.project_id)
             .bind(item.options.internal_metadata.user_id)

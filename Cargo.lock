@@ -627,6 +627,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "chronicle-local"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum 0.7.5",
+ "bytes",
+ "chronicle-proxy",
+ "chrono",
+ "clap",
+ "dotenvy",
+ "error-stack",
+ "etcetera",
+ "eyre",
+ "filigree",
+ "futures",
+ "http 1.1.0",
+ "hyper 1.3.1",
+ "itertools 0.12.1",
+ "opentelemetry",
+ "percent-encoding",
+ "reqwest 0.11.27",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "sqlx",
+ "sqlx-transparent-json-decode",
+ "temp-dir",
+ "thiserror",
+ "tokio",
+ "tokio-stream",
+ "toml",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-opentelemetry",
+ "tracing-subscriber",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "chronicle-proxy"
 version = "0.1.1"
 dependencies = [
