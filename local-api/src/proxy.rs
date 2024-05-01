@@ -24,14 +24,6 @@ pub async fn build_proxy(
         dotenvy::dotenv().ok();
     }
 
-    for (dir, config) in configs {
-        if load_dotenv && config.server_config.dotenv.unwrap_or(true) {
-            dotenvy::from_path_override(dir.join(".env")).ok();
-        }
-
-        builder = builder.with_config(config.proxy_config);
-    }
-
     if let Some(pool) = pool {
         chronicle_proxy::database::migrations::run_default_migrations(&pool)
             .await
@@ -42,6 +34,15 @@ pub async fn build_proxy(
             .log_to_database(true)
             .load_config_from_database(true);
     }
+
+    for (dir, config) in configs {
+        if load_dotenv && config.server_config.dotenv.unwrap_or(true) {
+            dotenvy::from_path_override(dir.join(".env")).ok();
+        }
+
+        builder = builder.with_config(config.proxy_config);
+    }
+
 
     builder.build().await.change_context(Error::BuildingProxy)
 }
