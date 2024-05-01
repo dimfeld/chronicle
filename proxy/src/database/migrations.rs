@@ -54,7 +54,8 @@ async fn run_migrations(pool: &Pool, migrations: &[&str]) -> Result<(), sqlx::Er
     tracing::info!("Migration version is {}", migration_version);
 
     let start_migration = migration_version.min(migrations.len());
-    for migration in &migrations[start_migration..] {
+    for (i, migration) in migrations[start_migration..].iter().enumerate() {
+        tracing::info!("Running migration {}", start_migration + i);
         sqlx::raw_sql(migration).execute(&mut *tx).await?;
     }
 
