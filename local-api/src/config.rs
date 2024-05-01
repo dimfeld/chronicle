@@ -101,7 +101,7 @@ fn find_default_configs() -> Result<Vec<(PathBuf, LocalConfig)>, Report<Error>> 
     // directory
     let etc = etcetera::base_strategy::choose_native_strategy().unwrap();
 
-    [etc.home_dir().join(".config"), etc.config_dir()]
+    [etc.home_dir().join(".config").join("chronicle"), etc.config_dir().join("chronicle")]
         .into_iter()
         .filter_map(|dir| read_config(&dir, true).transpose())
         .collect::<Result<Vec<_>, Report<Error>>>()
