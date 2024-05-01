@@ -1,6 +1,6 @@
 [package]
 name = "chronicle-proxy"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "LLM Provider Abstraction and Logging"
 documentation = "https://docs.rs/chronicle-proxy"
