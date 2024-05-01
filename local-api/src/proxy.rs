@@ -11,10 +11,7 @@ use error_stack::{Report, ResultExt};
 use serde::Deserialize;
 use sqlx::SqlitePool;
 
-use crate::{
-    config::{find_configs, LocalConfig},
-    Error,
-};
+use crate::{config::LocalConfig, Error};
 
 pub async fn build_proxy(
     pool: Option<SqlitePool>,

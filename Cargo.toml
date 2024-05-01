@@ -1,7 +1,7 @@
 [workspace]
 members = [
-  "api", 
-  "local",
+  "api",
+  "local-api",
   "proxy"
 ]
 resolver = "2"

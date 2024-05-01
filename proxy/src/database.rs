@@ -15,7 +15,7 @@ pub mod migrations;
 #[cfg(feature = "postgres")]
 pub type Database = sqlx::Postgres;
 
-#[cfg(feature = "sqlite")]
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
 pub type Database = sqlx::Sqlite;
 
 pub type Pool = sqlx::Pool<Database>;
@@ -65,7 +65,7 @@ pub async fn load_providers_from_database(
 // SQLite's JSON support sucks in 3.44 which sqlx currently includes, so it's not
 // possible to just do this via json_group_array(json_object(...)) right now since
 // the values in the array are strings of JSON instead of normal JSON..
-#[cfg(feature = "sqlite")]
+#[cfg(all(feature = "sqlite", not(feature = "postgres")))]
 pub async fn load_aliases_from_database(
     pool: &Pool,
     alias_table: &str,
@@ -157,7 +157,8 @@ pub async fn load_aliases_from_database(
     .change_context(Error::LoadingDatabase)
     .attach_printable("Failed to load aliases from database")?;
 
-    #[cfg(feature = "sqlite")]
+    /*
+    #[cfg(all(feature = "sqlite", not(feature = "postgres")))]
     let results = results
         .into_iter()
         .map(|row| {
@@ -175,6 +176,7 @@ pub async fn load_aliases_from_database(
             Ok::<AliasConfig, Report<Error>>(alias)
         })
         .collect::<Result<Vec<_>, _>>()?;
+    */
 
     Ok(results)
 }

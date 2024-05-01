@@ -5,14 +5,14 @@ use std::{
 };
 
 use axum::Router;
-use clap::{Args, Parser, Subcommand};
+use clap::Parser;
 use error_stack::{Report, ResultExt};
 use filigree::{
     errors::panic_handler,
     tracing_config::{configure_tracing, create_tracing_config, teardown_tracing, TracingProvider},
 };
 use sqlx::sqlite::SqliteConnectOptions;
-use tower::{Layer, ServiceBuilder};
+use tower::ServiceBuilder;
 use tower_http::{
     compression::CompressionLayer,
     trace::{DefaultOnFailure, DefaultOnRequest, TraceLayer},

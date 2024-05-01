@@ -124,6 +124,8 @@ async fn write_batch(pool: &Pool, items: Vec<ProxyLogEntry>) {
         let extra = item.options.metadata.extra.filter(|m| !m.is_empty());
 
         if cfg!(feature = "sqlite") {
+            // sqlx encodeds UUIDs as binary blobs by default with Sqlite, which is often nice
+            // but not what we want here.
             query = query.bind(item.id.to_string());
         } else {
             query = query.bind(item.id);

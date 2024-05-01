@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use chronicle_proxy::config::ProxyConfig;
 use error_stack::{Report, ResultExt};
 use etcetera::BaseStrategy;
-use itertools::Itertools;
 use serde::Deserialize;
 
 use crate::{error::Error, Cli};

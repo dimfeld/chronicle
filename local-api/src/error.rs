@@ -1,5 +1,5 @@
 use axum::response::{IntoResponse, Response};
-use error_stack::{Report, ResultExt};
+use error_stack::Report;
 use filigree::errors::HttpError;
 use http::StatusCode;
 use serde_json::json;
