@@ -170,7 +170,7 @@ struct AnthropicChatResponse {
     pub content: Vec<AnthropicChatContent>,
     pub model: String,
     pub stop_reason: String,
-    pub stop_sequence: String,
+    pub stop_sequence: Option<String>,
     pub usage: AnthropicUsageResponse,
 }
 
