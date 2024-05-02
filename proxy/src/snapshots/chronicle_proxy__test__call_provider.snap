@@ -11,8 +11,8 @@ expression: result
       "index": 0,
       "message": {
         "role": "assistant",
-        "name": null,
-        "content": "hello"
+        "content": "hello",
+        "tool_calls": []
       },
       "finish_reason": "stop"
     }
@@ -21,5 +21,11 @@ expression: result
     "prompt_tokens": 1,
     "completion_tokens": 1,
     "total_tokens": 2
+  },
+  "meta": {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "provider": "test",
+    "response_meta": null,
+    "was_rate_limited": false
   }
 }

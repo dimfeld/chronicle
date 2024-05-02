@@ -8,7 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use super::{ChatModelProvider, ProviderResponse, SendRequestOptions};
 use crate::{
-    format::{ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, UsageResponse},
+    format::{
+        ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, Tool, ToolCall,
+        ToolCallFunction, UsageResponse,
+    },
     request::send_standard_request,
     Error,
 };
@@ -53,18 +56,17 @@ impl ChatModelProvider for Anthropic {
             strip_model_prefix: Some("anthropic/".into()),
         });
 
-        // We could do something here to simulate the `n` parameter but don't right now.
-        // If we do then this should be done in a layer outside the provider.
-        body.n = None;
-        // Clear out some fields that Anthropic doesn't use.
-        body.frequency_penalty = None;
-        body.logit_bias = None;
-        body.logprobs = None;
-        body.presence_penalty = None;
-        body.response_format = None;
-        body.seed = None;
-        body.top_logprobs = None;
-        body.user = None;
+        let has_tools = !body.tools.is_empty();
+        let body = AnthropicChatRequest {
+            model: body.model.unwrap_or_default(),
+            max_tokens: body.max_tokens,
+            metadata: AnthropicMetadata { user_id: body.user },
+            messages: body.messages,
+            stop: body.stop,
+            temperature: body.temperature,
+            top_p: body.top_p,
+            tools: body.tools.into_iter().map(From::from).collect::<Vec<_>>(),
+        };
 
         let body = serde_json::to_vec(&body).change_context(Error::TransformingRequest)?;
         let body = Bytes::from(body);
@@ -77,11 +79,18 @@ impl ChatModelProvider for Anthropic {
         let result = send_standard_request::<AnthropicChatResponse>(
             timeout,
             || {
-                self.client
+                let req = self
+                    .client
                     .post("https://api.anthropic.com/v1/messages")
                     .header("x-api-key", api_token)
                     .header("anthropic-version", "2023-06-01")
-                    .header(CONTENT_TYPE, "application/json; charset=utf8")
+                    .header(CONTENT_TYPE, "application/json; charset=utf8");
+
+                if has_tools {
+                    req.header("anthropic-beta", "tools-2024-04-04")
+                } else {
+                    req
+                }
             },
             handle_retry_after,
             body,
@@ -160,6 +169,48 @@ fn handle_retry_after(res: &reqwest::Response) -> Option<Duration> {
     until_reset_time
 }
 
+#[derive(Serialize, Debug, Clone)]
+struct AnthropicChatRequest {
+    model: String,
+    messages: Vec<ChatMessage>,
+    metadata: AnthropicMetadata,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    max_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    stop: Vec<String>,
+    // stream not supported yet
+    // pub stream: Option<bool>
+    #[serde(skip_serializing_if = "Option::is_none")]
+    temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<AnthropicTool>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+struct AnthropicMetadata {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    user_id: Option<String>,
+}
+
+#[derive(Serialize, Debug, Clone)]
+struct AnthropicTool {
+    name: String,
+    description: Option<String>,
+    input_schema: Option<serde_json::Value>,
+}
+
+impl From<Tool> for AnthropicTool {
+    fn from(tool: Tool) -> Self {
+        AnthropicTool {
+            name: tool.function.name,
+            description: tool.function.description,
+            input_schema: tool.function.parameters,
+        }
+    }
+}
+
 /// A chat response, in non-chunked format
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct AnthropicChatResponse {
@@ -176,17 +227,40 @@ struct AnthropicChatResponse {
 
 impl Into<ChatResponse> for AnthropicChatResponse {
     fn into(mut self) -> ChatResponse {
-        let text = if self.content.len() == 1 {
+        let (text, tool_calls) = if self.content.len() == 1 {
             match self.content.pop().unwrap() {
-                AnthropicChatContent::Text { text } => text,
+                AnthropicChatContent::Text { text } => (Some(text), Vec::new()),
+                AnthropicChatContent::ToolUse(tool) => {
+                    let tools = vec![ToolCall::from(tool)];
+                    (None, tools)
+                }
+                _ => (None, Vec::new()),
             }
         } else {
-            self.content
+            let text = self
+                .content
                 .iter()
-                .map(|c| match c {
-                    AnthropicChatContent::Text { text } => text,
+                .filter_map(|c| match c {
+                    AnthropicChatContent::Text { text } => Some(text),
+                    _ => None,
                 })
-                .join("")
+                .join("");
+
+            let tools = self
+                .content
+                .into_iter()
+                .filter_map(|c| {
+                    if let AnthropicChatContent::ToolUse(tool) = c {
+                        Some(ToolCall::from(tool))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            let text = if text.is_empty() { None } else { Some(text) };
+
+            (text, tools)
         };
 
         ChatResponse {
@@ -201,6 +275,7 @@ impl Into<ChatResponse> for AnthropicChatResponse {
                     role: self.role,
                     name: None,
                     content: text,
+                    tool_calls,
                 },
             }],
             usage: UsageResponse {
@@ -215,7 +290,35 @@ impl Into<ChatResponse> for AnthropicChatResponse {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum AnthropicChatContent {
-    Text { text: String },
+    Text {
+        text: String,
+    },
+    ToolUse(AnthropicToolUse),
+    ToolResult {
+        tool_use_id: String,
+        content: Option<String>,
+        is_error: bool,
+    },
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct AnthropicToolUse {
+    id: String,
+    name: String,
+    input: serde_json::Value,
+}
+
+impl From<AnthropicToolUse> for ToolCall {
+    fn from(tool: AnthropicToolUse) -> ToolCall {
+        ToolCall {
+            id: tool.id,
+            typ: "function".to_string(),
+            function: ToolCallFunction {
+                name: tool.name,
+                arguments: tool.input.to_string(),
+            },
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

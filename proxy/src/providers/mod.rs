@@ -75,8 +75,15 @@ impl filigree::errors::HttpError for ProviderError {
     type Detail = serde_json::Value;
 
     fn status_code(&self) -> StatusCode {
-        self.status_code
-            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+        let Some(status_code) = self.status_code else {
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        };
+
+        if status_code.is_success() {
+            self.kind.status_code()
+        } else {
+            status_code
+        }
     }
 
     fn error_kind(&self) -> &'static str {
@@ -155,6 +162,21 @@ impl ProviderErrorKind {
         };
 
         Some(code)
+    }
+
+    pub fn status_code(&self) -> StatusCode {
+        match self {
+            ProviderErrorKind::Generic => StatusCode::INTERNAL_SERVER_ERROR,
+            ProviderErrorKind::Server => StatusCode::SERVICE_UNAVAILABLE,
+            ProviderErrorKind::Sending => StatusCode::BAD_GATEWAY,
+            ProviderErrorKind::ParsingResponse => StatusCode::BAD_GATEWAY,
+            ProviderErrorKind::RateLimit { .. } => StatusCode::TOO_MANY_REQUESTS,
+            ProviderErrorKind::Timeout => StatusCode::GATEWAY_TIMEOUT,
+            ProviderErrorKind::Permanent => StatusCode::INTERNAL_SERVER_ERROR,
+            ProviderErrorKind::BadInput => StatusCode::UNPROCESSABLE_ENTITY,
+            ProviderErrorKind::AuthRejected => StatusCode::UNAUTHORIZED,
+            ProviderErrorKind::OutOfCredits => StatusCode::PAYMENT_REQUIRED,
+        }
     }
 
     /// If the request is retryable after a short delay.
