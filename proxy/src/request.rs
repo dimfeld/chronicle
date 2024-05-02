@@ -393,7 +393,8 @@ mod test {
             ChatRequest {
                 messages: vec![ChatMessage {
                     role: "user".to_string(),
-                    content: "Tell me a story".to_string(),
+                    content: Some("Tell me a story".to_string()),
+                    tool_calls: Vec::new(),
                     name: None,
                 }],
                 ..Default::default()
@@ -422,7 +423,10 @@ mod test {
             assert_eq!(response.was_rate_limited, false);
             assert_eq!(response.provider, "test");
             assert_eq!(response.body.model.unwrap(), "test-model");
-            assert_eq!(response.body.choices[0].message.content, "A response");
+            assert_eq!(
+                response.body.choices[0].message.content.as_deref().unwrap(),
+                "A response"
+            );
         }
 
         #[tokio::test(start_paused = true)]
@@ -468,7 +472,10 @@ mod test {
             assert_eq!(response.was_rate_limited, false);
             assert_eq!(response.provider, "test");
             assert_eq!(response.body.model.unwrap(), "test-model");
-            assert_eq!(response.body.choices[0].message.content, "A response");
+            assert_eq!(
+                response.body.choices[0].message.content.as_deref().unwrap(),
+                "A response"
+            );
         }
 
         #[tokio::test(start_paused = true)]
@@ -495,7 +502,10 @@ mod test {
             assert_eq!(response.was_rate_limited, true);
             assert_eq!(response.provider, "test");
             assert_eq!(response.body.model.unwrap(), "test-model");
-            assert_eq!(response.body.choices[0].message.content, "A response");
+            assert_eq!(
+                response.body.choices[0].message.content.as_deref().unwrap(),
+                "A response"
+            );
         }
 
         #[tokio::test(start_paused = true)]
@@ -552,7 +562,10 @@ mod test {
             assert_eq!(response.was_rate_limited, false);
             assert_eq!(response.provider, "test");
             assert_eq!(response.body.model.unwrap(), "test-model");
-            assert_eq!(response.body.choices[0].message.content, "A response");
+            assert_eq!(
+                response.body.choices[0].message.content.as_deref().unwrap(),
+                "A response"
+            );
         }
 
         #[tokio::test(start_paused = true)]
@@ -589,7 +602,10 @@ mod test {
             assert_eq!(response.was_rate_limited, false);
             assert_eq!(response.provider, "test");
             assert_eq!(response.body.model.unwrap(), "test-model-3");
-            assert_eq!(response.body.choices[0].message.content, "A response");
+            assert_eq!(
+                response.body.choices[0].message.content.as_deref().unwrap(),
+                "A response"
+            );
         }
 
         #[tokio::test(start_paused = true)]
@@ -617,7 +633,10 @@ mod test {
             assert_eq!(response.was_rate_limited, true);
             assert_eq!(response.provider, "test");
             assert_eq!(response.body.model.unwrap(), "test-model-2");
-            assert_eq!(response.body.choices[0].message.content, "A response");
+            assert_eq!(
+                response.body.choices[0].message.content.as_deref().unwrap(),
+                "A response"
+            );
         }
 
         #[tokio::test(start_paused = true)]

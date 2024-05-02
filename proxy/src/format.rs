@@ -33,8 +33,9 @@ pub struct ChatMessage {
     /// will be prepended to the message using the format "{name}: {content}".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
-    // TODO add support for images.
-    pub content: String,
+    pub content: Option<String>,
+    #[serde(default)]
+    pub tool_calls: Vec<ToolCall>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -111,10 +112,9 @@ pub struct ChatRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_p: Option<f32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    // todo need to look up the format here
-    pub tools: Vec<()>,
+    pub tools: Vec<Tool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tool_choice: Option<ToolChoice>,
+    pub tool_choice: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
 }
@@ -146,7 +146,7 @@ impl ChatRequest {
     pub fn merge_message_names(&mut self) {
         for message in self.messages.iter_mut() {
             if let Some(name) = message.name.take() {
-                message.content = format!("{name}: {}", message.content);
+                message.content = message.content.as_deref().map(|c| format!("{name}: {c}"));
             }
         }
     }
@@ -157,7 +157,8 @@ impl ChatRequest {
         if let Some(system) = system {
             self.messages = std::iter::once(ChatMessage {
                 role: "system".to_string(),
-                content: system,
+                content: Some(system),
+                tool_calls: Vec::new(),
                 name: None,
             })
             .chain(self.messages.drain(..))
@@ -174,14 +175,35 @@ impl ChatRequest {
             .unwrap_or(false)
         {
             let system = self.messages.remove(0);
-            self.system = Some(system.content);
+            self.system = system.content;
         }
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
-#[serde(rename_all = "lowercase")]
-pub enum ToolChoice {
-    None,
-    Auto,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Tool {
+    #[serde(rename = "type")]
+    pub typ: String,
+    pub function: FunctionTool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FunctionTool {
+    pub name: String,
+    pub description: Option<String>,
+    pub parameters: serde_json::Value,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ToolCall {
+    pub id: String,
+    #[serde(rename = "type")]
+    pub typ: String,
+    pub function: ToolCallFunction,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ToolCallFunction {
+    pub name: String,
+    pub arguments: String,
 }

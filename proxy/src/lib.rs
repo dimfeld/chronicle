@@ -145,14 +145,24 @@ impl Proxy {
             Some(Cow::Owned(
                 body.messages
                     .iter()
-                    .map(|m| format!("{}: {}", m.name.as_ref().unwrap_or(&m.role), m.content))
+                    .filter_map(|m| {
+                        let Some(content) = m.content.as_deref() else {
+                            return None;
+                        };
+
+                        Some(format!(
+                            "{}: {}",
+                            m.name.as_ref().unwrap_or(&m.role),
+                            content
+                        ))
+                    })
                     .collect::<Vec<_>>()
                     .join("\n\n"),
             ))
         } else {
             body.messages
                 .get(0)
-                .map(|m| Cow::Borrowed(m.content.as_str()))
+                .and_then(|m| m.content.as_deref().map(Cow::Borrowed))
         };
         current_span.record("llm.prompts", messages_field.as_deref());
 
@@ -199,7 +209,7 @@ impl Proxy {
                         .body
                         .choices
                         .iter()
-                        .map(|c| c.message.content.as_str())
+                        .filter_map(|c| c.message.content.as_deref())
                         .collect::<Vec<_>>()
                         .join("\n\n"),
                 );
@@ -639,7 +649,8 @@ mod test {
                     index: 0,
                     message: ChatMessage {
                         role: "assistant".to_string(),
-                        content: "hello".to_string(),
+                        content: Some("hello".to_string()),
+                        tool_calls: Vec::new(),
                         name: None,
                     },
                     finish_reason: "stop".to_string(),
@@ -671,7 +682,7 @@ mod test {
             .await
             .expect("Building proxy");
 
-        let result = proxy
+        let mut result = proxy
             .send(
                 crate::ProxyRequestOptions {
                     ..Default::default()
@@ -680,7 +691,8 @@ mod test {
                     model: Some("me/a-test-model".to_string()),
                     messages: vec![ChatMessage {
                         role: "user".to_string(),
-                        content: "hello".to_string(),
+                        content: Some("hello".to_string()),
+                        tool_calls: Vec::new(),
                         name: None,
                     }],
                     ..Default::default()
@@ -689,6 +701,8 @@ mod test {
             .await
             .expect("should have succeeded");
 
+        // ID will be different every time, so zero it for the snapshot
+        result.meta.id = uuid::Uuid::nil();
         insta::assert_json_snapshot!(result);
     }
 }

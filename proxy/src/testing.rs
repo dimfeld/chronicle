@@ -103,7 +103,8 @@ impl ChatModelProvider for TestProvider {
                     index: 0,
                     message: ChatMessage {
                         role: "assistant".to_string(),
-                        content: self.response.clone(),
+                        content: Some(self.response.clone()),
+                        tool_calls: Vec::new(),
                         name: None,
                     },
                     finish_reason: "stop".to_string(),
