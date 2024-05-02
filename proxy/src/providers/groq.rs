@@ -46,7 +46,7 @@ impl ChatModelProvider for Groq {
         }: SendRequestOptions,
     ) -> Result<ProviderResponse, Report<Error>> {
         body.transform(&ChatRequestTransformation {
-            supports_message_name: false,
+            supports_message_name: true,
             system_in_messages: true,
             strip_model_prefix: Some("groq/".into()),
         });

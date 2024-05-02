@@ -56,6 +56,7 @@ impl ChatModelProvider for Anthropic {
             strip_model_prefix: Some("anthropic/".into()),
         });
 
+        let has_tools = !body.tools.is_empty();
         let body = AnthropicChatRequest {
             model: body.model.unwrap_or_default(),
             max_tokens: body.max_tokens,
@@ -78,11 +79,18 @@ impl ChatModelProvider for Anthropic {
         let result = send_standard_request::<AnthropicChatResponse>(
             timeout,
             || {
-                self.client
+                let req = self
+                    .client
                     .post("https://api.anthropic.com/v1/messages")
                     .header("x-api-key", api_token)
                     .header("anthropic-version", "2023-06-01")
-                    .header(CONTENT_TYPE, "application/json; charset=utf8")
+                    .header(CONTENT_TYPE, "application/json; charset=utf8");
+
+                if has_tools {
+                    req.header("anthropic-beta", "tools-2024-04-04")
+                } else {
+                    req
+                }
             },
             handle_retry_after,
             body,
@@ -190,7 +198,7 @@ struct AnthropicMetadata {
 struct AnthropicTool {
     name: String,
     description: Option<String>,
-    input_schema: serde_json::Value,
+    input_schema: Option<serde_json::Value>,
 }
 
 impl From<Tool> for AnthropicTool {
@@ -297,7 +305,7 @@ enum AnthropicChatContent {
 struct AnthropicToolUse {
     id: String,
     name: String,
-    input: Box<serde_json::value::RawValue>,
+    input: serde_json::Value,
 }
 
 impl From<AnthropicToolUse> for ToolCall {

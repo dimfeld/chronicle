@@ -34,7 +34,7 @@ pub struct ChatMessage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     pub content: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCall>,
 }
 
@@ -64,7 +64,7 @@ impl<'a> Default for ChatRequestTransformation<'a> {
     /// The default values match OpenAI's behavior
     fn default() -> Self {
         Self {
-            supports_message_name: false,
+            supports_message_name: true,
             system_in_messages: true,
             strip_model_prefix: Default::default(),
         }
@@ -98,7 +98,6 @@ pub struct ChatRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub presence_penalty: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    // TODO look at the format here
     pub response_format: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<i64>,
@@ -191,7 +190,7 @@ pub struct Tool {
 pub struct FunctionTool {
     pub name: String,
     pub description: Option<String>,
-    pub parameters: serde_json::Value,
+    pub parameters: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
