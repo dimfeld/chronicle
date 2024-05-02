@@ -79,6 +79,7 @@ pub struct CustomProviderConfig {
     /// Where to retrieve the value for `api_key`.
     /// If `api_key_source` is "env" then `api_key` is an environment variable.
     /// If it is empty, then `api_key` is assumed to be the token itself, if provided.
+    /// In the future the key sources will be pluggable, to support external secret sources.
     pub api_key_source: Option<String>,
     pub format: ProviderRequestFormat,
     /// Extra headers to pass with the request
@@ -101,5 +102,22 @@ impl CustomProviderConfig {
         }
 
         CustomProvider::new(self, client)
+    }
+
+    /// Add an API token to the [CustomProviderConfig], or if one is not provided, then configure
+    /// it to read from the given environment variable.
+    pub fn with_token_or_env(mut self, token: Option<String>, env: &str) -> Self {
+        match token {
+            Some(token) => {
+                self.api_key = Some(token);
+                self.api_key_source = None;
+            }
+            None => {
+                self.api_key = Some(env.to_string());
+                self.api_key_source = Some("env".to_string());
+            }
+        }
+
+        self
     }
 }

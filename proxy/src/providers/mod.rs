@@ -1,8 +1,12 @@
 pub mod anthropic;
+pub mod anyscale;
 pub mod custom;
+pub mod deepinfra;
+pub mod fireworks;
 pub mod groq;
 pub mod ollama;
 pub mod openai;
+pub mod together;
 
 use std::{fmt::Debug, time::Duration};
 

@@ -9,7 +9,8 @@ use crate::{
         load_providers_from_database, logging::start_database_logger, Pool,
     },
     providers::{
-        anthropic::Anthropic, groq::Groq, ollama::Ollama, openai::OpenAi, ChatModelProvider,
+        anthropic::Anthropic, anyscale::Anyscale, deepinfra::DeepInfra, fireworks::Fireworks,
+        groq::Groq, ollama::Ollama, openai::OpenAi, together::Together, ChatModelProvider,
     },
     Error, ProviderLookup, Proxy,
 };
@@ -18,12 +19,17 @@ pub struct ProxyBuilder {
     pool: Option<Pool>,
     config: ProxyConfig,
     load_config_from_database: bool,
-    openai: Option<String>,
-    ollama: Option<String>,
-    anthropic: Option<String>,
-    groq: Option<String>,
     client: Option<reqwest::Client>,
     providers: Vec<Arc<dyn ChatModelProvider>>,
+
+    anthropic: Option<String>,
+    anyscale: Option<String>,
+    deepinfra: Option<String>,
+    fireworks: Option<String>,
+    groq: Option<String>,
+    ollama: Option<String>,
+    openai: Option<String>,
+    together: Option<String>,
 }
 
 impl ProxyBuilder {
@@ -31,13 +37,18 @@ impl ProxyBuilder {
         Self {
             pool: None,
             config: ProxyConfig::default(),
-            openai: Some(String::new()),
-            anthropic: Some(String::new()),
-            groq: Some(String::new()),
-            ollama: Some(String::new()),
             load_config_from_database: true,
             client: None,
             providers: Vec::new(),
+
+            anthropic: Some(String::new()),
+            anyscale: Some(String::new()),
+            deepinfra: Some(String::new()),
+            fireworks: Some(String::new()),
+            groq: Some(String::new()),
+            ollama: Some(String::new()),
+            openai: Some(String::new()),
+            together: Some(String::new()),
         }
     }
 
@@ -133,15 +144,39 @@ impl ProxyBuilder {
         self
     }
 
+    /// Enable the Anyscale provider, if it was disabled by [without_default_providers]
+    pub fn with_anyscale(mut self, token: Option<String>) -> Self {
+        self.anyscale = token.or(Some(String::new()));
+        self
+    }
+
     /// Enable the Anthropic provider, if it was disabled by [without_default_providers]
     pub fn with_anthropic(mut self, token: Option<String>) -> Self {
         self.anthropic = token.or(Some(String::new()));
         self
     }
 
+    /// Enable the DeepInfra provider, if it was disabled by [without_default_providers]
+    pub fn with_deepinfra(mut self, token: Option<String>) -> Self {
+        self.deepinfra = token.or(Some(String::new()));
+        self
+    }
+
+    /// Enable the Fireworks provider, if it was disabled by [without_default_providers]
+    pub fn with_fireworks(mut self, token: Option<String>) -> Self {
+        self.fireworks = token.or(Some(String::new()));
+        self
+    }
+
     /// Enable the Groq provider, if it was disabled by [without_default_providers]
     pub fn with_groq(mut self, token: Option<String>) -> Self {
         self.groq = token.or(Some(String::new()));
+        self
+    }
+
+    /// Enable the Together provider, if it was disabled by [without_default_providers]
+    pub fn with_together(mut self, token: Option<String>) -> Self {
+        self.together = token.or(Some(String::new()));
         self
     }
 
@@ -154,9 +189,13 @@ impl ProxyBuilder {
     /// Don't load the default providers
     pub fn without_default_providers(mut self) -> Self {
         self.anthropic = None;
+        self.anyscale = None;
+        self.deepinfra = None;
+        self.fireworks = None;
         self.groq = None;
         self.openai = None;
         self.ollama = None;
+        self.together = None;
         self
     }
 
@@ -245,9 +284,25 @@ impl ProxyBuilder {
             );
         }
 
-        if let Some(token) = self.openai {
-            providers.push(Arc::new(OpenAi::new(client.clone(), empty_to_none(token)))
-                as Arc<dyn ChatModelProvider>);
+        if let Some(token) = self.anyscale {
+            providers.push(
+                Arc::new(Anyscale::new(client.clone(), empty_to_none(token)))
+                    as Arc<dyn ChatModelProvider>,
+            );
+        }
+
+        if let Some(token) = self.deepinfra {
+            providers.push(
+                Arc::new(DeepInfra::new(client.clone(), empty_to_none(token)))
+                    as Arc<dyn ChatModelProvider>,
+            );
+        }
+
+        if let Some(token) = self.fireworks {
+            providers.push(
+                Arc::new(Fireworks::new(client.clone(), empty_to_none(token)))
+                    as Arc<dyn ChatModelProvider>,
+            );
         }
 
         if let Some(token) = self.groq {
@@ -258,6 +313,18 @@ impl ProxyBuilder {
         if let Some(url) = self.ollama {
             providers.push(Arc::new(Ollama::new(client.clone(), empty_to_none(url)))
                 as Arc<dyn ChatModelProvider>);
+        }
+
+        if let Some(token) = self.openai {
+            providers.push(Arc::new(OpenAi::new(client.clone(), empty_to_none(token)))
+                as Arc<dyn ChatModelProvider>);
+        }
+
+        if let Some(token) = self.together {
+            providers.push(
+                Arc::new(Together::new(client.clone(), empty_to_none(token)))
+                    as Arc<dyn ChatModelProvider>,
+            );
         }
 
         let (log_tx, log_task) = logger.unzip();
