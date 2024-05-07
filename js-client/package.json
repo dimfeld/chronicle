@@ -1,5 +1,5 @@
 {
-  "name": "chronicle-proxy",
+  "name": "@dimfeld/chronicle",
   "description": "Client SDK for the Chronicle LLM Proxy",
   "version": "0.1.0",
   "module": "dist/index.js",
