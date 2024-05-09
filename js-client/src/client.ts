@@ -1,3 +1,4 @@
+import { Attributes, trace } from '@opentelemetry/api';
 import { proxyUrl, propagateSpan } from './internal.js';
 import type {
   ChronicleChatRequest,
@@ -112,6 +113,39 @@ export async function sendEvent(event: ChronicleSendEventOptions): Promise<{ id:
     },
     body: JSON.stringify(body),
   });
+
+  const span = trace.getActiveSpan();
+  if (span?.isRecording) {
+    let eventAttributes: Attributes = {};
+
+    if (body.metadata) {
+      for (let k in body.metadata) {
+        eventAttributes[`llm.meta.${k}`] = body.metadata[k as keyof typeof body.metadata];
+      }
+    }
+
+    if (body.data) {
+      for (let k in body.data) {
+        let value = body.data[k as keyof typeof body.data];
+
+        let attrKey = `llm.meta.${k}`;
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          eventAttributes[attrKey] = JSON.stringify(value);
+        } else {
+          eventAttributes[attrKey] = value;
+        }
+      }
+    }
+
+    if (body.error) {
+      eventAttributes['error'] =
+        typeof body.error === 'object' ? JSON.stringify(body.error) : body.error;
+    }
+
+    console.log(eventAttributes);
+
+    span.addEvent(body.type, eventAttributes);
+  }
 
   let res = await fetch(req);
   if (res.ok) {
