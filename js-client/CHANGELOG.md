@@ -1,6 +1,6 @@
 # chronicle-proxy JavaScript client changelog
 
-## Unreleased
+## 0.1.1
 
 - Allow sending arbitrary events to the Chronicle proxy
 
