@@ -18,10 +18,11 @@ CREATE TABLE chronicle_pricing_plans (
 
 CREATE TABLE IF NOT EXISTS chronicle_events (
   id text PRIMARY KEY,
+  event_type text,
   organization_id text,
   project_id text,
   user_id text,
-  chat_request text NOT NULL,
+  chat_request text,
   chat_response text,
   error text,
   provider text,
@@ -38,7 +39,7 @@ CREATE TABLE IF NOT EXISTS chronicle_events (
   step_index int,
   prompt_id text,
   prompt_version int,
-  extra_meta text,
+  meta text,
   response_meta text,
   retries int,
   rate_limited bool,
@@ -47,3 +48,7 @@ CREATE TABLE IF NOT EXISTS chronicle_events (
   pricing_plan bigint REFERENCES chronicle_pricing_plans (id),
   created_at int NOT NULL
 );
+
+CREATE INDEX chronicle_events_workflow_id_idx ON chronicle_events (workflow_id);
+
+CREATE INDEX chronicle_events_run_id_idx ON chronicle_events (run_id);
