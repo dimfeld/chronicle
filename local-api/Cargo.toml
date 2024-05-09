@@ -1,7 +1,7 @@
 [package]
 name = "chronicle-local"
 description = "The Chronicle LLM proxy API, built for local use with SQLite and configuration files"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors.workspace = true
 license.workspace = true
@@ -19,7 +19,7 @@ path = "src/main.rs"
 async-trait = "0.1.75"
 axum = { version = "0.7.3", features = ["tokio", "http1", "macros"] }
 bytes = "1.5.0"
-chronicle-proxy = { path = "../proxy", version = "0.1.4", default-features = false, features = ["sqlite", "migrations", "filigree"] }
+chronicle-proxy = { path = "../proxy", version = "0.1.5", default-features = false, features = ["sqlite", "migrations", "filigree"] }
 chrono = "0.4.33"
 clap = { version = "4.4.11", features = ["env", "derive"] }
 dotenvy = "0.15.7"
