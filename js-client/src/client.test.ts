@@ -137,3 +137,29 @@ describe('tools', () => {
     });
   });
 });
+
+describe('events', () => {
+  test('normal event', async () => {
+    const client = createChronicleClient();
+    await client.event({
+      type: 'test_event',
+      data: {
+        some_data: true,
+      },
+      metadata: {
+        step: 'test-step',
+      },
+    });
+  });
+
+  test('error event', async () => {
+    const client = createChronicleClient();
+    await client.event({
+      type: 'test_event_error',
+      error: 'failed to do the thing',
+      metadata: {
+        step: 'test-step',
+      },
+    });
+  });
+});
