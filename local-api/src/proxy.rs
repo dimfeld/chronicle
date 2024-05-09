@@ -20,14 +20,9 @@ use crate::{config::LocalConfig, Error};
 
 pub async fn build_proxy(
     pool: Option<SqlitePool>,
-    load_dotenv: bool,
     configs: Vec<(PathBuf, LocalConfig)>,
 ) -> Result<Proxy, Report<Error>> {
     let mut builder = Proxy::builder();
-
-    if load_dotenv {
-        dotenvy::dotenv().ok();
-    }
 
     if let Some(pool) = pool {
         chronicle_proxy::database::migrations::run_default_migrations(&pool)
@@ -40,11 +35,7 @@ pub async fn build_proxy(
             .load_config_from_database(true);
     }
 
-    for (dir, config) in configs {
-        if load_dotenv && config.server_config.dotenv.unwrap_or(true) {
-            dotenvy::from_path_override(dir.join(".env")).ok();
-        }
-
+    for (_, config) in configs {
         builder = builder.with_config(config.proxy_config);
     }
 
