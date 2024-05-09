@@ -66,32 +66,35 @@ async fn serve(cmd: Cli) -> Result<(), Report<Error>> {
     // Must load configs and run dotenv before starting tracing, so that they can set destination and
     // service name.
     if !cmd.no_dotenv {
-        dotenvy::dotenv().ok();
-
-        for (dir, config) in &configs {
-            if !cmd.no_dotenv && config.server_config.dotenv.unwrap_or(true) {
-                dotenvy::from_path_override(dir.join(".env")).ok();
+        for (dir, config) in configs.cwd.iter().rev().chain(configs.cwd.iter().rev()) {
+            if config.server_config.dotenv.unwrap_or(true) {
+                dotenvy::from_path(dir.join(".env")).ok();
             }
+        }
+
+        if server_config.dotenv.unwrap_or(true) {
+            dotenvy::dotenv().ok();
         }
     }
 
     let tracing_config = create_tracing_config(
         "",
-        TracingProvider::Honeycomb,
+        "CHRONICLE_",
+        TracingProvider::None,
         Some("chronicle".to_string()),
         None,
     )
     .change_context(Error::ServerStart)?;
 
     configure_tracing(
-        "",
+        "CHRONICLE_",
         tracing_config,
         tracing_subscriber::fmt::time::ChronoUtc::rfc_3339(),
         std::io::stdout,
     )
     .change_context(Error::ServerStart)?;
 
-    for (dir, _) in &configs {
+    for (dir, _) in configs.global.iter().chain(configs.cwd.iter()) {
         tracing::info!("Loaded config from {}", dir.display());
     }
 

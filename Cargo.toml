@@ -14,8 +14,8 @@ repository = "https://github.com/dimfeld/chronicle"
 keywords = ["llm", "proxy", "logging", "observability"]
 
 [workspace.dependencies]
-filigree = { version = "0.1.2", features = ["htmx", "maud", "watch-manifest"] }
-# filigree = { "path" = "../filigree/filigree", features = ["htmx", "maud", "watch-manifest", "tracing"] }
+filigree = { version = "0.2.0", features = ["tracing", "htmx", "maud", "watch-manifest"] }
+#filigree = { "path" = "../filigree/filigree", features = ["htmx", "maud", "watch-manifest", "tracing"] }
 
 [profile.dev.package.maud_macros]
 opt-level = 3

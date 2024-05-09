@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
+use std::sync::Arc;
 
 use axum::{
     extract::State,
@@ -7,8 +7,7 @@ use axum::{
     Json,
 };
 use chronicle_proxy::{
-    format::ChatRequest, EventPayload, Proxy, ProxyRequestInternalMetadata, ProxyRequestMetadata,
-    ProxyRequestOptions,
+    format::ChatRequest, EventPayload, Proxy, ProxyRequestInternalMetadata, ProxyRequestOptions,
 };
 use error_stack::{Report, ResultExt};
 use http::StatusCode;
@@ -16,11 +15,11 @@ use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::{config::LocalConfig, Error};
+use crate::{config::Configs, Error};
 
 pub async fn build_proxy(
     pool: Option<SqlitePool>,
-    configs: Vec<(PathBuf, LocalConfig)>,
+    configs: Configs,
 ) -> Result<Proxy, Report<Error>> {
     let mut builder = Proxy::builder();
 
@@ -35,7 +34,7 @@ pub async fn build_proxy(
             .load_config_from_database(true);
     }
 
-    for (_, config) in configs {
+    for (_, config) in configs.global.into_iter().chain(configs.cwd.into_iter()) {
         builder = builder.with_config(config.proxy_config);
     }
 

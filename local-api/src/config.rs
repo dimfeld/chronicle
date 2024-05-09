@@ -31,7 +31,7 @@ pub struct LocalServerConfig {
     pub dotenv: Option<bool>,
 }
 
-pub fn merge_server_config(cmd: &Cli, configs: &[(PathBuf, LocalConfig)]) -> LocalServerConfig {
+pub fn merge_server_config(cmd: &Cli, configs: &Configs) -> LocalServerConfig {
     let mut output = LocalServerConfig {
         database_path: None,
         port: None,
@@ -39,7 +39,8 @@ pub fn merge_server_config(cmd: &Cli, configs: &[(PathBuf, LocalConfig)]) -> Loc
         dotenv: None,
     };
 
-    for config in configs {
+    // Apply the global configs, then the CWD configs on top of those
+    for config in configs.global.iter().chain(configs.cwd.iter()) {
         if let Some(path) = &config.1.server_config.database_path {
             let full_path = config.0.join(path);
             output.database_path = Some(full_path.to_string_lossy().to_string());
@@ -73,9 +74,15 @@ pub fn merge_server_config(cmd: &Cli, configs: &[(PathBuf, LocalConfig)]) -> Loc
     output
 }
 
-pub fn find_configs(
-    directory: Option<String>,
-) -> Result<Vec<(PathBuf, LocalConfig)>, Report<Error>> {
+pub struct Configs {
+    /// Global config directories that have a chronicle.toml
+    pub global: Vec<(PathBuf, LocalConfig)>,
+    /// Directories starting from the root directory up to the CWD that have a chronicle.toml and
+    /// maybe a .env
+    pub cwd: Vec<(PathBuf, LocalConfig)>,
+}
+
+pub fn find_configs(directory: Option<String>) -> Result<Configs, Report<Error>> {
     if let Some(directory) = directory {
         let path = PathBuf::from(directory);
         let config = read_config(&path, path.is_dir()).change_context(Error::Config)?;
@@ -85,15 +92,19 @@ pub fn find_configs(
                 .attach_printable_lazy(|| format!("No config found in path {}", path.display()));
         };
 
-        return Ok(vec![config]);
+        return Ok(Configs {
+            cwd: vec![config],
+            global: vec![],
+        });
     }
 
-    let configs = [find_default_configs()?, find_current_dir_configs()?]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    let default_configs = find_default_configs()?;
+    let cwd_configs = find_current_dir_configs()?;
 
-    Ok(configs)
+    Ok(Configs {
+        cwd: cwd_configs,
+        global: default_configs,
+    })
 }
 
 fn find_default_configs() -> Result<Vec<(PathBuf, LocalConfig)>, Report<Error>> {
