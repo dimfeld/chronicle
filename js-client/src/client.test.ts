@@ -1,6 +1,8 @@
-import { test, describe, expect } from 'bun:test';
+import { test, describe, expect, afterAll, beforeAll } from 'bun:test';
 import { createChronicleClient } from './client.js';
 import { ChronicleChatRequest } from './types.js';
+import { HoneycombSDK } from '@honeycombio/opentelemetry-node';
+import { trace } from '@opentelemetry/api';
 
 test('basic client', async () => {
   let client = createChronicleClient();
@@ -134,6 +136,90 @@ describe('tools', () => {
       name: 'Daniel',
       hair_color: 'brown',
       favorite_color: 'green',
+    });
+  });
+});
+
+describe('events', () => {
+  test('normal event', async () => {
+    const client = createChronicleClient();
+    await client.event({
+      type: 'test_event',
+      data: {
+        some_data: true,
+      },
+      metadata: {
+        step: 'test-step',
+      },
+    });
+  });
+
+  test('error event', async () => {
+    const client = createChronicleClient();
+    await client.event({
+      type: 'test_event_error',
+      error: 'failed to do the thing',
+      metadata: {
+        step: 'test-step',
+      },
+    });
+  });
+});
+
+describe('tracing', () => {
+  const sdk = new HoneycombSDK();
+  const tracer = trace.getTracer('chronicle-test');
+
+  beforeAll(() => sdk.start());
+  afterAll(() => sdk.shutdown());
+
+  test.only('LLM call', async () => {
+    await tracer.startActiveSpan('chronicle-js call test', async (span) => {
+      try {
+        const client = createChronicleClient();
+        await client({
+          model: 'groq/llama3-8b-8192',
+          metadata: {
+            application: 'chronicle-test',
+            environment: 'test',
+            workflow_id: 'basic client',
+          },
+          max_tokens: 128,
+          messages: [
+            {
+              role: 'user',
+              content: 'Hello',
+            },
+          ],
+        });
+      } finally {
+        span.end();
+      }
+    });
+  });
+
+  test('event', async () => {
+    await tracer.startActiveSpan('chronicle-js event test', async (span) => {
+      try {
+        const client = createChronicleClient({
+          defaults: {
+            metadata: {
+              workflow_name: 'event test',
+            },
+          },
+        });
+        await client.event({
+          type: 'test_event',
+          data: {
+            some_data: true,
+          },
+          metadata: {
+            step: 'test-step',
+          },
+        });
+      } finally {
+        span.end();
+      }
     });
   });
 });

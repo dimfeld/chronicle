@@ -9,6 +9,7 @@ use clap::Parser;
 use error_stack::{Report, ResultExt};
 use filigree::{
     errors::panic_handler,
+    propagate_http_span::extract_request_parent,
     tracing_config::{configure_tracing, create_tracing_config, teardown_tracing, TracingProvider},
 };
 use sqlx::sqlite::SqliteConnectOptions;
@@ -18,6 +19,7 @@ use tower_http::{
     trace::{DefaultOnFailure, DefaultOnRequest, TraceLayer},
 };
 use tracing::{Level, Span};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::{
     config::{find_configs, merge_server_config},
@@ -58,9 +60,24 @@ struct Cli {
 async fn serve(cmd: Cli) -> Result<(), Report<Error>> {
     error_stack::Report::set_color_mode(error_stack::fmt::ColorMode::None);
 
+    let configs = find_configs(cmd.config.clone())?;
+    let server_config = merge_server_config(&cmd, &configs);
+
+    // Must load configs and run dotenv before starting tracing, so that they can set destination and
+    // service name.
+    if !cmd.no_dotenv {
+        dotenvy::dotenv().ok();
+
+        for (dir, config) in &configs {
+            if !cmd.no_dotenv && config.server_config.dotenv.unwrap_or(true) {
+                dotenvy::from_path_override(dir.join(".env")).ok();
+            }
+        }
+    }
+
     let tracing_config = create_tracing_config(
         "",
-        TracingProvider::None,
+        TracingProvider::Honeycomb,
         Some("chronicle".to_string()),
         None,
     )
@@ -74,8 +91,9 @@ async fn serve(cmd: Cli) -> Result<(), Report<Error>> {
     )
     .change_context(Error::ServerStart)?;
 
-    let configs = find_configs(cmd.config.clone())?;
-    let server_config = merge_server_config(&cmd, &configs);
+    for (dir, _) in &configs {
+        tracing::info!("Loaded config from {}", dir.display());
+    }
 
     let db_pool = if let Some(database_path) = &server_config.database_path {
         tracing::info!("Opening database at {database_path}");
@@ -96,7 +114,7 @@ async fn serve(cmd: Cli) -> Result<(), Report<Error>> {
         None
     };
 
-    let proxy = proxy::build_proxy(db_pool, !cmd.no_dotenv, configs).await?;
+    let proxy = proxy::build_proxy(db_pool, configs).await?;
 
     let app = Router::new()
         .merge(proxy::create_routes())
@@ -133,6 +151,10 @@ async fn serve(cmd: Cli) -> Result<(), Report<Error>> {
                                 http.status_code = tracing::field::Empty,
                                 error = tracing::field::Empty
                             );
+
+                            let context = extract_request_parent(req);
+                            span.set_parent(context);
+
                             span
                         })
                         .on_response(|res: &http::Response<_>, latency: Duration, span: &Span| {

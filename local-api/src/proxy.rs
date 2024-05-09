@@ -6,23 +6,23 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use chronicle_proxy::{format::ChatRequest, Proxy, ProxyRequestOptions};
+use chronicle_proxy::{
+    format::ChatRequest, EventPayload, Proxy, ProxyRequestInternalMetadata, ProxyRequestMetadata,
+    ProxyRequestOptions,
+};
 use error_stack::{Report, ResultExt};
-use serde::Deserialize;
+use http::StatusCode;
+use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
+use uuid::Uuid;
 
 use crate::{config::LocalConfig, Error};
 
 pub async fn build_proxy(
     pool: Option<SqlitePool>,
-    load_dotenv: bool,
     configs: Vec<(PathBuf, LocalConfig)>,
 ) -> Result<Proxy, Report<Error>> {
     let mut builder = Proxy::builder();
-
-    if load_dotenv {
-        dotenvy::dotenv().ok();
-    }
 
     if let Some(pool) = pool {
         chronicle_proxy::database::migrations::run_default_migrations(&pool)
@@ -35,14 +35,9 @@ pub async fn build_proxy(
             .load_config_from_database(true);
     }
 
-    for (dir, config) in configs {
-        if load_dotenv && config.server_config.dotenv.unwrap_or(true) {
-            dotenvy::from_path_override(dir.join(".env")).ok();
-        }
-
+    for (_, config) in configs {
         builder = builder.with_config(config.proxy_config);
     }
-
 
     builder.build().await.change_context(Error::BuildingProxy)
 }
@@ -78,8 +73,32 @@ async fn proxy_request(
     Ok(Json(result).into_response())
 }
 
+#[derive(Serialize)]
+struct Id {
+    id: Uuid,
+}
+
+async fn record_event(
+    State(state): State<Arc<ServerState>>,
+    headers: HeaderMap,
+    Json(mut body): Json<EventPayload>,
+) -> Result<impl IntoResponse, Error> {
+    body.metadata
+        .merge_request_headers(&headers)
+        .change_context(Error::InvalidProxyHeader)?;
+
+    let id = state
+        .proxy
+        .record_event(ProxyRequestInternalMetadata::default(), body)
+        .await;
+
+    Ok((StatusCode::ACCEPTED, Json(Id { id })))
+}
+
 pub fn create_routes() -> axum::Router<Arc<ServerState>> {
     axum::Router::new()
+        .route("/event", axum::routing::post(record_event))
+        .route("/v1/event", axum::routing::post(record_event))
         .route("/chat", axum::routing::post(proxy_request))
         // We don't use the wildcard path, but allow calling with any path for compatibility with clients
         // that always append an API path to a base url.

@@ -6,9 +6,13 @@ use axum::{
     response::{IntoResponse, Response},
     Json, Router,
 };
-use chronicle_proxy::{format::ChatRequest, ProxyRequestInternalMetadata, ProxyRequestOptions};
+use chronicle_proxy::{
+    format::ChatRequest, EventPayload, ProxyRequestInternalMetadata, ProxyRequestOptions,
+};
 use error_stack::ResultExt;
-use serde::Deserialize;
+use http::StatusCode;
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::{auth::Authed, server::ServerState, Error};
 
@@ -48,8 +52,37 @@ async fn proxy_request(
     Ok(Json(result).into_response())
 }
 
+#[derive(Serialize)]
+struct Id {
+    id: Uuid,
+}
+
+async fn record_event(
+    State(state): State<ServerState>,
+    auth: Option<Authed>,
+    headers: HeaderMap,
+    Json(mut body): Json<EventPayload>,
+) -> Result<impl IntoResponse, Error> {
+    body.metadata
+        .merge_request_headers(&headers)
+        .change_context(Error::InvalidProxyHeader)?;
+    let internal_metadata = ProxyRequestInternalMetadata {
+        organization_id: auth
+            .as_ref()
+            .map(|a| a.organization_id.as_uuid().to_string()),
+        user_id: auth.as_ref().map(|a| a.user_id.as_uuid().to_string()),
+        project_id: None,
+    };
+
+    let id = state.proxy.record_event(internal_metadata, body).await;
+
+    Ok((StatusCode::ACCEPTED, Json(Id { id })))
+}
+
 pub fn create_routes() -> Router<ServerState> {
     Router::new()
+        .route("/event", axum::routing::post(record_event))
+        .route("/v1/event", axum::routing::post(record_event))
         .route("/chat", axum::routing::post(proxy_request))
         // We don't use the wildcard path, but allow calling with any path for compatibility with clients
         // that always append an API path to a base url.

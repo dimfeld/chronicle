@@ -25,10 +25,11 @@ CREATE TABLE IF NOT EXISTS chronicle_pricing_plans (
 
 CREATE TABLE IF NOT EXISTS chronicle_events (
   id uuid PRIMARY KEY,
+  event_type text,
   organization_id text,
   project_id text,
   user_id text,
-  chat_request jsonb NOT NULL,
+  chat_request jsonb,
   chat_response jsonb,
   error jsonb,
   provider text,
@@ -45,7 +46,7 @@ CREATE TABLE IF NOT EXISTS chronicle_events (
   step_index int,
   prompt_id text,
   prompt_version int,
-  extra_meta jsonb,
+  meta jsonb,
   response_meta jsonb,
   retries int,
   rate_limited bool,
@@ -54,3 +55,7 @@ CREATE TABLE IF NOT EXISTS chronicle_events (
   pricing_plan uuid REFERENCES chronicle_pricing_plans (id),
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+CREATE INDEX chronicle_events_workflow_id_idx ON chronicle_events (workflow_id);
+
+CREATE INDEX chronicle_events_run_id_idx ON chronicle_events (run_id);

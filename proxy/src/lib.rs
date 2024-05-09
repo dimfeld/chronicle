@@ -12,6 +12,7 @@ pub mod request;
 mod testing;
 
 use builder::ProxyBuilder;
+use chrono::Utc;
 use config::{AliasConfig, ApiKeyConfig};
 use database::logging::ProxyLogEntry;
 pub use error::Error;
@@ -49,6 +50,15 @@ pub struct ProxiedChatResponse {
     pub meta: ProxiedChatResponseMeta,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct EventPayload {
+    #[serde(rename = "type")]
+    pub typ: String,
+    pub data: Option<serde_json::Value>,
+    pub error: Option<serde_json::Value>,
+    pub metadata: ProxyRequestMetadata,
+}
+
 #[derive(Debug)]
 pub struct Proxy {
     pool: Option<database::Pool>,
@@ -62,6 +72,55 @@ pub struct Proxy {
 impl Proxy {
     pub fn builder() -> ProxyBuilder {
         ProxyBuilder::new()
+    }
+
+    /// Record an event to the database. This lets you have your LLM request events and other
+    /// events in the same database table.
+    pub async fn record_event(
+        &self,
+        internal_metadata: ProxyRequestInternalMetadata,
+        mut body: EventPayload,
+    ) -> Uuid {
+        let id = Uuid::now_v7();
+
+        let Some(log_tx) = &self.log_tx else {
+            return id;
+        };
+
+        if body
+            .metadata
+            .extra
+            .as_ref()
+            .map(|m| m.is_empty())
+            .unwrap_or(true)
+        {
+            // The logger gets the `meta` field from here, so just move it over.
+            body.metadata.extra = match body.data {
+                Some(serde_json::Value::Object(m)) => Some(m),
+                _ => None,
+            };
+        }
+
+        let log_entry = ProxyLogEntry {
+            id,
+            event_type: Cow::Owned(body.typ),
+            timestamp: Utc::now(),
+            request: None,
+            response: None,
+            total_latency: None,
+            was_rate_limited: None,
+            num_retries: None,
+            error: body.error.and_then(|e| serde_json::to_string(&e).ok()),
+            options: ProxyRequestOptions {
+                metadata: body.metadata,
+                internal_metadata,
+                ..Default::default()
+            },
+        };
+
+        log_tx.send_async(log_entry).await.ok();
+
+        id
     }
 
     /// Send a request, choosing the provider based on the requested `model` and `provider`.
@@ -240,12 +299,13 @@ impl Proxy {
                 if let Some(log_tx) = &self.log_tx {
                     let log_entry = ProxyLogEntry {
                         id,
+                        event_type: Cow::Borrowed("chronicle_llm_request"),
                         timestamp,
-                        request: body.clone(),
+                        request: Some(body.clone()),
                         response: Some(response.clone()),
-                        num_retries: response.num_retries,
-                        was_rate_limited: response.was_rate_limited,
-                        total_latency: send_start.elapsed(),
+                        num_retries: Some(response.num_retries),
+                        was_rate_limited: Some(response.was_rate_limited),
+                        total_latency: Some(send_start.elapsed()),
                         error: None,
                         options,
                     };
@@ -263,12 +323,13 @@ impl Proxy {
                 if let Some(log_tx) = &self.log_tx {
                     let log_entry = ProxyLogEntry {
                         id,
+                        event_type: Cow::Borrowed("chronicle_llm_request"),
                         timestamp,
-                        request: body,
+                        request: Some(body),
                         response: None,
-                        total_latency: send_start.elapsed(),
-                        num_retries: e.num_retries,
-                        was_rate_limited: e.was_rate_limited,
+                        total_latency: Some(send_start.elapsed()),
+                        num_retries: Some(e.num_retries),
+                        was_rate_limited: Some(e.was_rate_limited),
                         error: Some(format!("{:?}", e)),
                         options,
                     };

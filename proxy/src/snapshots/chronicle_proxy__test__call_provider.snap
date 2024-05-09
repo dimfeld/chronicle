@@ -11,8 +11,7 @@ expression: result
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "hello",
-        "tool_calls": []
+        "content": "hello"
       },
       "finish_reason": "stop"
     }
