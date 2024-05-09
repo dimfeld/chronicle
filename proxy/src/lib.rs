@@ -110,7 +110,7 @@ impl Proxy {
             total_latency: None,
             was_rate_limited: None,
             num_retries: None,
-            error: body.error.map(|e| format!("{:?}", e)),
+            error: body.error.and_then(|e| serde_json::to_string(&e).ok()),
             options: ProxyRequestOptions {
                 metadata: body.metadata,
                 internal_metadata,
