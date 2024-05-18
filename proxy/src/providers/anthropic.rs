@@ -66,6 +66,7 @@ impl ChatModelProvider for Anthropic {
             temperature: body.temperature,
             top_p: body.top_p,
             tools: body.tools.into_iter().map(From::from).collect::<Vec<_>>(),
+            tool_choice: body.tool_choice.map(|c| c.into()),
         };
 
         let body = serde_json::to_vec(&body).change_context(Error::TransformingRequest)?;
@@ -186,6 +187,8 @@ struct AnthropicChatRequest {
     top_p: Option<f32>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tools: Vec<AnthropicTool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<AnthropicToolChoice>,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -208,6 +211,41 @@ impl From<Tool> for AnthropicTool {
             description: tool.function.description,
             input_schema: tool.function.parameters,
         }
+    }
+}
+
+#[derive(Serialize, Debug, Clone)]
+#[serde(rename_all = "snake_case", tag = "type")]
+enum AnthropicToolChoice {
+    /// Let the model decide whether to use a tool or not
+    Auto,
+    /// Force the model to use a tool, but let it decide which one
+    Any,
+    /// Force a specific tool
+    Tool {
+        /// Which tool to use
+        name: String,
+    },
+}
+
+impl From<serde_json::Value> for AnthropicToolChoice {
+    fn from(value: serde_json::Value) -> Self {
+        match value.as_str().unwrap_or_default() {
+            "none" => return AnthropicToolChoice::Auto,
+            "auto" => return AnthropicToolChoice::Auto,
+            "required" => return AnthropicToolChoice::Any,
+            _ => {}
+        };
+
+        if value["type"] == "function" {
+            if let Some(tool_name) = value["function"]["name"].as_str() {
+                return AnthropicToolChoice::Tool {
+                    name: tool_name.to_string(),
+                };
+            }
+        }
+
+        AnthropicToolChoice::Auto
     }
 }
 

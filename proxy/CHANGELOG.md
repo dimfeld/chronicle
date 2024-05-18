@@ -1,5 +1,9 @@
 # chronicle-proxy changelog
 
+## Unreleased
+
+- Support Anthropic `tool_choice` field
+
 ## 0.1.5
 
 - Add function for recording non-LLM events
