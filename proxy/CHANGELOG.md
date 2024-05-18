@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Support Anthropic `tool_choice` field
+- Recover from Groq error when it fails to parse an actually-valid tool call response
 
 ## 0.1.5
 

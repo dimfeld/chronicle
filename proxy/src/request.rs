@@ -324,6 +324,7 @@ pub async fn send_standard_request<RESPONSE: DeserializeOwned>(
             kind: ProviderErrorKind::Sending,
             status_code: None,
             body: None,
+            latency: start.elapsed(),
         })?;
 
     let status = result.status();
@@ -339,19 +340,23 @@ pub async fn send_standard_request<RESPONSE: DeserializeOwned>(
         };
 
         let body = result.json::<serde_json::Value>().await.ok();
+        let latency = start.elapsed();
 
         Err(Report::new(ProviderError {
             kind: e,
             status_code: Some(status),
             body,
+            latency,
         }))
     } else {
+        let latency = start.elapsed();
         // Get the result as text first so that we can save the entire response for better
         // introspection if parsing fails.
         let text = result.text().await.change_context(ProviderError {
             kind: ProviderErrorKind::ParsingResponse,
             status_code: Some(status),
             body: None,
+            latency,
         })?;
 
         let jd = &mut serde_json::Deserializer::from_str(&text);
@@ -360,9 +365,9 @@ pub async fn send_standard_request<RESPONSE: DeserializeOwned>(
                 kind: ProviderErrorKind::ParsingResponse,
                 status_code: Some(status),
                 body: Some(serde_json::Value::String(text)),
+                latency,
             })?;
 
-        let latency = start.elapsed();
         Ok::<_, Report<ProviderError>>((body, latency))
     }
 }

@@ -96,8 +96,8 @@ describe('tools', () => {
   test('OpenAI compatible providers', async () => {
     const testRequest = {
       ...request,
-      model: 'gpt-3.5-turbo',
-      // model: 'groq/llama3-70b-8192',
+      // model: 'gpt-3.5-turbo',
+      model: 'groq/llama3-70b-8192',
     };
 
     const client = createChronicleClient();
@@ -173,7 +173,7 @@ describe('tracing', () => {
   beforeAll(() => sdk.start());
   afterAll(() => sdk.shutdown());
 
-  test.only('LLM call', async () => {
+  test('LLM call', async () => {
     await tracer.startActiveSpan('chronicle-js call test', async (span) => {
       try {
         const client = createChronicleClient();

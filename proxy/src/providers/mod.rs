@@ -68,6 +68,8 @@ pub struct ProviderError {
     pub status_code: Option<reqwest::StatusCode>,
     /// The returned body, if there was one
     pub body: Option<serde_json::Value>,
+    /// How much time it took before we received the error
+    pub latency: std::time::Duration,
 }
 
 #[cfg(feature = "filigree")]
