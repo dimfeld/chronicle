@@ -36,7 +36,7 @@ tokio = { version = "1.37.0", features = ["fs", "macros", "time"] }
 toml = "0.8.12"
 tracing = "0.1.40"
 url = "2.5.0"
-uuid = { version = "1.8.0", features = ["v7", "serde"] }
+uuid = { version = "1.8.0", features = ["v4", "v7", "serde"] }
 
 [dev-dependencies]
 insta = { version = "1.38.0", features = ["json", "redactions"] }
@@ -44,7 +44,7 @@ tokio = { version = "1.37.0", features = ["fs", "macros", "rt", "test-util", "ti
 wiremock = "0.6.0"
 
 [features]
-default = ["postgres"]
+default = ["postgres", "sqlite"]
 postgres = ["sqlx/postgres"]
 sqlite = ["sqlx/sqlite"]
 filigree = ["dep:filigree"]

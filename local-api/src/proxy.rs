@@ -24,12 +24,12 @@ pub async fn build_proxy(
     let mut builder = Proxy::builder();
 
     if let Some(pool) = pool {
-        chronicle_proxy::database::migrations::run_default_migrations(&pool)
+        chronicle_proxy::database::sqlite::run_default_migrations(&pool)
             .await
             .change_context(Error::DbInit)?;
 
         builder = builder
-            .with_database(pool)
+            .with_sqlite_pool(pool)
             .log_to_database(true)
             .load_config_from_database(true);
     }

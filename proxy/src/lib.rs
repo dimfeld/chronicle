@@ -61,7 +61,7 @@ pub struct EventPayload {
 
 #[derive(Debug)]
 pub struct Proxy {
-    pool: Option<database::Pool>,
+    database: Option<database::Database>,
     log_tx: Option<flume::Sender<ProxyLogEntry>>,
     log_task: Option<tokio::task::JoinHandle<()>>,
     lookup: ProviderLookup,

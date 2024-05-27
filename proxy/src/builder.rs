@@ -5,8 +5,8 @@ use error_stack::{Report, ResultExt};
 use crate::{
     config::{AliasConfig, ApiKeyConfig, CustomProviderConfig, ProxyConfig},
     database::{
-        load_aliases_from_database, load_api_key_configs_from_database,
-        load_providers_from_database, logging::start_database_logger, Pool,
+        load_providers_from_database, logging::start_database_logger, postgres::PostgresDatabase,
+        sqlite::SqliteDatabase, Database,
     },
     providers::{
         anthropic::Anthropic, anyscale::Anyscale, deepinfra::DeepInfra, fireworks::Fireworks,
@@ -16,7 +16,7 @@ use crate::{
 };
 
 pub struct ProxyBuilder {
-    pool: Option<Pool>,
+    database: Option<Database>,
     config: ProxyConfig,
     load_config_from_database: bool,
     client: Option<reqwest::Client>,
@@ -35,7 +35,7 @@ pub struct ProxyBuilder {
 impl ProxyBuilder {
     pub fn new() -> Self {
         Self {
-            pool: None,
+            database: None,
             config: ProxyConfig::default(),
             load_config_from_database: true,
             client: None,
@@ -52,9 +52,21 @@ impl ProxyBuilder {
         }
     }
 
-    /// Set the database connection pool
-    pub fn with_database(mut self, pool: Pool) -> Self {
-        self.pool = Some(pool);
+    /// Set the database with a pre-made adapter
+    pub fn with_database(mut self, database: Database) -> Self {
+        self.database = Some(database);
+        self
+    }
+
+    /// Use this SQLite database
+    pub fn with_sqlite_pool(mut self, pool: sqlx::SqlitePool) -> Self {
+        self.database = Some(Arc::new(SqliteDatabase { pool }));
+        self
+    }
+
+    /// Use this PostgreSQL database pool
+    pub fn with_postgres_pool(mut self, pool: sqlx::PgPool) -> Self {
+        self.database = Some(Arc::new(PostgresDatabase { pool }));
         self
     }
 
@@ -218,18 +230,16 @@ impl ProxyBuilder {
         let mut provider_configs = self.config.providers;
         let mut api_keys = self.config.api_keys;
         let mut aliases = self.config.aliases;
-        let logger = if let Some(pool) = &self.pool {
+        let logger = if let Some(db) = &self.database {
             if self.load_config_from_database {
                 let db_providers =
-                    load_providers_from_database(&pool, "chronicle_custom_providers").await?;
-                let db_aliases = load_aliases_from_database(
-                    &pool,
-                    "chronicle_aliases",
-                    "chronicle_alias_providers",
-                )
-                .await?;
-                let db_api_keys =
-                    load_api_key_configs_from_database(&pool, "chronicle_api_keys").await?;
+                    load_providers_from_database(db.as_ref(), "chronicle_custom_providers").await?;
+                let db_aliases = db
+                    .load_aliases_from_database("chronicle_aliases", "chronicle_alias_providers")
+                    .await?;
+                let db_api_keys = db
+                    .load_api_key_configs_from_database("chronicle_api_keys")
+                    .await?;
 
                 provider_configs.extend(db_providers);
                 aliases.extend(db_aliases);
@@ -238,7 +248,7 @@ impl ProxyBuilder {
 
             let logger = if self.config.log_to_database.unwrap_or(false) {
                 Some(start_database_logger(
-                    pool.clone(),
+                    db.clone(),
                     500,
                     Duration::from_secs(1),
                 ))
@@ -347,7 +357,7 @@ impl ProxyBuilder {
         let lookup = ProviderLookup::new(providers, aliases, api_keys);
 
         Ok(Proxy {
-            pool: self.pool,
+            database: self.database,
             lookup,
             default_timeout: self.config.default_timeout,
             log_tx,
