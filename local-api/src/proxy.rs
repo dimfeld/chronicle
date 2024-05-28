@@ -7,29 +7,22 @@ use axum::{
     Json,
 };
 use chronicle_proxy::{
-    format::ChatRequest, EventPayload, Proxy, ProxyRequestInternalMetadata, ProxyRequestOptions,
+    database::Database, format::ChatRequest, EventPayload, Proxy, ProxyRequestInternalMetadata,
+    ProxyRequestOptions,
 };
 use error_stack::{Report, ResultExt};
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
 use uuid::Uuid;
 
 use crate::{config::Configs, Error};
 
-pub async fn build_proxy(
-    pool: Option<SqlitePool>,
-    configs: Configs,
-) -> Result<Proxy, Report<Error>> {
+pub async fn build_proxy(db: Option<Database>, configs: Configs) -> Result<Proxy, Report<Error>> {
     let mut builder = Proxy::builder();
 
-    if let Some(pool) = pool {
-        chronicle_proxy::database::migrations::run_default_migrations(&pool)
-            .await
-            .change_context(Error::DbInit)?;
-
+    if let Some(db) = db {
         builder = builder
-            .with_database(pool)
+            .with_database(db)
             .log_to_database(true)
             .load_config_from_database(true);
     }
@@ -103,4 +96,5 @@ pub fn create_routes() -> axum::Router<Arc<ServerState>> {
         // that always append an API path to a base url.
         .route("/chat/*path", axum::routing::post(proxy_request))
         .route("/v1/chat/*path", axum::routing::post(proxy_request))
+        .route("/healthz", axum::routing::get(|| async { "OK" }))
 }

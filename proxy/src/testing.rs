@@ -89,6 +89,7 @@ impl ChatModelProvider for TestProvider {
                 kind,
                 status_code: None,
                 body: None,
+                latency: Duration::from_millis(500),
             })
             .change_context(Error::ModelError)?;
         }

@@ -24,7 +24,7 @@ axum-htmx = "0.5.0"
 axum-jsonschema = "0.8.0"
 axum-sqlx-tx = { version = "0.8.0", features = ["postgres", "runtime-tokio-rustls"] }
 bytes = "1.5.0"
-chronicle-proxy = { path = "../proxy", version = "0.1.5", default-features = false, features = ["postgres", "migrations", "schemars", "filigree"] }
+chronicle-proxy = { path = "../proxy", version = "0.1.5", default-features = false, features = ["postgres", "schemars", "filigree"] }
 chrono = "0.4.33"
 clap = { version = "4.4.11", features = ["env", "derive"] }
 dialoguer = "0.11.0"

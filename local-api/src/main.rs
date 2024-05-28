@@ -5,14 +5,17 @@ use std::{
 };
 
 use axum::Router;
+use chronicle_proxy::database::Database;
 use clap::Parser;
+use config::{Configs, LocalServerConfig};
+use database::init_database;
 use error_stack::{Report, ResultExt};
 use filigree::{
     errors::panic_handler,
     propagate_http_span::extract_request_parent,
     tracing_config::{configure_tracing, create_tracing_config, teardown_tracing, TracingProvider},
 };
-use sqlx::sqlite::SqliteConnectOptions;
+use futures::Future;
 use tower::ServiceBuilder;
 use tower_http::{
     compression::CompressionLayer,
@@ -27,6 +30,7 @@ use crate::{
 };
 
 mod config;
+mod database;
 mod error;
 mod proxy;
 
@@ -34,7 +38,7 @@ use error::Error;
 
 #[derive(Parser)]
 #[command(version, about)]
-struct Cli {
+pub(crate) struct Cli {
     /// The path to the configuration file or a directory containing it. If omitted,
     /// the default configuration path will be checked.
     #[clap(long, short = 'c')]
@@ -44,9 +48,10 @@ struct Cli {
     #[clap(long)]
     no_dotenv: bool,
 
-    /// The SQLite database to use, if any. This can also be set in the configuration file.
-    #[clap(long = "db", env = "DATABASE_PATH")]
-    database_path: Option<String>,
+    /// The SQLite or PostgreSQL database to use, if any. This can also be set in the configuration file.
+    /// Takes a file path for SQLite or a connection string for PostgreSQL
+    #[clap(long = "db", env = "DATABASE_URL")]
+    database: Option<String>,
 
     /// The IP host to bind to
     #[clap(long, env = "HOST")]
@@ -57,23 +62,41 @@ struct Cli {
     port: Option<u16>,
 }
 
-async fn serve(cmd: Cli) -> Result<(), Report<Error>> {
-    error_stack::Report::set_color_mode(error_stack::fmt::ColorMode::None);
-
+pub(crate) async fn run(cmd: Cli) -> Result<(), Report<Error>> {
     let configs = find_configs(cmd.config.clone())?;
-    let server_config = merge_server_config(&cmd, &configs);
+    let mut server_config = merge_server_config(&configs);
 
     // Must load configs and run dotenv before starting tracing, so that they can set destination and
     // service name.
     if !cmd.no_dotenv {
+        let mut loaded_env = false;
         for (dir, config) in configs.cwd.iter().rev().chain(configs.cwd.iter().rev()) {
             if config.server_config.dotenv.unwrap_or(true) {
                 dotenvy::from_path(dir.join(".env")).ok();
+                loaded_env = true;
             }
         }
 
         if server_config.dotenv.unwrap_or(true) {
             dotenvy::dotenv().ok();
+            loaded_env = true;
+        }
+
+        if loaded_env {
+            // Reread with the environment variables
+            let cmd = Cli::parse();
+
+            if cmd.database.is_some() {
+                server_config.database = cmd.database;
+            }
+
+            if cmd.host.is_some() {
+                server_config.host = cmd.host;
+            }
+
+            if cmd.port.is_some() {
+                server_config.port = cmd.port;
+            }
         }
     }
 
@@ -98,30 +121,27 @@ async fn serve(cmd: Cli) -> Result<(), Report<Error>> {
         tracing::info!("Loaded config from {}", dir.display());
     }
 
-    let db_pool = if let Some(database_path) = &server_config.database_path {
-        tracing::info!("Opening database at {database_path}");
-        let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .connect_with(
-                SqliteConnectOptions::new()
-                    .filename(database_path)
-                    .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
-                    .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
-                    .create_if_missing(true),
-            )
-            .await
-            .change_context(Error::Db)?;
+    let db = init_database(server_config.database.clone())
+        .await
+        .change_context(Error::Db)?;
 
-        Some(pool)
-    } else {
-        tracing::info!("No database configured");
-        None
-    };
+    let shutdown_signal = filigree::server::shutdown_signal();
+    serve(server_config, configs, db, shutdown_signal).await
+}
 
-    let proxy = proxy::build_proxy(db_pool, configs).await?;
+pub(crate) async fn serve(
+    server_config: LocalServerConfig,
+    all_configs: Configs,
+    db: Option<Database>,
+    shutdown: impl Future<Output = ()> + Send + 'static,
+) -> Result<(), Report<Error>> {
+    let proxy = proxy::build_proxy(db, all_configs).await?;
+
+    let mut state = Arc::new(ServerState { proxy });
 
     let app = Router::new()
         .merge(proxy::create_routes())
-        .with_state(Arc::new(ServerState { proxy }))
+        .with_state(state.clone())
         .layer(
             ServiceBuilder::new()
                 .layer(panic_handler(false))
@@ -196,14 +216,21 @@ async fn serve(cmd: Cli) -> Result<(), Report<Error>> {
     let host = actual_addr.ip().to_string();
     tracing::info!("Listening on {host}:{port}");
 
-    let shutdown_signal = filigree::server::shutdown_signal();
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
-    .with_graceful_shutdown(shutdown_signal)
+    .with_graceful_shutdown(shutdown)
     .await
     .change_context(Error::ServerStart)?;
+
+    tracing::info!("Shutting down proxy");
+    Arc::get_mut(&mut state)
+        .ok_or(Error::Shutdown)
+        .attach_printable("Failed to get proxy reference for shutdown")?
+        .proxy
+        .shutdown()
+        .await;
 
     tracing::info!("Exporting remaining traces");
     teardown_tracing().await.change_context(Error::Shutdown)?;
@@ -221,7 +248,8 @@ fn main() -> Result<(), Report<Error>> {
 }
 
 pub async fn actual_main() -> Result<(), Report<Error>> {
+    error_stack::Report::set_color_mode(error_stack::fmt::ColorMode::None);
     let cli = Cli::parse();
-    serve(cli).await?;
+    run(cli).await?;
     Ok(())
 }
