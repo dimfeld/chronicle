@@ -56,6 +56,7 @@ pub struct EventPayload {
     pub typ: String,
     pub data: Option<serde_json::Value>,
     pub error: Option<serde_json::Value>,
+    #[serde(default)]
     pub metadata: ProxyRequestMetadata,
 }
 

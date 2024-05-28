@@ -5,13 +5,17 @@ use std::{
 };
 
 use axum::Router;
+use chronicle_proxy::database::Database;
 use clap::Parser;
+use config::{Configs, LocalServerConfig};
+use database::init_database;
 use error_stack::{Report, ResultExt};
 use filigree::{
     errors::panic_handler,
     propagate_http_span::extract_request_parent,
     tracing_config::{configure_tracing, create_tracing_config, teardown_tracing, TracingProvider},
 };
+use futures::Future;
 use tower::ServiceBuilder;
 use tower_http::{
     compression::CompressionLayer,
@@ -34,7 +38,7 @@ use error::Error;
 
 #[derive(Parser)]
 #[command(version, about)]
-struct Cli {
+pub(crate) struct Cli {
     /// The path to the configuration file or a directory containing it. If omitted,
     /// the default configuration path will be checked.
     #[clap(long, short = 'c')]
@@ -58,9 +62,7 @@ struct Cli {
     port: Option<u16>,
 }
 
-async fn serve(cmd: Cli) -> Result<(), Report<Error>> {
-    error_stack::Report::set_color_mode(error_stack::fmt::ColorMode::None);
-
+pub(crate) async fn run(cmd: Cli) -> Result<(), Report<Error>> {
     let configs = find_configs(cmd.config.clone())?;
     let server_config = merge_server_config(&cmd, &configs);
 
@@ -99,11 +101,27 @@ async fn serve(cmd: Cli) -> Result<(), Report<Error>> {
         tracing::info!("Loaded config from {}", dir.display());
     }
 
-    let proxy = proxy::build_proxy(server_config.database, configs).await?;
+    let db = init_database(server_config.database.clone())
+        .await
+        .change_context(Error::Db)?;
+
+    let shutdown_signal = filigree::server::shutdown_signal();
+    serve(server_config, configs, db, shutdown_signal).await
+}
+
+pub(crate) async fn serve(
+    server_config: LocalServerConfig,
+    all_configs: Configs,
+    db: Option<Database>,
+    shutdown: impl Future<Output = ()> + Send + 'static,
+) -> Result<(), Report<Error>> {
+    let proxy = proxy::build_proxy(db, all_configs).await?;
+
+    let mut state = Arc::new(ServerState { proxy });
 
     let app = Router::new()
         .merge(proxy::create_routes())
-        .with_state(Arc::new(ServerState { proxy }))
+        .with_state(state.clone())
         .layer(
             ServiceBuilder::new()
                 .layer(panic_handler(false))
@@ -178,14 +196,21 @@ async fn serve(cmd: Cli) -> Result<(), Report<Error>> {
     let host = actual_addr.ip().to_string();
     tracing::info!("Listening on {host}:{port}");
 
-    let shutdown_signal = filigree::server::shutdown_signal();
     axum::serve(
         listener,
         app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
     )
-    .with_graceful_shutdown(shutdown_signal)
+    .with_graceful_shutdown(shutdown)
     .await
     .change_context(Error::ServerStart)?;
+
+    tracing::info!("Shutting down proxy");
+    Arc::get_mut(&mut state)
+        .ok_or(Error::Shutdown)
+        .attach_printable("Failed to get proxy reference for shutdown")?
+        .proxy
+        .shutdown()
+        .await;
 
     tracing::info!("Exporting remaining traces");
     teardown_tracing().await.change_context(Error::Shutdown)?;
@@ -203,7 +228,8 @@ fn main() -> Result<(), Report<Error>> {
 }
 
 pub async fn actual_main() -> Result<(), Report<Error>> {
+    error_stack::Report::set_color_mode(error_stack::fmt::ColorMode::None);
     let cli = Cli::parse();
-    serve(cli).await?;
+    run(cli).await?;
     Ok(())
 }

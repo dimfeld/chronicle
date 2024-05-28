@@ -7,19 +7,19 @@ use axum::{
     Json,
 };
 use chronicle_proxy::{
-    format::ChatRequest, EventPayload, Proxy, ProxyRequestInternalMetadata, ProxyRequestOptions,
+    database::Database, format::ChatRequest, EventPayload, Proxy, ProxyRequestInternalMetadata,
+    ProxyRequestOptions,
 };
 use error_stack::{Report, ResultExt};
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{config::Configs, database::init_database, Error};
+use crate::{config::Configs, Error};
 
-pub async fn build_proxy(db_url: Option<String>, configs: Configs) -> Result<Proxy, Report<Error>> {
+pub async fn build_proxy(db: Option<Database>, configs: Configs) -> Result<Proxy, Report<Error>> {
     let mut builder = Proxy::builder();
 
-    let db = init_database(db_url).await.change_context(Error::Db)?;
     if let Some(db) = db {
         builder = builder
             .with_database(db)
@@ -96,4 +96,5 @@ pub fn create_routes() -> axum::Router<Arc<ServerState>> {
         // that always append an API path to a base url.
         .route("/chat/*path", axum::routing::post(proxy_request))
         .route("/v1/chat/*path", axum::routing::post(proxy_request))
+        .route("/healthz", axum::routing::get(|| async { "OK" }))
 }

@@ -2,6 +2,7 @@
 use std::{borrow::Cow, time::Duration};
 
 use chrono::Utc;
+use tracing::instrument;
 use uuid::Uuid;
 
 use super::{Database, ProxyDatabase};
@@ -47,6 +48,7 @@ async fn database_logger_task(
                     break;
                 };
 
+                tracing::debug!("Received item");
                 batch.push(item);
 
                 if batch.len() >= batch_size {
@@ -61,12 +63,14 @@ async fn database_logger_task(
             }
         }
     }
+    tracing::debug!("Closing database logger");
 
     if !batch.is_empty() {
         write_batch(db.as_ref(), batch).await;
     }
 }
 
+#[instrument(level = "trace", parent=None, skip(db, items), fields(chronicle.db_batch.num_items = items.len()))]
 async fn write_batch(db: &dyn ProxyDatabase, items: Vec<ProxyLogEntry>) {
     let mut query = String::with_capacity(items.len() * 1024);
 
