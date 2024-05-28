@@ -12,7 +12,6 @@ use filigree::{
     propagate_http_span::extract_request_parent,
     tracing_config::{configure_tracing, create_tracing_config, teardown_tracing, TracingProvider},
 };
-use sqlx::sqlite::SqliteConnectOptions;
 use tower::ServiceBuilder;
 use tower_http::{
     compression::CompressionLayer,
@@ -27,6 +26,7 @@ use crate::{
 };
 
 mod config;
+mod database;
 mod error;
 mod proxy;
 
@@ -44,9 +44,10 @@ struct Cli {
     #[clap(long)]
     no_dotenv: bool,
 
-    /// The SQLite database to use, if any. This can also be set in the configuration file.
-    #[clap(long = "db", env = "DATABASE_PATH")]
-    database_path: Option<String>,
+    /// The SQLite or PostgreSQL database to use, if any. This can also be set in the configuration file.
+    /// Takes a file path for SQLite or a connection string for PostgreSQL
+    #[clap(long = "db", env = "DATABASE_URL")]
+    database: Option<String>,
 
     /// The IP host to bind to
     #[clap(long, env = "HOST")]
@@ -98,26 +99,7 @@ async fn serve(cmd: Cli) -> Result<(), Report<Error>> {
         tracing::info!("Loaded config from {}", dir.display());
     }
 
-    let db_pool = if let Some(database_path) = &server_config.database_path {
-        tracing::info!("Opening database at {database_path}");
-        let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .connect_with(
-                SqliteConnectOptions::new()
-                    .filename(database_path)
-                    .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
-                    .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
-                    .create_if_missing(true),
-            )
-            .await
-            .change_context(Error::Db)?;
-
-        Some(pool)
-    } else {
-        tracing::info!("No database configured");
-        None
-    };
-
-    let proxy = proxy::build_proxy(db_pool, configs).await?;
+    let proxy = proxy::build_proxy(server_config.database, configs).await?;
 
     let app = Router::new()
         .merge(proxy::create_routes())

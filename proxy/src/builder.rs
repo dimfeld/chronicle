@@ -2,12 +2,13 @@ use std::{path::Path, sync::Arc, time::Duration};
 
 use error_stack::{Report, ResultExt};
 
+#[cfg(feature = "postgres")]
+use crate::database::postgres::PostgresDatabase;
+#[cfg(feature = "sqlite")]
+use crate::database::sqlite::SqliteDatabase;
 use crate::{
     config::{AliasConfig, ApiKeyConfig, CustomProviderConfig, ProxyConfig},
-    database::{
-        load_providers_from_database, logging::start_database_logger, postgres::PostgresDatabase,
-        sqlite::SqliteDatabase, Database,
-    },
+    database::{load_providers_from_database, logging::start_database_logger, Database},
     providers::{
         anthropic::Anthropic, anyscale::Anyscale, deepinfra::DeepInfra, fireworks::Fireworks,
         groq::Groq, ollama::Ollama, openai::OpenAi, together::Together, ChatModelProvider,
@@ -58,12 +59,14 @@ impl ProxyBuilder {
         self
     }
 
+    #[cfg(feature = "sqlite")]
     /// Use this SQLite database
     pub fn with_sqlite_pool(mut self, pool: sqlx::SqlitePool) -> Self {
         self.database = Some(Arc::new(SqliteDatabase { pool }));
         self
     }
 
+    #[cfg(feature = "postgres")]
     /// Use this PostgreSQL database pool
     pub fn with_postgres_pool(mut self, pool: sqlx::PgPool) -> Self {
         self.database = Some(Arc::new(PostgresDatabase { pool }));

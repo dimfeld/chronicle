@@ -18,8 +18,9 @@ pub struct LocalConfig {
 
 #[derive(Deserialize)]
 pub struct LocalServerConfig {
-    /// The path to the database, if a database should be used.
-    pub database_path: Option<String>,
+    /// The path or URL to the database, if a database should be used.
+    /// This can either be a file path, an sqlite:// URL, or a postgresql:// URL
+    pub database: Option<String>,
 
     /// The port to listen on
     pub port: Option<u16>,
@@ -33,7 +34,7 @@ pub struct LocalServerConfig {
 
 pub fn merge_server_config(cmd: &Cli, configs: &Configs) -> LocalServerConfig {
     let mut output = LocalServerConfig {
-        database_path: None,
+        database: None,
         port: None,
         host: None,
         dotenv: None,
@@ -41,9 +42,9 @@ pub fn merge_server_config(cmd: &Cli, configs: &Configs) -> LocalServerConfig {
 
     // Apply the global configs, then the CWD configs on top of those
     for config in configs.global.iter().chain(configs.cwd.iter()) {
-        if let Some(path) = &config.1.server_config.database_path {
+        if let Some(path) = &config.1.server_config.database {
             let full_path = config.0.join(path);
-            output.database_path = Some(full_path.to_string_lossy().to_string());
+            output.database = Some(full_path.to_string_lossy().to_string());
         }
 
         if let Some(host) = &config.1.server_config.host {
@@ -59,8 +60,8 @@ pub fn merge_server_config(cmd: &Cli, configs: &Configs) -> LocalServerConfig {
         }
     }
 
-    if cmd.database_path.is_some() {
-        output.database_path = cmd.database_path.clone();
+    if cmd.database.is_some() {
+        output.database = cmd.database.clone();
     }
 
     if cmd.host.is_some() {

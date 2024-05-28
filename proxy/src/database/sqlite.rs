@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use error_stack::{Report, ResultExt};
 use itertools::Itertools;
 use sqlx::SqlitePool;
@@ -16,6 +18,12 @@ const SQLITE_MIGRATIONS: &[&'static str] = &[
 #[derive(Debug)]
 pub struct SqliteDatabase {
     pub pool: SqlitePool,
+}
+
+impl SqliteDatabase {
+    pub fn new(pool: SqlitePool) -> Arc<dyn ProxyDatabase> {
+        Arc::new(Self { pool })
+    }
 }
 
 #[async_trait::async_trait]

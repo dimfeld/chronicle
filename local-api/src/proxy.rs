@@ -12,24 +12,17 @@ use chronicle_proxy::{
 use error_stack::{Report, ResultExt};
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
-use sqlx::SqlitePool;
 use uuid::Uuid;
 
-use crate::{config::Configs, Error};
+use crate::{config::Configs, database::init_database, Error};
 
-pub async fn build_proxy(
-    pool: Option<SqlitePool>,
-    configs: Configs,
-) -> Result<Proxy, Report<Error>> {
+pub async fn build_proxy(db_url: Option<String>, configs: Configs) -> Result<Proxy, Report<Error>> {
     let mut builder = Proxy::builder();
 
-    if let Some(pool) = pool {
-        chronicle_proxy::database::sqlite::run_default_migrations(&pool)
-            .await
-            .change_context(Error::DbInit)?;
-
+    let db = init_database(db_url).await.change_context(Error::Db)?;
+    if let Some(db) = db {
         builder = builder
-            .with_sqlite_pool(pool)
+            .with_database(db)
             .log_to_database(true)
             .load_config_from_database(true);
     }

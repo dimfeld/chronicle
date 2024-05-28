@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use error_stack::{Report, ResultExt};
 use sqlx::PgPool;
 
@@ -15,6 +17,12 @@ const POSTGRESQL_MIGRATIONS: &[&'static str] = &[
 #[derive(Debug)]
 pub struct PostgresDatabase {
     pub pool: PgPool,
+}
+
+impl PostgresDatabase {
+    pub fn new(pool: PgPool) -> Arc<dyn ProxyDatabase> {
+        Arc::new(Self { pool })
+    }
 }
 
 #[async_trait::async_trait]
