@@ -32,7 +32,7 @@ pub struct LocalServerConfig {
     pub dotenv: Option<bool>,
 }
 
-pub fn merge_server_config(cmd: &Cli, configs: &Configs) -> LocalServerConfig {
+pub fn merge_server_config(configs: &Configs) -> LocalServerConfig {
     let mut output = LocalServerConfig {
         database: None,
         port: None,
@@ -58,18 +58,6 @@ pub fn merge_server_config(cmd: &Cli, configs: &Configs) -> LocalServerConfig {
         if let Some(dotenv) = &config.1.server_config.dotenv {
             output.dotenv = Some(*dotenv);
         }
-    }
-
-    if cmd.database.is_some() {
-        output.database = cmd.database.clone();
-    }
-
-    if cmd.host.is_some() {
-        output.host = cmd.host.clone();
-    }
-
-    if cmd.port.is_some() {
-        output.port = cmd.port;
     }
 
     output

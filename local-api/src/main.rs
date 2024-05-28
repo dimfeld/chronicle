@@ -64,19 +64,39 @@ pub(crate) struct Cli {
 
 pub(crate) async fn run(cmd: Cli) -> Result<(), Report<Error>> {
     let configs = find_configs(cmd.config.clone())?;
-    let server_config = merge_server_config(&cmd, &configs);
+    let mut server_config = merge_server_config(&configs);
 
     // Must load configs and run dotenv before starting tracing, so that they can set destination and
     // service name.
     if !cmd.no_dotenv {
+        let mut loaded_env = false;
         for (dir, config) in configs.cwd.iter().rev().chain(configs.cwd.iter().rev()) {
             if config.server_config.dotenv.unwrap_or(true) {
                 dotenvy::from_path(dir.join(".env")).ok();
+                loaded_env = true;
             }
         }
 
         if server_config.dotenv.unwrap_or(true) {
             dotenvy::dotenv().ok();
+            loaded_env = true;
+        }
+
+        if loaded_env {
+            // Reread with the environment variables
+            let cmd = Cli::parse();
+
+            if cmd.database.is_some() {
+                server_config.database = cmd.database;
+            }
+
+            if cmd.host.is_some() {
+                server_config.host = cmd.host;
+            }
+
+            if cmd.port.is_some() {
+                server_config.port = cmd.port;
+            }
         }
     }
 

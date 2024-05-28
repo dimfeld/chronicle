@@ -13,8 +13,13 @@ pub async fn init_database(db: Option<String>) -> Result<Option<Database>, Repor
     let pg = db.starts_with("postgresql://") || db.starts_with("postgres://");
 
     if pg {
-        tracing::info!("Connecting to PostgreSQL database at {db}");
-        let pool = sqlx::postgres::PgPoolOptions::new().connect(&db).await?;
+        // Print the connection string without the password
+        let ops = sqlx::postgres::PgConnectOptions::from_str(&db)?;
+        let connection_string = reconstruct_pg_connstr(&ops);
+        tracing::info!("Connecting to PostgreSQL database at {connection_string}");
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .connect_with(ops)
+            .await?;
         Ok(Some(init_pg(pool).await?))
     } else {
         tracing::info!("Opening SQLite database at {db}");
@@ -44,6 +49,35 @@ pub(crate) async fn init_sqlite(pool: SqlitePool) -> Result<Database, Report<sql
     chronicle_proxy::database::sqlite::run_default_migrations(&pool).await?;
 
     Ok(chronicle_proxy::database::sqlite::SqliteDatabase::new(pool))
+}
+
+fn reconstruct_pg_connstr(ops: &sqlx::postgres::PgConnectOptions) -> String {
+    let mut c = String::from("postgresql://");
+    let user = ops.get_username();
+    let host = ops.get_host();
+    let port = ops.get_port();
+    let db = ops.get_database();
+
+    if !user.is_empty() {
+        c.push_str(user);
+        c.push('@');
+    }
+
+    if !host.is_empty() {
+        c.push_str(host);
+    }
+
+    if port > 0 {
+        c.push(':');
+        c.push_str(&port.to_string());
+    }
+
+    if let Some(db) = db {
+        c.push('/');
+        c.push_str(db);
+    }
+
+    c
 }
 
 #[cfg(test)]
