@@ -84,7 +84,6 @@ fn reconstruct_pg_connstr(ops: &sqlx::postgres::PgConnectOptions) -> String {
 mod tests {
     use std::time::Duration;
 
-    use filigree::tracing_config::{configure_tracing, TracingExportConfig};
     use futures::FutureExt;
     use serde_json::json;
     use temp_dir::TempDir;

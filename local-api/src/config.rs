@@ -5,7 +5,7 @@ use error_stack::{Report, ResultExt};
 use etcetera::BaseStrategy;
 use serde::Deserialize;
 
-use crate::{error::Error, Cli};
+use crate::error::Error;
 
 #[derive(Deserialize)]
 pub struct LocalConfig {
