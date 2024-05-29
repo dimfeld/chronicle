@@ -7,17 +7,20 @@ use serde::{Deserialize, Serialize};
 
 /// A chat response, in non-chunked format
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ChatResponse {
+pub struct ChatResponse<CHOICE> {
     // Omitted certain fields that aren't really useful
     // id: String,
     // object: String,
     pub created: u64,
     pub model: Option<String>,
     pub system_fingerprint: Option<String>,
-    pub choices: Vec<ChatChoice>,
+    pub choices: Vec<CHOICE>,
     #[serde(default)]
     pub usage: UsageResponse,
 }
+
+pub type StreamingChatResponse = ChatResponse<ChatChoiceDelta>;
+pub type SingleChatResponse = ChatResponse<ChatChoice>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChatChoice {
@@ -26,10 +29,17 @@ pub struct ChatChoice {
     pub finish_reason: String,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ChatChoiceDelta {
+    pub index: usize,
+    pub delta: ChatMessage,
+    pub finish_reason: Option<String>,
+}
+
 /// A single message in a chat
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChatMessage {
-    pub role: String,
+    pub role: Option<String>,
     /// Some providers support this natively. For those that don't, the name
     /// will be prepended to the message using the format "{name}: {content}".
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -160,7 +170,7 @@ impl ChatRequest {
         let system = self.system.take();
         if let Some(system) = system {
             self.messages = std::iter::once(ChatMessage {
-                role: "system".to_string(),
+                role: Some("system".to_string()),
                 content: Some(system),
                 tool_calls: Vec::new(),
                 name: None,
@@ -175,7 +185,7 @@ impl ChatRequest {
         if self
             .messages
             .get(0)
-            .map(|m| m.role == "system")
+            .map(|m| m.role.as_deref().unwrap_or_default() == "system")
             .unwrap_or(false)
         {
             let system = self.messages.remove(0);

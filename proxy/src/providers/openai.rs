@@ -5,9 +5,9 @@ use error_stack::{Report, ResultExt};
 use reqwest::{header::CONTENT_TYPE, Response};
 use tracing::instrument;
 
-use super::{ChatModelProvider, ProviderResponse, SendRequestOptions};
+use super::{ChatModelProvider, SendRequestOptions, SingleProviderResponse};
 use crate::{
-    format::{ChatRequestTransformation, ChatResponse},
+    format::{ChatRequestTransformation, SingleChatResponse},
     request::{parse_response_json, send_standard_request},
     Error,
 };
@@ -45,7 +45,7 @@ impl ChatModelProvider for OpenAi {
     async fn send_request(
         &self,
         options: SendRequestOptions,
-    ) -> Result<ProviderResponse, Report<Error>> {
+    ) -> Result<SingleProviderResponse, Report<Error>> {
         send_openai_request(
             &self.client,
             &self.url,
@@ -78,7 +78,7 @@ pub async fn send_openai_request(
         api_key,
         mut body,
     }: SendRequestOptions,
-) -> Result<ProviderResponse, Report<Error>> {
+) -> Result<SingleProviderResponse, Report<Error>> {
     body.transform(transform);
 
     let bytes = serde_json::to_vec(&body).change_context(Error::TransformingRequest)?;
@@ -105,11 +105,11 @@ pub async fn send_openai_request(
     .await
     .change_context(Error::ModelError)?;
 
-    let result: ChatResponse = parse_response_json(response, latency)
+    let result: SingleChatResponse = parse_response_json(response, latency)
         .await
         .change_context(Error::ModelError)?;
 
-    Ok(ProviderResponse {
+    Ok(SingleProviderResponse {
         model: result.model.clone().or(body.model).unwrap_or_default(),
         body: result,
         latency,

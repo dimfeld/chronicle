@@ -8,7 +8,8 @@ use error_stack::{Report, ResultExt};
 use crate::{
     format::{ChatChoice, ChatMessage, ChatResponse, UsageResponse},
     providers::{
-        ChatModelProvider, ProviderError, ProviderErrorKind, ProviderResponse, SendRequestOptions,
+        ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions,
+        SingleProviderResponse,
     },
     Error,
 };
@@ -65,7 +66,7 @@ impl ChatModelProvider for TestProvider {
     async fn send_request(
         &self,
         options: SendRequestOptions,
-    ) -> Result<ProviderResponse, Report<Error>> {
+    ) -> Result<SingleProviderResponse, Report<Error>> {
         let current_call = self
             .calls
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -94,7 +95,7 @@ impl ChatModelProvider for TestProvider {
             .change_context(Error::ModelError)?;
         }
 
-        Ok(ProviderResponse {
+        Ok(SingleProviderResponse {
             model: options.body.model.clone().unwrap_or_default(),
             body: ChatResponse {
                 created: 1,
@@ -103,7 +104,7 @@ impl ChatModelProvider for TestProvider {
                 choices: vec![ChatChoice {
                     index: 0,
                     message: ChatMessage {
-                        role: "assistant".to_string(),
+                        role: Some("assistant".to_string()),
                         content: Some(self.response.clone()),
                         tool_calls: Vec::new(),
                         name: None,

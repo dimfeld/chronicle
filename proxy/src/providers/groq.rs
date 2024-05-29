@@ -5,13 +5,13 @@ use reqwest::header::CONTENT_TYPE;
 use serde::Deserialize;
 
 use super::{
-    openai::handle_rate_limit_headers, ChatModelProvider, ProviderErrorKind, ProviderResponse,
-    SendRequestOptions,
+    openai::handle_rate_limit_headers, ChatModelProvider, ProviderErrorKind, SendRequestOptions,
+    SingleProviderResponse,
 };
 use crate::{
     format::{
-        ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, ToolCall,
-        ToolCallFunction, UsageResponse,
+        ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, SingleChatResponse,
+        ToolCall, ToolCallFunction, UsageResponse,
     },
     request::{parse_response_json, send_standard_request},
     Error,
@@ -50,7 +50,7 @@ impl ChatModelProvider for Groq {
             api_key,
             mut body,
         }: SendRequestOptions,
-    ) -> Result<ProviderResponse, Report<Error>> {
+    ) -> Result<SingleProviderResponse, Report<Error>> {
         body.transform(&ChatRequestTransformation {
             supports_message_name: true,
             system_in_messages: true,
@@ -109,7 +109,7 @@ impl ChatModelProvider for Groq {
                         choices: vec![ChatChoice {
                             index: 0,
                             message: ChatMessage {
-                                role: "assistant".to_string(),
+                                role: Some("assistant".to_string()),
                                 tool_calls: tool_calls.tool_calls,
                                 content: None,
                                 name: None,
@@ -132,7 +132,7 @@ impl ChatModelProvider for Groq {
             }
             Err(e) => Err(e),
             Ok((response, latency)) => {
-                let result = parse_response_json::<ChatResponse>(response, latency)
+                let result = parse_response_json::<SingleChatResponse>(response, latency)
                     .await
                     .change_context(Error::ModelError)?;
 
@@ -142,7 +142,7 @@ impl ChatModelProvider for Groq {
 
         let (result, latency) = response.change_context(Error::ModelError)?;
 
-        Ok(ProviderResponse {
+        Ok(SingleProviderResponse {
             model: result.model.clone().or(body.model).unwrap_or_default(),
             body: result,
             latency,

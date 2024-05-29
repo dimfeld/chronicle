@@ -17,7 +17,7 @@ use config::{AliasConfig, ApiKeyConfig};
 use database::logging::ProxyLogEntry;
 pub use error::Error;
 use error_stack::{Report, ResultExt};
-use format::{ChatRequest, ChatResponse};
+use format::{ChatRequest, SingleChatResponse};
 use http::HeaderMap;
 use provider_lookup::ProviderLookup;
 use providers::ChatModelProvider;
@@ -46,7 +46,7 @@ pub struct ProxiedChatResponseMeta {
 #[derive(Debug, Serialize)]
 pub struct ProxiedChatResponse {
     #[serde(flatten)]
-    pub response: ChatResponse,
+    pub response: SingleChatResponse,
     pub meta: ProxiedChatResponseMeta,
 }
 
@@ -210,7 +210,7 @@ impl Proxy {
 
                         Some(format!(
                             "{}: {}",
-                            m.name.as_ref().unwrap_or(&m.role),
+                            m.name.as_deref().or(m.role.as_deref()).unwrap_or_default(),
                             content
                         ))
                     })
@@ -708,7 +708,7 @@ mod test {
                 choices: vec![ChatChoice {
                     index: 0,
                     message: ChatMessage {
-                        role: "assistant".to_string(),
+                        role: Some("assistant".to_string()),
                         content: Some("hello".to_string()),
                         tool_calls: Vec::new(),
                         name: None,
@@ -750,7 +750,7 @@ mod test {
                 ChatRequest {
                     model: Some("me/a-test-model".to_string()),
                     messages: vec![ChatMessage {
-                        role: "user".to_string(),
+                        role: Some("user".to_string()),
                         content: Some("hello".to_string()),
                         tool_calls: Vec::new(),
                         name: None,

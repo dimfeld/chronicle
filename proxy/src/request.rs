@@ -9,7 +9,7 @@ use serde_with::{serde_as, DurationMilliSeconds};
 use tracing::instrument;
 
 use crate::{
-    format::{ChatRequest, ChatResponse},
+    format::{ChatRequest, SingleChatResponse},
     provider_lookup::{ModelLookupChoice, ModelLookupResult},
     providers::{ProviderError, ProviderErrorKind, SendRequestOptions},
     Error,
@@ -153,7 +153,7 @@ impl<'a> BackoffValue<'a> {
 
 #[derive(Debug, Clone)]
 pub struct ProxiedResult {
-    pub body: ChatResponse,
+    pub body: SingleChatResponse,
     /// The provider which was used for the successful response
     pub provider: String,
     /// Any other metadata from the provider that should be logged.
@@ -407,7 +407,7 @@ mod test {
             Duration::from_secs(5),
             ChatRequest {
                 messages: vec![ChatMessage {
-                    role: "user".to_string(),
+                    role: Some("user".to_string()),
                     content: Some("Tell me a story".to_string()),
                     tool_calls: Vec::new(),
                     name: None,

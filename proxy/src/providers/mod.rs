@@ -15,7 +15,7 @@ use reqwest::StatusCode;
 use thiserror::Error;
 
 use crate::{
-    format::{ChatRequest, ChatResponse},
+    format::{ChatRequest, SingleChatResponse},
     Error,
 };
 
@@ -41,15 +41,20 @@ pub trait ChatModelProvider: Debug + Send + Sync {
     async fn send_request(
         &self,
         options: SendRequestOptions,
-    ) -> Result<ProviderResponse, Report<Error>>;
+    ) -> Result<SingleProviderResponse, Report<Error>>;
 
     fn is_default_for_model(&self, model: &str) -> bool;
 }
 
+pub enum ProviderResponse {
+    Single(SingleProviderResponse),
+    // Streaming(StreamingProviderResponse),
+}
+
 /// A generic structure with a provider's response translated into the common format, and possible error codes.
 #[derive(Debug, Clone)]
-pub struct ProviderResponse {
-    pub body: ChatResponse,
+pub struct SingleProviderResponse {
+    pub body: SingleChatResponse,
     /// The model actually used.
     pub model: String,
     /// Any other metadata from the provider that should be logged.
