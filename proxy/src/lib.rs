@@ -62,11 +62,9 @@ pub struct EventPayload {
 
 #[derive(Debug)]
 pub struct Proxy {
-    database: Option<database::Database>,
     log_tx: Option<flume::Sender<ProxyLogEntry>>,
     log_task: Option<tokio::task::JoinHandle<()>>,
     lookup: ProviderLookup,
-    client: reqwest::Client,
     default_timeout: Option<Duration>,
 }
 

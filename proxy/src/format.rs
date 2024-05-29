@@ -15,6 +15,7 @@ pub struct ChatResponse {
     pub model: Option<String>,
     pub system_fingerprint: Option<String>,
     pub choices: Vec<ChatChoice>,
+    #[serde(default)]
     pub usage: UsageResponse,
 }
 
@@ -38,7 +39,7 @@ pub struct ChatMessage {
     pub tool_calls: Vec<ToolCall>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct UsageResponse {
     pub prompt_tokens: Option<usize>,
     pub completion_tokens: Option<usize>,
@@ -114,6 +115,7 @@ pub struct ChatRequest {
     pub tools: Vec<Tool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<serde_json::Value>,
+    /// The "user" to send to the provider.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
     // /// Send the response back as a stream of chunks.
