@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        DELETE FROM permissions\n            WHERE\n                organization_id = $1\n                AND actor_id = $2\n                AND permission = ANY($3)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e70e28f56e8a998627c0829f6f26926ce45c3c914052a3f075339bb86c11405e"
+}

@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE api_keys\n        SET\n            description = COALESCE($4, description),\n            active = COALESCE($5, active)\n        WHERE\n            api_key_id = $1\n            AND organization_id = $2\n            AND user_id IS NOT DISTINCT FROM $3\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "840ef63ec6eb5ea426c6ae8af10c8206cbdfa39d83c183a9fdceacc527ae8765"
+}

@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO oauth_authorization_sessions\n            (key, provider, add_to_user_id, redirect_to, pkce_verifier, expires_at)\n            VALUES\n            ($1, $2, $3, $4, $5, now() + '10 minutes'::interval)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "dd98c73a917d0b2014b27bd8f6d7462bf22fd0b4970aff97d3bae2e29d6c8501"
+}

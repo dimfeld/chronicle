@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO user_sessions (id, user_id, hash, expires_at) VALUES\n            ($1, $2, $3, now() + $4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Interval"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b46633aa2e966bc746c2e39838239a114165666fbb62bd41bb6ee73ca7126b92"
+}

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE user_sessions\n                SET expires_at = now() + $1\n                WHERE id=$2 and hash=$3\n                -- Prevent unnecessary updates\n                AND (expires_at < now() + $1 - '1 minute'::interval)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Interval",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "73d78f5181b3b0753b208041520696fc7131f3ca864e2d793f98c64b7f8f6fa6"
+}

@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "WITH sel AS (\n            SELECT user_id, (reset_token IS NOT DISTINCT FROM $2 AND reset_expires_at > now()) AS matches\n            FROM email_logins\n            WHERE email = $1\n        ),\n        upd_el AS (\n            -- Always clear the token\n            UPDATE email_logins\n            SET reset_token = null, reset_expires_at = null\n            WHERE email = $1 AND reset_token IS NOT NULL\n        )\n        UPDATE users\n        SET password_hash = $3\n        FROM sel\n        WHERE users.id = sel.user_id AND sel.matches",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6358d020be9dda3b63dcdb3fac3f98ff75fa13d011e3bf920955862906c8dc81"
+}

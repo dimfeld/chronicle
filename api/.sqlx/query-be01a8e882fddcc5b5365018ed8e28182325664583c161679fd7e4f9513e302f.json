@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        INSERT INTO permissions (organization_id, actor_id, permission)\n        (\n          SELECT $1, $2, permission FROM UNNEST($3::text[]) permission\n        )\n        ON CONFLICT DO NOTHING\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "be01a8e882fddcc5b5365018ed8e28182325664583c161679fd7e4f9513e302f"
+}

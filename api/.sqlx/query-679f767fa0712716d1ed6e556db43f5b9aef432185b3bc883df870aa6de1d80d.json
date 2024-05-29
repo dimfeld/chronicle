@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE email_logins\n            SET passwordless_login_token = $2,\n                passwordless_login_expires_at = now() + interval '1 hour'\n            WHERE email = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "679f767fa0712716d1ed6e556db43f5b9aef432185b3bc883df870aa6de1d80d"
+}

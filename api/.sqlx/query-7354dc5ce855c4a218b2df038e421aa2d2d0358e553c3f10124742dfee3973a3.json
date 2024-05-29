@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO user_invites (email, organization_id, token, token_expires_at)\n                VALUES ($1, NULL, $2, now() + interval '1 hour')\n                ON CONFLICT(email, organization_id)\n                DO UPDATE SET invite_sent_at = now(),\n                    token = $2,\n                    token_expires_at = now() + interval '1 hour'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "7354dc5ce855c4a218b2df038e421aa2d2d0358e553c3f10124742dfee3973a3"
+}

@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        UPDATE email_logins upd\n        SET passwordless_login_token = null,\n            passwordless_login_expires_at = null,\n            verified = upd.verified OR\n                (upd.passwordless_login_token = $2 AND upd.passwordless_login_expires_at > now())\n        -- self-join since it lets us get the token even while we clear it in the UPDATE\n        FROM email_logins old\n        WHERE old.email = upd.email\n            AND upd.email = $1\n            AND upd.passwordless_login_token IS NOT NULL\n        RETURNING old.user_id AS \"user_id: UserId\",\n            (old.passwordless_login_token = $2 AND old.passwordless_login_expires_at > now()) AS valid\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id: UserId",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "valid",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "80049063dbf162f954233d825e0b0ba1a2a3850c557a1d9350512a159d9a7d19"
+}

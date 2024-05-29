@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO oauth_logins\n            (user_id, oauth_provider, oauth_account_id)\n            VALUES\n            ($1, $2, $3)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ed7888aeb1ef8a84d5e17c81abae30405f36fd2c52248ed187fb6621b748338d"
+}

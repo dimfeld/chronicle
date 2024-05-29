@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE api_keys\n            SET active = $3\n            WHERE api_key_id = $1\n            AND organization_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Bool"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3af44c3f763a1e3ebe07172cd79b20c434098c8336f6de8da1496e97f5f26faa"
+}

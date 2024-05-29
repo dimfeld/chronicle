@@ -1,0 +1,21 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO api_keys\n            (api_key_id,\n            organization_id,\n            user_id,\n            hash,\n            inherits_user_permissions,\n            description,\n            active,\n            expires_at)\n            VALUES\n            ($1, $2, $3, $4, $5, $6, $7, $8)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Bytea",
+        "Bool",
+        "Text",
+        "Bool",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "eb1ed7eab6b4b36c88887e9d0873d167422864b878fb193e80b2d674d7fe4909"
+}

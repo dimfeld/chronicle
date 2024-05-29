@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE email_logins\n        SET reset_token = $2,\n            reset_expires_at = now() + '1 hour'::interval\n        WHERE email = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cc1f79b44a5437c0a3f4086a0c1d27bee85f38006b5ee6e2cce0a2034cfc4069"
+}
