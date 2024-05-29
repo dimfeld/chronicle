@@ -16,7 +16,7 @@ COPY --from=planner /app/recipe.json recipe.json
 COPY api/.sqlx ./api/.sqlx/
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
-RUN cargo build --release --bin chronicle-api
+RUN cargo build --release --bin chronicle
 
 ##### Final image
 FROM debian:bookworm-slim AS runtime
@@ -30,18 +30,10 @@ COPY --from=api-builder /app/target/release/chronicle /app/chronicle
 
 ENV HOST=::0
 ENV ENV=production
-ENV INSECURE=false
 
 # Primary server port
 ENV PORT=9782
 EXPOSE 9782/tcp
-
-ENV ALLOW_PUBLIC_SIGNUP=false
-ENV ALLOW_INVITE_TO_SAME_ORG=false
-ENV ALLOW_INVITE_TO_NEW_ORG=false
-
-# If the application is using an Effectum queue, place it here.
-ENV QUEUE_PATH=/data/queue.db
 
 ENTRYPOINT [ "/app/chronicle" ]
 CMD [ "serve" ]
