@@ -12,7 +12,7 @@ use crate::{
         ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, Tool, ToolCall,
         ToolCallFunction, UsageResponse,
     },
-    request::send_standard_request,
+    request::{parse_response_json, send_standard_request},
     Error,
 };
 
@@ -77,7 +77,7 @@ impl ChatModelProvider for Anthropic {
             .or(self.token.as_deref())
             .ok_or(Error::MissingApiKey)?;
 
-        let result = send_standard_request::<AnthropicChatResponse>(
+        let (response, latency) = send_standard_request(
             timeout,
             || {
                 let req = self
@@ -99,10 +99,14 @@ impl ChatModelProvider for Anthropic {
         .await
         .change_context(Error::ModelError)?;
 
+        let result: AnthropicChatResponse = parse_response_json(response, latency)
+            .await
+            .change_context(Error::ModelError)?;
+
         Ok(ProviderResponse {
-            model: result.0.model.clone(),
-            body: result.0.into(),
-            latency: result.1,
+            model: result.model.clone(),
+            body: result.into(),
+            latency,
             meta: None,
         })
     }

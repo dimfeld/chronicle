@@ -116,6 +116,9 @@ pub struct ChatRequest {
     pub tool_choice: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
+    // /// Send the response back as a stream of chunks.
+    // #[serde(default)]
+    // pub stream: bool,
 }
 
 impl ChatRequest {

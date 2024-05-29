@@ -13,7 +13,7 @@ use crate::{
         ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, ToolCall,
         ToolCallFunction, UsageResponse,
     },
-    request::send_standard_request,
+    request::{parse_response_json, send_standard_request},
     Error,
 };
 
@@ -71,7 +71,7 @@ impl ChatModelProvider for Groq {
             .or(self.token.as_deref())
             .ok_or(Error::MissingApiKey)?;
 
-        let result = send_standard_request::<ChatResponse>(
+        let response = send_standard_request(
             timeout,
             || {
                 self.client
@@ -88,9 +88,13 @@ impl ChatModelProvider for Groq {
         )
         .await;
 
-        let result = match result {
+        let response = match response {
             Err(e) if matches!(e.current_context().kind, ProviderErrorKind::BadInput) => {
                 let err = e.current_context();
+                // 2024-05 Groq's models sometimes incorrectly fail on tool calls, when the model
+                // accurately generated the tool call but wrapped it in markdown triple ticks or
+                // XML or something similar. In this case, attempt to extract the tool call and
+                // proceed.
                 let recovered_tool_use = err
                     .body
                     .as_ref()
@@ -126,15 +130,22 @@ impl ChatModelProvider for Groq {
                     Err(e)
                 }
             }
-            _ => result,
+            Err(e) => Err(e),
+            Ok((response, latency)) => {
+                let result = parse_response_json::<ChatResponse>(response, latency)
+                    .await
+                    .change_context(Error::ModelError)?;
+
+                Ok((result, latency))
+            }
         };
 
-        let result = result.change_context(Error::ModelError)?;
+        let (result, latency) = response.change_context(Error::ModelError)?;
 
         Ok(ProviderResponse {
-            model: result.0.model.clone().or(body.model).unwrap_or_default(),
-            body: result.0,
-            latency: result.1,
+            model: result.model.clone().or(body.model).unwrap_or_default(),
+            body: result,
+            latency,
             meta: None,
         })
     }

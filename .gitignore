@@ -3,3 +3,4 @@
 .env.*
 *.sqlite3
 *.sqlite3*
+test.db*

@@ -8,7 +8,7 @@ use tracing::instrument;
 use super::{ChatModelProvider, ProviderResponse, SendRequestOptions};
 use crate::{
     format::{ChatRequestTransformation, ChatResponse},
-    request::send_standard_request,
+    request::{parse_response_json, send_standard_request},
     Error,
 };
 
@@ -90,7 +90,7 @@ pub async fn send_openai_request(
         // Allow no API key since we could be sending to an internal OpenAI-compatible service.
         .unwrap_or_default();
 
-    let result = send_standard_request::<ChatResponse>(
+    let (response, latency) = send_standard_request(
         timeout,
         || {
             client
@@ -105,10 +105,14 @@ pub async fn send_openai_request(
     .await
     .change_context(Error::ModelError)?;
 
+    let result: ChatResponse = parse_response_json(response, latency)
+        .await
+        .change_context(Error::ModelError)?;
+
     Ok(ProviderResponse {
-        model: result.0.model.clone().or(body.model).unwrap_or_default(),
-        body: result.0,
-        latency: result.1,
+        model: result.model.clone().or(body.model).unwrap_or_default(),
+        body: result,
+        latency,
         meta: None,
     })
 }

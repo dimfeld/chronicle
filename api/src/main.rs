@@ -36,7 +36,7 @@ mod proxy;
 
 use error::Error;
 
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 #[command(version, about)]
 pub(crate) struct Cli {
     /// The path to the configuration file or a directory containing it. If omitted,
@@ -83,7 +83,7 @@ pub(crate) async fn run(cmd: Cli) -> Result<(), Report<Error>> {
         }
 
         if loaded_env {
-            // Reread with the environment variables
+            // Reread with the environment variables in place
             let cmd = Cli::parse();
 
             if cmd.database.is_some() {

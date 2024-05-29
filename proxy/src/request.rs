@@ -308,12 +308,12 @@ pub async fn try_model_choices(
 /// Send an HTTP request with retries, and handle errors.
 /// Most providers can use this to handle sending their request and handling errors.
 #[instrument(level = "debug", skip(body, prepare, handle_rate_limit))]
-pub async fn send_standard_request<RESPONSE: DeserializeOwned>(
+pub async fn send_standard_request(
     timeout: Duration,
     prepare: impl Fn() -> reqwest::RequestBuilder,
     handle_rate_limit: impl Fn(&reqwest::Response) -> Option<Duration>,
     body: Bytes,
-) -> Result<(RESPONSE, Duration), Report<ProviderError>> {
+) -> Result<(reqwest::Response, Duration), Report<ProviderError>> {
     let start = tokio::time::Instant::now();
     let result = prepare()
         .timeout(timeout)
@@ -350,26 +350,36 @@ pub async fn send_standard_request<RESPONSE: DeserializeOwned>(
         }))
     } else {
         let latency = start.elapsed();
-        // Get the result as text first so that we can save the entire response for better
-        // introspection if parsing fails.
-        let text = result.text().await.change_context(ProviderError {
-            kind: ProviderErrorKind::ParsingResponse,
-            status_code: Some(status),
-            body: None,
-            latency,
-        })?;
-
-        let jd = &mut serde_json::Deserializer::from_str(&text);
-        let body: RESPONSE =
-            serde_path_to_error::deserialize(jd).change_context(ProviderError {
-                kind: ProviderErrorKind::ParsingResponse,
-                status_code: Some(status),
-                body: Some(serde_json::Value::String(text)),
-                latency,
-            })?;
-
-        Ok::<_, Report<ProviderError>>((body, latency))
+        Ok::<_, Report<ProviderError>>((result, latency))
     }
+}
+
+/// Parse a JSON response, with informative errors when the format does not match the expected
+/// structure.
+pub async fn parse_response_json<RESPONSE: DeserializeOwned>(
+    response: reqwest::Response,
+    latency: Duration,
+) -> Result<RESPONSE, Report<ProviderError>> {
+    let status = response.status();
+
+    // Get the result as text first so that we can save the entire response for better
+    // introspection if parsing fails.
+    let text = response.text().await.change_context(ProviderError {
+        kind: ProviderErrorKind::ParsingResponse,
+        status_code: Some(status),
+        body: None,
+        latency,
+    })?;
+
+    let jd = &mut serde_json::Deserializer::from_str(&text);
+    let body: RESPONSE = serde_path_to_error::deserialize(jd).change_context(ProviderError {
+        kind: ProviderErrorKind::ParsingResponse,
+        status_code: Some(status),
+        body: Some(serde_json::Value::String(text)),
+        latency,
+    })?;
+
+    Ok(body)
 }
 
 #[cfg(test)]

@@ -10,7 +10,7 @@ use serde_json::json;
 use super::{ChatModelProvider, ProviderResponse, SendRequestOptions};
 use crate::{
     format::{ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, UsageResponse},
-    request::send_standard_request,
+    request::{parse_response_json, send_standard_request},
     Error,
 };
 
@@ -76,7 +76,7 @@ impl ChatModelProvider for Ollama {
         let body = Bytes::from(body);
 
         let now = Utc::now().timestamp();
-        let result = send_standard_request::<OllamaResponse>(
+        let (response, latency) = send_standard_request(
             timeout,
             || {
                 self.client
@@ -91,33 +91,37 @@ impl ChatModelProvider for Ollama {
         .await
         .change_context(Error::ModelError)?;
 
+        let result: OllamaResponse = parse_response_json(response, latency)
+            .await
+            .change_context(Error::ModelError)?;
+
         let meta = json!({
-            "load_duration": result.0.load_duration,
-            "prompt_eval_duration": result.0.prompt_eval_duration,
-            "eval_duration": result.0.eval_duration,
+            "load_duration": result.load_duration,
+            "prompt_eval_duration": result.prompt_eval_duration,
+            "eval_duration": result.eval_duration,
         });
 
         let response = ChatResponse {
             created: now as u64,
-            model: Some(result.0.model.clone()),
+            model: Some(result.model.clone()),
             system_fingerprint: None,
             choices: vec![ChatChoice {
                 index: 0,
                 finish_reason: "stop".to_string(),
-                message: result.0.message,
+                message: result.message,
             }],
             usage: UsageResponse {
-                prompt_tokens: Some(result.0.prompt_eval_count as usize),
-                completion_tokens: Some(result.0.eval_count as usize),
+                prompt_tokens: Some(result.prompt_eval_count as usize),
+                completion_tokens: Some(result.eval_count as usize),
                 total_tokens: None,
             },
         };
 
         Ok(ProviderResponse {
-            model: result.0.model,
+            model: result.model,
             body: response,
             meta: Some(meta),
-            latency: result.1,
+            latency,
         })
     }
 
@@ -155,10 +159,10 @@ struct OllamaModelOptions {
 
 #[derive(Deserialize, Debug)]
 struct OllamaResponse {
-    created_at: String,
+    // created_at: String,
     model: String,
     message: ChatMessage,
-    total_duration: u64,
+    // total_duration: u64,
     load_duration: u64,
     prompt_eval_count: u64,
     prompt_eval_duration: u64,
