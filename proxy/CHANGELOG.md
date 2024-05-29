@@ -1,9 +1,10 @@
 # chronicle-proxy changelog
 
-## Unreleased
+## 0.2.0
 
 - Support Anthropic `tool_choice` field
 - Recover from Groq error when it fails to parse an actually-valid tool call response
+- Support both SQLite and PostgreSQL without recompiling.
 
 ## 0.1.5
 
