@@ -1,4 +1,4 @@
-# chronicle-api changelog
+# chronicle-local changelog
 
 ## 0.1.1
 
@@ -7,4 +7,3 @@
 ## 0.1.0
 
 - Initial release
-

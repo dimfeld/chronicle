@@ -1,57 +1,50 @@
 [package]
 name = "chronicle-api"
+description = "The Chronicle LLM proxy packaged as an API"
 version = "0.1.1"
 edition = "2021"
-description = "LLM Provider Abstraction and Logging"
-license.workspace = true
 authors.workspace = true
+license.workspace = true
 readme.workspace = true
 repository.workspace = true
 keywords.workspace = true
-documentation = "https://docs.rs/chronicle-api"
 
 [[bin]]
-name = "chronicle-api"
+name = "chronicle"
 path = "src/main.rs"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 async-trait = "0.1.75"
-axum = { version = "0.7.3", features = ["tokio", "http1", "http2", "macros"] }
-axum-extra = { version = "0.9.2", features = ["query"] }
-axum-htmx = "0.5.0"
-axum-jsonschema = "0.8.0"
-axum-sqlx-tx = { version = "0.8.0", features = ["postgres", "runtime-tokio-rustls"] }
+axum = { version = "0.7.3", features = ["tokio", "http1", "macros"] }
 bytes = "1.5.0"
-chronicle-proxy = { path = "../proxy", version = "0.1.5", default-features = false, features = ["postgres", "schemars", "filigree"] }
+chronicle-proxy = { path = "../proxy", version = "0.1.5", default-features = false, features = ["sqlite", "postgres", "filigree"] }
 chrono = "0.4.33"
 clap = { version = "4.4.11", features = ["env", "derive"] }
-dialoguer = "0.11.0"
 dotenvy = "0.15.7"
 error-stack = { version = "0.4.1", features = ["spantrace"] }
+etcetera = "0.8.0"
 eyre = "0.6.11"
 filigree.workspace = true
 futures = "0.3.30"
 http = "1.0.0"
 hyper = { version = "1.1.0", features = ["server", "http1", "http2"] }
-maud = { version = "0.26.0", features = ["axum"] }
+itertools = "0.12.1"
 opentelemetry = "0.21.0"
 percent-encoding = "2.3.1"
 reqwest = { version = "0.11.23", features = ["cookies", "json"] }
 rust-embed = "8.1.0"
-schemars = { version = "0.8.16", features = ["chrono", "url", "uuid1"] }
 serde = { version = "1.0.193", features = ["derive"] }
 serde_json = "1.0.113"
 serde_with = { version = "3.6.1", features = ["json", "schemars_0_8"] }
-sqlx = { version = "0.7.3", features = ["chrono", "postgres"] }
+sqlx = { version = "0.7.3", features = ["chrono", "sqlite"] }
 sqlx-transparent-json-decode = "2.2.2"
-tera = "1.19.1"
 thiserror = "1.0.56"
 tokio = { version = "1.36.0", features = ["full"] }
 tokio-stream = "0.1.15"
+toml = "0.8.12"
 tower = "0.4.13"
-tower-cookies = "0.10.0"
 tower-http = { version = "0.5.1", features = ["full"] }
 tracing = "0.1.40"
 tracing-opentelemetry = "0.22.0"
