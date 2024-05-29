@@ -6,11 +6,11 @@ use itertools::Itertools;
 use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Serialize};
 
-use super::{ChatModelProvider, SendRequestOptions, SingleProviderResponse};
+use super::{ChatModelProvider, SendRequestOptions, SynchronousProviderResponse};
 use crate::{
     format::{
-        ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, SingleChatResponse, Tool,
-        ToolCall, ToolCallFunction, UsageResponse,
+        ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, SynchronousChatResponse,
+        Tool, ToolCall, ToolCallFunction, UsageResponse,
     },
     request::{parse_response_json, send_standard_request},
     Error,
@@ -49,7 +49,7 @@ impl ChatModelProvider for Anthropic {
             mut body,
             ..
         }: SendRequestOptions,
-    ) -> Result<SingleProviderResponse, Report<Error>> {
+    ) -> Result<SynchronousProviderResponse, Report<Error>> {
         body.transform(&ChatRequestTransformation {
             supports_message_name: false,
             system_in_messages: false,
@@ -103,7 +103,7 @@ impl ChatModelProvider for Anthropic {
             .await
             .change_context(Error::ModelError)?;
 
-        Ok(SingleProviderResponse {
+        Ok(SynchronousProviderResponse {
             model: result.model.clone(),
             body: result.into(),
             latency,
@@ -267,8 +267,8 @@ struct AnthropicChatResponse {
     pub usage: AnthropicUsageResponse,
 }
 
-impl Into<SingleChatResponse> for AnthropicChatResponse {
-    fn into(mut self) -> SingleChatResponse {
+impl Into<SynchronousChatResponse> for AnthropicChatResponse {
+    fn into(mut self) -> SynchronousChatResponse {
         let (text, tool_calls) = if self.content.len() == 1 {
             match self.content.pop().unwrap() {
                 AnthropicChatContent::Text { text } => (Some(text), Vec::new()),

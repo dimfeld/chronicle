@@ -15,7 +15,7 @@ use reqwest::StatusCode;
 use thiserror::Error;
 
 use crate::{
-    format::{ChatRequest, SingleChatResponse},
+    format::{ChatRequest, StreamingChatResponse, StreamingResponseInfo, SynchronousChatResponse},
     Error,
 };
 
@@ -41,27 +41,27 @@ pub trait ChatModelProvider: Debug + Send + Sync {
     async fn send_request(
         &self,
         options: SendRequestOptions,
-    ) -> Result<SingleProviderResponse, Report<Error>>;
+    ) -> Result<SynchronousProviderResponse, Report<Error>>;
 
     fn is_default_for_model(&self, model: &str) -> bool;
 }
 
 pub enum ProviderResponse {
-    Single(SingleProviderResponse),
-    // Streaming(StreamingProviderResponse),
+    Synchronous(SynchronousProviderResponse),
+    Streaming(StreamingProviderResponse),
 }
 
 /// A generic structure with a provider's response translated into the common format, and possible error codes.
 #[derive(Debug, Clone)]
-pub struct SingleProviderResponse {
-    pub body: SingleChatResponse,
+pub struct SynchronousProviderResponse {
+    pub body: SynchronousChatResponse,
+    pub stats: StreamingResponseInfo,
+}
+
+pub struct StreamingProviderResponse {
+    pub chunks: flume::Receiver<StreamingChatResponse>,
     /// The model actually used.
     pub model: String,
-    /// Any other metadata from the provider that should be logged.
-    pub meta: Option<serde_json::Value>,
-    /// The latency of the request. If the request was retried this should only count the
-    /// final successful one. Total latency including retries is tracked outside of the provider.
-    pub latency: std::time::Duration,
 }
 
 #[derive(Debug, Error)]

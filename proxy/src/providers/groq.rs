@@ -6,11 +6,11 @@ use serde::Deserialize;
 
 use super::{
     openai::handle_rate_limit_headers, ChatModelProvider, ProviderErrorKind, SendRequestOptions,
-    SingleProviderResponse,
+    SynchronousProviderResponse,
 };
 use crate::{
     format::{
-        ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, SingleChatResponse,
+        ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, SynchronousChatResponse,
         ToolCall, ToolCallFunction, UsageResponse,
     },
     request::{parse_response_json, send_standard_request},
@@ -50,7 +50,7 @@ impl ChatModelProvider for Groq {
             api_key,
             mut body,
         }: SendRequestOptions,
-    ) -> Result<SingleProviderResponse, Report<Error>> {
+    ) -> Result<SynchronousProviderResponse, Report<Error>> {
         body.transform(&ChatRequestTransformation {
             supports_message_name: true,
             system_in_messages: true,
@@ -132,7 +132,7 @@ impl ChatModelProvider for Groq {
             }
             Err(e) => Err(e),
             Ok((response, latency)) => {
-                let result = parse_response_json::<SingleChatResponse>(response, latency)
+                let result = parse_response_json::<SynchronousChatResponse>(response, latency)
                     .await
                     .change_context(Error::ModelError)?;
 
@@ -142,7 +142,7 @@ impl ChatModelProvider for Groq {
 
         let (result, latency) = response.change_context(Error::ModelError)?;
 
-        Ok(SingleProviderResponse {
+        Ok(SynchronousProviderResponse {
             model: result.model.clone().or(body.model).unwrap_or_default(),
             body: result,
             latency,

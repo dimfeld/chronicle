@@ -133,11 +133,11 @@ impl ProxyDatabase for SqliteDatabase {
         for item in items.into_iter() {
             let (rmodel, rprovider, rbody, rmeta, rlatency) = match item.response.map(|r| {
                 (
-                    r.body.model.clone(),
+                    r.body.body.model.clone(),
                     r.provider,
-                    r.body,
-                    r.meta,
-                    r.latency.as_millis() as i64,
+                    r.body.body,
+                    r.body.stats.meta,
+                    r.body.stats.latency.as_millis() as i64,
                 )
             }) {
                 Some((rmodel, rprovider, rbody, rmeta, rlatency)) => {

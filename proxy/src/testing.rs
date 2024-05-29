@@ -9,7 +9,7 @@ use crate::{
     format::{ChatChoice, ChatMessage, ChatResponse, UsageResponse},
     providers::{
         ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions,
-        SingleProviderResponse,
+        SynchronousProviderResponse,
     },
     Error,
 };
@@ -66,7 +66,7 @@ impl ChatModelProvider for TestProvider {
     async fn send_request(
         &self,
         options: SendRequestOptions,
-    ) -> Result<SingleProviderResponse, Report<Error>> {
+    ) -> Result<SynchronousProviderResponse, Report<Error>> {
         let current_call = self
             .calls
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -95,7 +95,7 @@ impl ChatModelProvider for TestProvider {
             .change_context(Error::ModelError)?;
         }
 
-        Ok(SingleProviderResponse {
+        Ok(SynchronousProviderResponse {
             model: options.body.model.clone().unwrap_or_default(),
             body: ChatResponse {
                 created: 1,

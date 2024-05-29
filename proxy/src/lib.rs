@@ -17,7 +17,7 @@ use config::{AliasConfig, ApiKeyConfig};
 use database::logging::ProxyLogEntry;
 pub use error::Error;
 use error_stack::{Report, ResultExt};
-use format::{ChatRequest, SingleChatResponse};
+use format::{ChatRequest, SynchronousChatResponse};
 use http::HeaderMap;
 use provider_lookup::ProviderLookup;
 use providers::ChatModelProvider;
@@ -46,7 +46,7 @@ pub struct ProxiedChatResponseMeta {
 #[derive(Debug, Serialize)]
 pub struct ProxiedChatResponse {
     #[serde(flatten)]
-    pub response: SingleChatResponse,
+    pub response: SynchronousChatResponse,
     pub meta: ProxiedChatResponseMeta,
 }
 
@@ -185,6 +185,17 @@ impl Proxy {
         options: ProxyRequestOptions,
         body: ChatRequest,
     ) -> Result<ProxiedChatResponse, Report<Error>> {
+        // TODO This should take a channel as the argument, and we'll send back
+        // the response, whether streaming or not.
+        // Wrap this in a helper function to automate the channel creation and spawning.
+        // Add another helper function to also wait for the response to finish
+        // and collect the results, for when we want to call the function without
+        // actually streaming.
+        //
+        // Consider if the internals should always use channels or not. It might end up
+        // simpler to just have a single mode for all this. Still need to distinguish
+        // between the two though so that we send back the correct structure for
+        // streaming or not, so perhaps it doesn't matter so much.
         let id = uuid::Uuid::now_v7();
         let current_span = tracing::Span::current();
         current_span.record("llm.item_id", id.to_string());
@@ -340,6 +351,7 @@ impl Proxy {
 
         response
             .map(|r| ProxiedChatResponse {
+                // todo this should be a channel
                 response: r.body,
                 meta: ProxiedChatResponseMeta {
                     id,

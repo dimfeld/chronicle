@@ -9,9 +9,14 @@ use serde_with::{serde_as, DurationMilliSeconds};
 use tracing::instrument;
 
 use crate::{
-    format::{ChatRequest, SingleChatResponse},
+    format::{
+        ChatRequest, StreamingChatResponse, StreamingResponse, StreamingResponseInfo,
+        SynchronousChatResponse,
+    },
     provider_lookup::{ModelLookupChoice, ModelLookupResult},
-    providers::{ProviderError, ProviderErrorKind, SendRequestOptions},
+    providers::{
+        ProviderError, ProviderErrorKind, SendRequestOptions, SynchronousProviderResponse,
+    },
     Error,
 };
 
@@ -152,15 +157,16 @@ impl<'a> BackoffValue<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub enum ProxiedResultBody {
+    Streaming(flume::Receiver<StreamingResponse>),
+    Synchronous(SynchronousProviderResponse),
+}
+
+#[derive(Debug, Clone)]
 pub struct ProxiedResult {
-    pub body: SingleChatResponse,
-    /// The provider which was used for the successful response
+    pub body: ProxiedResultBody,
+    /// The provider which was used for the successful response.
     pub provider: String,
-    /// Any other metadata from the provider that should be logged.
-    pub meta: Option<serde_json::Value>,
-    /// The latency of the request. If the request was retried this should only count the
-    /// final successful one. Total latency including retries is tracked outside of the provider.
-    pub latency: std::time::Duration,
     pub num_retries: u32,
     pub was_rate_limited: bool,
 }
@@ -222,13 +228,11 @@ pub async fn try_model_choices(
         let error = match result {
             Ok(value) => {
                 return Ok(ProxiedResult {
-                    body: value.body,
+                    body: ProxiedResultBody::Synchronous(value),
                     provider: provider_name.to_string(),
-                    meta: value.meta,
-                    latency: value.latency,
                     num_retries: current_try - 1,
                     was_rate_limited,
-                })
+                });
             }
             Err(e) => {
                 tracing::error!(err=?e, "llm.try"=current_try - 1, llm.vendor=provider_name, llm.request.model = model, llm.alias=alias);

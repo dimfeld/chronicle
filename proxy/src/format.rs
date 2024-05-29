@@ -15,12 +15,12 @@ pub struct ChatResponse<CHOICE> {
     pub model: Option<String>,
     pub system_fingerprint: Option<String>,
     pub choices: Vec<CHOICE>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "UsageResponse::is_empty")]
     pub usage: UsageResponse,
 }
 
 pub type StreamingChatResponse = ChatResponse<ChatChoiceDelta>;
-pub type SingleChatResponse = ChatResponse<ChatChoice>;
+pub type SynchronousChatResponse = ChatResponse<ChatChoice>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChatChoice {
@@ -54,6 +54,28 @@ pub struct UsageResponse {
     pub prompt_tokens: Option<usize>,
     pub completion_tokens: Option<usize>,
     pub total_tokens: Option<usize>,
+}
+
+impl UsageResponse {
+    pub fn is_empty(&self) -> bool {
+        self.prompt_tokens.is_none()
+            && self.completion_tokens.is_none()
+            && self.total_tokens.is_none()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct StreamingResponseInfo {
+    /// Any other metadata from the provider that should be logged.
+    pub meta: Option<serde_json::Value>,
+    /// The latency of the request. If the request was retried this should only count the
+    /// final successful one. Total latency including retries is tracked outside of the provider.
+    pub latency: std::time::Duration,
+}
+
+pub enum StreamingResponse {
+    Chunk(StreamingChatResponse),
+    Finished(StreamingResponseInfo),
 }
 
 /// For providers that conform almost, but not quite, to the OpenAI spec, these transformations
