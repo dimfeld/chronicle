@@ -12,12 +12,12 @@ use tracing::instrument;
 
 use crate::{
     format::{
-        ChatRequest, ChatResponse, SingleChatResponse, StreamingChatResponse, StreamingResponse,
-        StreamingResponseInfo, StreamingResponseReceiver, StreamingResponseSender,
+        ChatRequest, ResponseInfo, StreamingChatResponse, StreamingResponse,
+        StreamingResponseSender,
     },
     provider_lookup::{ModelLookupChoice, ModelLookupResult},
-    providers::{ProviderError, ProviderErrorKind, SendRequestOptions, SingleProviderResponse},
-    Error, ProxiedChatResponseMeta,
+    providers::{ProviderError, ProviderErrorKind, SendRequestOptions},
+    Error,
 };
 
 #[serde_as]
@@ -157,16 +157,19 @@ impl<'a> BackoffValue<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ProxiedResult {
+pub struct TryModelChoicesResult {
     /// The provider which was used for the successful response.
     pub provider: String,
+    /// How many times we had to retry before we got a successful response.
     pub num_retries: u32,
+    /// If we retried due to hitting a rate limit.
     pub was_rate_limited: bool,
+    /// When the latest, successful request started
     pub start_time: tokio::time::Instant,
 }
 
 #[derive(Debug)]
-pub struct ProxiedResultError {
+pub struct TryModelChoicesError {
     pub error: Report<Error>,
     pub num_retries: u32,
     pub was_rate_limited: bool,
@@ -185,7 +188,7 @@ pub async fn try_model_choices(
     timeout: Duration,
     request: ChatRequest,
     chunk_tx: StreamingResponseSender,
-) -> Result<ProxiedResult, ProxiedResultError> {
+) -> Result<TryModelChoicesResult, TryModelChoicesError> {
     let single_choice = choices.len() == 1;
     let start_choice = if random_order && !single_choice {
         rand::thread_rng().gen_range(0..choices.len())
@@ -227,7 +230,7 @@ pub async fn try_model_choices(
         let error = match result {
             Ok(_) => {
                 // The caller will stream the response from here.
-                return Ok(ProxiedResult {
+                return Ok(TryModelChoicesResult {
                     was_rate_limited,
                     num_retries: current_try - 1,
                     provider: provider.name().to_string(),
@@ -255,7 +258,7 @@ pub async fn try_model_choices(
             || (on_final_model_choice
                 && !provider_error.map(|e| e.kind.retryable()).unwrap_or(false))
         {
-            return Err(ProxiedResultError {
+            return Err(TryModelChoicesError {
                 error,
                 num_retries: current_try - 1,
                 was_rate_limited,
@@ -288,7 +291,7 @@ pub async fn try_model_choices(
                         && *retry_after > options.max_backoff
                     {
                         // Rate limited with a retry time that exceeds max backoff.
-                        return Err(ProxiedResultError {
+                        return Err(TryModelChoicesError {
                             error,
                             num_retries: current_try - 1,
                             was_rate_limited,
@@ -376,12 +379,12 @@ pub fn response_is_sse(response: &reqwest::Response) -> bool {
 /// `map_chunk` can return Ok(None) if the event should be skipped, as with Anthropic's
 /// ping event.
 pub async fn stream_sse_to_channel(
-    start_time: tokio::time::Instant,
     response: reqwest::Response,
     chunk_tx: StreamingResponseSender,
     map_chunk: impl Fn(&Event) -> Result<Option<StreamingChatResponse>, Report<ProviderError>>,
 ) {
     let mut stream = response.bytes_stream().eventsource();
+    let mut model: Option<String> = None;
 
     while let Some(event) = stream.next().await {
         match event {
@@ -390,6 +393,10 @@ pub async fn stream_sse_to_channel(
                 match chunk {
                     Ok(None) => continue,
                     Ok(Some(chunk)) => {
+                        if model.is_none() {
+                            model = chunk.model.clone();
+                        }
+
                         let result = chunk_tx
                             .send_async(Ok(StreamingResponse::Chunk(chunk)))
                             .await;
@@ -418,9 +425,9 @@ pub async fn stream_sse_to_channel(
     }
 
     chunk_tx
-        .send_async(Ok(StreamingResponse::Finished(StreamingResponseInfo {
+        .send_async(Ok(StreamingResponse::Info(ResponseInfo {
             meta: None,
-            latency: start_time.elapsed(),
+            model: model.unwrap_or_default(),
         })))
         .await
         .ok();
@@ -458,16 +465,16 @@ pub async fn parse_response_json<RESPONSE: DeserializeOwned>(
 mod test {
     use std::time::Duration;
 
-    use super::ProxiedResultError;
+    use super::TryModelChoicesError;
     use crate::{
         format::{ChatMessage, ChatRequest},
         provider_lookup::{ModelLookupChoice, ModelLookupResult},
-        request::{try_model_choices, ProxiedResult, RetryOptions},
+        request::{try_model_choices, RetryOptions, TryModelChoicesResult},
     };
 
     async fn test_request(
         choices: Vec<ModelLookupChoice>,
-    ) -> Result<ProxiedResult, ProxiedResultError> {
+    ) -> Result<TryModelChoicesResult, TryModelChoicesError> {
         try_model_choices(
             ModelLookupResult {
                 alias: String::new(),

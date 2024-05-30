@@ -6,11 +6,11 @@ use std::{
 use error_stack::{Report, ResultExt};
 
 use crate::{
-    format::{ChatChoice, ChatMessage, ChatResponse, UsageResponse},
-    providers::{
-        ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions,
-        SingleProviderResponse,
+    format::{
+        ChatChoice, ChatMessage, ChatResponse, ResponseInfo, StreamingResponse,
+        StreamingResponseSender, UsageResponse,
     },
+    providers::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions},
     Error,
 };
 
@@ -66,7 +66,8 @@ impl ChatModelProvider for TestProvider {
     async fn send_request(
         &self,
         options: SendRequestOptions,
-    ) -> Result<SingleProviderResponse, Report<Error>> {
+        chunk_tx: StreamingResponseSender,
+    ) -> Result<(), Report<Error>> {
         let current_call = self
             .calls
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -95,31 +96,39 @@ impl ChatModelProvider for TestProvider {
             .change_context(Error::ModelError)?;
         }
 
-        Ok(SingleProviderResponse {
-            model: options.body.model.clone().unwrap_or_default(),
-            body: ChatResponse {
-                created: 1,
-                model: options.body.model.clone(),
-                system_fingerprint: None,
-                choices: vec![ChatChoice {
-                    index: 0,
-                    message: ChatMessage {
-                        role: Some("assistant".to_string()),
-                        content: Some(self.response.clone()),
-                        tool_calls: Vec::new(),
-                        name: None,
-                    },
-                    finish_reason: "stop".to_string(),
-                }],
-                usage: UsageResponse {
-                    prompt_tokens: Some(1),
-                    completion_tokens: Some(2),
-                    total_tokens: Some(3),
+        // TODO support streaming when the request specifies it
+        let body = ChatResponse {
+            created: 1,
+            model: options.body.model.clone(),
+            system_fingerprint: None,
+            choices: vec![ChatChoice {
+                index: 0,
+                message: ChatMessage {
+                    role: Some("assistant".to_string()),
+                    content: Some(self.response.clone()),
+                    tool_calls: Vec::new(),
+                    name: None,
                 },
+                finish_reason: "stop".to_string(),
+            }],
+            usage: UsageResponse {
+                prompt_tokens: Some(1),
+                completion_tokens: Some(2),
+                total_tokens: Some(3),
             },
+        };
+
+        let info = StreamingResponse::Info(ResponseInfo {
+            model: options.body.model.clone().unwrap_or_default(),
             meta: None,
-            latency: Duration::from_millis(500),
-        })
+        });
+
+        chunk_tx
+            .send_async(Ok(StreamingResponse::Single(body)))
+            .await
+            .ok();
+        chunk_tx.send_async(Ok(info)).await.ok();
+        Ok(())
     }
 
     fn is_default_for_model(&self, _model: &str) -> bool {

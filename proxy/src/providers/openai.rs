@@ -2,16 +2,15 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use error_stack::{Report, ResultExt};
+use http::header::ACCEPT;
 use reqwest::{header::CONTENT_TYPE, Response};
 use tracing::instrument;
 
-use super::{
-    ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions, SingleProviderResponse,
-};
+use super::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions};
 use crate::{
     format::{
-        ChatRequestTransformation, SingleChatResponse, StreamOptions, StreamingChatResponse,
-        StreamingResponse, StreamingResponseInfo, StreamingResponseSender,
+        ChatRequestTransformation, ResponseInfo, SingleChatResponse, StreamOptions,
+        StreamingChatResponse, StreamingResponse, StreamingResponseSender,
     },
     request::{parse_response_json, response_is_sse, send_standard_request, stream_sse_to_channel},
     Error,
@@ -106,15 +105,22 @@ pub async fn send_openai_request(
         // Allow no API key since we could be sending to an internal OpenAI-compatible service.
         .unwrap_or_default();
 
+    let streaming = body.stream;
     let start_time = tokio::time::Instant::now();
     let (response, latency) = send_standard_request(
         timeout,
         || {
-            client
+            let req = client
                 .post(override_url.as_deref().unwrap_or(url))
                 .bearer_auth(token)
                 .header(CONTENT_TYPE, "application/json; charset=utf8")
-                .headers(headers.cloned().unwrap_or_default())
+                .headers(headers.cloned().unwrap_or_default());
+
+            if streaming {
+                req.header(ACCEPT, "text/event-stream")
+            } else {
+                req
+            }
         },
         handle_rate_limit_headers,
         bytes,
@@ -123,7 +129,7 @@ pub async fn send_openai_request(
     .change_context(Error::ModelError)?;
 
     if response_is_sse(&response) {
-        stream_sse_to_channel(start_time, response, chunk_tx, |event| {
+        stream_sse_to_channel(response, chunk_tx, |event| {
             if event.data == "[DONE]" {
                 return Ok(None);
             }
@@ -139,22 +145,23 @@ pub async fn send_openai_request(
         })
         .await;
     } else {
-        let result = parse_response_json::<SingleChatResponse>(response, latency)
-            .await
-            .change_context(Error::ModelError)
-            .map(|result| {
-                let model = result.model.clone().or(body.model).unwrap_or_default();
-                StreamingResponse::Single(SingleProviderResponse {
-                    body: result,
-                    stats: StreamingResponseInfo {
-                        model,
-                        latency,
-                        meta: None,
-                    },
-                })
-            });
+        let result = parse_response_json::<SingleChatResponse>(response, latency).await;
 
-        chunk_tx.send_async(result).await.ok();
+        match result {
+            Ok(result) => {
+                let model = result.model.clone().or(body.model).unwrap_or_default();
+                let response = StreamingResponse::Single(result);
+                let info = StreamingResponse::Info(ResponseInfo { model, meta: None });
+                chunk_tx.send_async(Ok(response)).await.ok();
+                chunk_tx.send_async(Ok(info)).await.ok();
+            }
+            Err(e) => {
+                chunk_tx
+                    .send_async(Err(e).change_context(Error::ModelError))
+                    .await
+                    .ok();
+            }
+        }
     }
 
     Ok(())

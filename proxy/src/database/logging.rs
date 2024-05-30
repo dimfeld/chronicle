@@ -6,7 +6,10 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use super::{Database, ProxyDatabase};
-use crate::{format::ChatRequest, providers::SingleProviderResponse, ProxyRequestOptions};
+use crate::{
+    format::{ChatRequest, ResponseInfo, SingleChatResponse},
+    ProxyRequestOptions,
+};
 pub struct ProxyLogEntry {
     pub id: Uuid,
     pub event_type: Cow<'static, str>,
@@ -22,7 +25,8 @@ pub struct ProxyLogEntry {
 }
 
 pub struct CollectedProxiedResult {
-    pub body: SingleProviderResponse,
+    pub body: SingleChatResponse,
+    pub info: ResponseInfo,
     /// The provider which was used for the successful response.
     pub provider: String,
     pub num_retries: u32,

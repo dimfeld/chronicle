@@ -4,11 +4,10 @@ use tracing::Span;
 use crate::{
     database::logging::{CollectedProxiedResult, ProxyLogEntry},
     format::{
-        ChatChoice, ChatMessage, SingleChatResponse, StreamingResponse, StreamingResponseInfo,
-        StreamingResponseReceiver, StreamingResponseSender, UsageResponse,
+        ChatChoice, ResponseInfo, SingleChatResponse, StreamingResponse, StreamingResponseReceiver,
+        StreamingResponseSender, UsageResponse,
     },
-    providers::SingleProviderResponse,
-    request::ProxiedResult,
+    request::TryModelChoicesResult,
     Error,
 };
 
@@ -16,7 +15,7 @@ pub async fn handle_response(
     current_span: Span,
     log_entry: ProxyLogEntry,
     global_start: tokio::time::Instant,
-    meta: ProxiedResult,
+    meta: TryModelChoicesResult,
     chunk_rx: StreamingResponseReceiver,
     output_tx: StreamingResponseSender,
     log_tx: Option<&flume::Sender<ProxyLogEntry>>,
@@ -31,7 +30,7 @@ pub async fn handle_response(
         log_tx,
     )
     .await;
-    let Ok((response, mut log_entry)) = response else {
+    let Ok((response, info, mut log_entry)) = response else {
         // Errors were already handled by collect_stream.
         return;
     };
@@ -45,7 +44,6 @@ pub async fn handle_response(
     current_span.record(
         "llm.completions",
         response
-            .body
             .choices
             .iter()
             .filter_map(|c| c.message.content.as_deref())
@@ -54,25 +52,24 @@ pub async fn handle_response(
     );
     current_span.record(
         "llm.completions.raw",
-        serde_json::to_string(&response.body.choices).ok(),
+        serde_json::to_string(&response.choices).ok(),
     );
     current_span.record("llm.vendor", &meta.provider);
-    current_span.record("llm.response.model", &response.body.model);
+    current_span.record("llm.response.model", &response.model);
     current_span.record("llm.latency", this_send_time.as_millis());
     current_span.record("llm.retries", meta.num_retries);
     current_span.record("llm.rate_limited", meta.was_rate_limited);
-    current_span.record("llm.usage.prompt_tokens", response.body.usage.prompt_tokens);
+    current_span.record("llm.usage.prompt_tokens", response.usage.prompt_tokens);
     current_span.record(
         "llm.finish_reason",
-        response.body.choices.get(0).map(|c| &c.finish_reason),
+        response.choices.get(0).map(|c| &c.finish_reason),
     );
     current_span.record(
         "llm.usage.completion_tokens",
-        response.body.usage.completion_tokens,
+        response.usage.completion_tokens,
     );
-    let total_tokens = response.body.usage.total_tokens.unwrap_or_else(|| {
-        response.body.usage.prompt_tokens.unwrap_or(0)
-            + response.body.usage.completion_tokens.unwrap_or(0)
+    let total_tokens = response.usage.total_tokens.unwrap_or_else(|| {
+        response.usage.prompt_tokens.unwrap_or(0) + response.usage.completion_tokens.unwrap_or(0)
     });
     current_span.record("llm.usage.total_tokens", total_tokens);
 
@@ -82,6 +79,7 @@ pub async fn handle_response(
         log_entry.was_rate_limited = Some(meta.was_rate_limited);
         log_entry.response = Some(CollectedProxiedResult {
             body: response,
+            info,
             provider: meta.provider,
             num_retries: meta.num_retries,
             was_rate_limited: meta.was_rate_limited,
@@ -95,16 +93,16 @@ async fn collect_stream(
     current_span: Span,
     log_entry: ProxyLogEntry,
     global_start: tokio::time::Instant,
-    meta: &ProxiedResult,
+    meta: &TryModelChoicesResult,
     chunk_rx: StreamingResponseReceiver,
     output_tx: StreamingResponseSender,
     log_tx: Option<&flume::Sender<ProxyLogEntry>>,
-) -> Result<(SingleProviderResponse, ProxyLogEntry), ()> {
+) -> Result<(SingleChatResponse, ResponseInfo, ProxyLogEntry), ()> {
     let mut response = SingleChatResponse {
         created: 0,
         model: None,
         system_fingerprint: None,
-        choices: Vec::new(),
+        choices: Vec::with_capacity(1),
         usage: UsageResponse {
             prompt_tokens: None,
             completion_tokens: None,
@@ -112,11 +110,12 @@ async fn collect_stream(
         },
     };
 
-    let mut stats = StreamingResponseInfo {
+    let mut stats = ResponseInfo {
         model: String::new(),
         meta: None,
     };
 
+    // Collect the message chunks so we can log the result, while also passing them on to the output channel.
     while let Some(chunk) = chunk_rx.recv_async().await.ok() {
         match &chunk {
             Ok(StreamingResponse::Chunk(chunk)) => {
@@ -138,19 +137,10 @@ async fn collect_stream(
 
                 for choice in chunk.choices.iter() {
                     if choice.index >= response.choices.len() {
-                        response.choices.resize_with(
-                            std::cmp::max(chunk.choices.len(), choice.index + 1),
-                            || ChatChoice {
-                                index: 0,
-                                message: ChatMessage {
-                                    role: None,
-                                    name: None,
-                                    content: None,
-                                    tool_calls: Vec::new(),
-                                },
-                                finish_reason: String::new(),
-                            },
-                        );
+                        // Resize to either the index mentioned here, or the total number of choices in
+                        // this message. This way we only resize once.
+                        let new_size = std::cmp::max(chunk.choices.len(), choice.index + 1);
+                        response.choices.resize(new_size, ChatChoice::default());
 
                         for i in 0..response.choices.len() {
                             response.choices[i].index = i;
@@ -158,35 +148,18 @@ async fn collect_stream(
                     }
 
                     let c = &mut response.choices[choice.index];
-                    if c.message.role.is_none() {
-                        c.message.role = choice.delta.role.clone();
-                    }
+                    c.message.add_delta(&choice.delta);
 
-                    if c.message.name.is_none() {
-                        c.message.name = choice.delta.name.clone();
-                    }
-
-                    if c.message.content.is_none() {
-                        match (&mut c.message.content, &choice.delta.content) {
-                            (Some(content), Some(new_content)) => content.push_str(new_content),
-                            (None, Some(new_content)) => {
-                                c.message.content = Some(new_content.clone());
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    if let Some(finish) = choice.finish_reason.clone() {
-                        c.finish_reason = finish;
+                    if let Some(finish) = choice.finish_reason.as_ref() {
+                        c.finish_reason = finish.clone();
                     }
                 }
             }
-            Ok(StreamingResponse::Finished(i)) => {
+            Ok(StreamingResponse::Info(i)) => {
                 stats = i.clone();
             }
             Ok(StreamingResponse::Single(res)) => {
-                response = res.body.clone();
-                stats = res.stats.clone();
+                response = res.clone();
             }
             Err(e) => {
                 record_error(
@@ -207,12 +180,7 @@ async fn collect_stream(
         output_tx.send_async(chunk).await.ok();
     }
 
-    let output = SingleProviderResponse {
-        body: response,
-        stats,
-    };
-
-    Ok((output, log_entry))
+    Ok((response, stats, log_entry))
 }
 
 pub async fn record_error(

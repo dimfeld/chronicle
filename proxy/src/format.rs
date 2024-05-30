@@ -6,7 +6,7 @@ use std::{borrow::Cow, collections::BTreeMap};
 use error_stack::Report;
 use serde::{Deserialize, Serialize};
 
-use crate::{providers::SingleProviderResponse, Error};
+use crate::Error;
 
 /// A chat response, in non-chunked format
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -25,14 +25,14 @@ pub struct ChatResponse<CHOICE> {
 pub type StreamingChatResponse = ChatResponse<ChatChoiceDelta>;
 pub type SingleChatResponse = ChatResponse<ChatChoice>;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct ChatChoice {
     pub index: usize,
     pub message: ChatMessage,
     pub finish_reason: String,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct ChatChoiceDelta {
     pub index: usize,
     pub delta: ChatMessage,
@@ -40,7 +40,7 @@ pub struct ChatChoiceDelta {
 }
 
 /// A single message in a chat
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct ChatMessage {
     pub role: Option<String>,
     /// Some providers support this natively. For those that don't, the name
@@ -50,6 +50,32 @@ pub struct ChatMessage {
     pub content: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCall>,
+}
+
+impl ChatMessage {
+    /// Merge a chat delta into this message. This replaces most fields, but will concatenate
+    /// message content.
+    pub fn add_delta(&mut self, delta: &ChatMessage) {
+        if self.role.is_none() {
+            self.role = delta.role.clone();
+        }
+        if self.name.is_none() {
+            self.name = delta.name.clone();
+        }
+        if self.content.is_none() {
+            match (&mut self.content, &delta.content) {
+                (Some(content), Some(new_content)) => content.push_str(new_content),
+                (None, Some(new_content)) => {
+                    self.content = Some(new_content.clone());
+                }
+                _ => {}
+            }
+        }
+
+        if self.tool_calls.is_empty() {
+            self.tool_calls = delta.tool_calls.clone();
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
@@ -68,7 +94,7 @@ impl UsageResponse {
 }
 
 #[derive(Debug, Clone)]
-pub struct StreamingResponseInfo {
+pub struct ResponseInfo {
     /// Any other metadata from the provider that should be logged.
     pub meta: Option<serde_json::Value>,
     /// The model used for the request
@@ -77,10 +103,12 @@ pub struct StreamingResponseInfo {
 
 #[derive(Debug, Clone)]
 pub enum StreamingResponse {
+    /// A chunk of a streaming response.
     Chunk(StreamingChatResponse),
-    Finished(StreamingResponseInfo),
-    /// All the information is in this one message. Used for non-streaming requests.
-    Single(SingleProviderResponse),
+    /// The chat response is completely in this one message. Used for non-streaming requests.
+    Single(SingleChatResponse),
+    /// Metadata about the response.
+    Info(ResponseInfo),
 }
 
 pub type StreamingResponseSender = flume::Sender<Result<StreamingResponse, Report<Error>>>;

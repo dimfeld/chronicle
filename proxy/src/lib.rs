@@ -18,18 +18,16 @@ use config::{AliasConfig, ApiKeyConfig};
 use database::logging::ProxyLogEntry;
 pub use error::Error;
 use error_stack::{Report, ResultExt};
-use format::{
-    ChatRequest, SingleChatResponse, StreamingResponse, StreamingResponseReceiver,
-    StreamingResponseSender,
-};
+use flume::Sender;
+use format::{ChatRequest, SingleChatResponse, StreamingResponseReceiver, StreamingResponseSender};
 use http::HeaderMap;
-use provider_lookup::ProviderLookup;
+use provider_lookup::{ModelLookupResult, ProviderLookup};
 use providers::ChatModelProvider;
 use request::RetryOptions;
 use response::{handle_response, record_error};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
-use tracing::instrument;
+use tracing::{instrument, Span};
 use uuid::Uuid;
 
 use crate::request::try_model_choices;
@@ -132,16 +130,38 @@ impl Proxy {
         &self,
         options: ProxyRequestOptions,
         body: ChatRequest,
-    ) -> StreamingResponseReceiver {
-        let (chunk_tx, chunk_rx) = flume::unbounded();
+    ) -> Result<StreamingResponseReceiver, Report<Error>> {
+        let (chunk_tx, chunk_rx) = if body.stream {
+            flume::unbounded()
+        } else {
+            flume::bounded(2)
+        };
 
+        let models = self.lookup.find_model_and_provider(&options, &body)?;
+
+        if models.choices.is_empty() {
+            return Err(Report::new(Error::AliasEmpty(models.alias)));
+        }
+
+        let parent_span = tracing::Span::current();
+        let log_tx = self.log_tx.clone();
+        let default_timeout = self.default_timeout;
         tokio::task::spawn(async move {
-            let res = self.send_request(options, body, chunk_tx.clone()).await;
+            let res = Self::send_request(
+                parent_span,
+                options,
+                models,
+                body,
+                default_timeout,
+                chunk_tx.clone(),
+                log_tx,
+            )
+            .await;
             if let Err(e) = res {
                 chunk_tx.send_async(Err(e)).await.ok();
             }
         });
-        chunk_rx
+        Ok(chunk_rx)
     }
 
     /// Send a request, choosing the provider based on the requested `model` and `provider`.
@@ -153,7 +173,8 @@ impl Proxy {
     /// `body["model"]` is used if options.model is empty.
     #[instrument(
         name = "llm.send_request",
-        skip(self, options),
+        parent=&parent_span,
+        skip(options),
         fields(
             error,
             llm.options=serde_json::to_string(&options).ok(),
@@ -203,10 +224,13 @@ impl Proxy {
         )
     )]
     async fn send_request(
-        &self,
+        parent_span: Span,
         options: ProxyRequestOptions,
+        models: ModelLookupResult,
         body: ChatRequest,
+        default_timeout: Option<Duration>,
         output_tx: StreamingResponseSender,
+        log_tx: Option<Sender<ProxyLogEntry>>,
     ) -> Result<(), Report<Error>> {
         let id = uuid::Uuid::now_v7();
         let current_span = tracing::Span::current();
@@ -247,12 +271,6 @@ impl Proxy {
         };
         current_span.record("llm.prompts", messages_field.as_deref());
 
-        let models = self.lookup.find_model_and_provider(&options, &body)?;
-
-        if models.choices.is_empty() {
-            return Err(Report::new(Error::AliasEmpty(models.alias)));
-        }
-
         if models.choices.len() == 1 {
             // If there's just one provider we can record this in advance to get it even in case of
             // error.
@@ -273,7 +291,7 @@ impl Proxy {
             retry,
             options
                 .timeout
-                .or(self.default_timeout)
+                .or(default_timeout)
                 .unwrap_or_else(|| Duration::from_millis(60_000)),
             body.clone(),
             chunk_tx,
@@ -304,7 +322,7 @@ impl Proxy {
                     res,
                     chunk_rx,
                     output_tx,
-                    self.log_tx.as_ref(),
+                    log_tx.as_ref(),
                 )
                 .await;
             }
@@ -316,7 +334,7 @@ impl Proxy {
                     e.num_retries,
                     e.was_rate_limited,
                     current_span,
-                    self.log_tx.as_ref(),
+                    log_tx.as_ref(),
                 )
                 .await;
             }

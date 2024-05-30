@@ -7,9 +7,12 @@ use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use super::{ChatModelProvider, SendRequestOptions, SingleProviderResponse};
+use super::{ChatModelProvider, SendRequestOptions};
 use crate::{
-    format::{ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, UsageResponse},
+    format::{
+        ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, ResponseInfo,
+        StreamingResponse, StreamingResponseSender, UsageResponse,
+    },
     request::{parse_response_json, send_standard_request},
     Error,
 };
@@ -47,7 +50,8 @@ impl ChatModelProvider for Ollama {
             mut body,
             ..
         }: SendRequestOptions,
-    ) -> Result<SingleProviderResponse, Report<Error>> {
+        chunk_tx: StreamingResponseSender,
+    ) -> Result<(), Report<Error>> {
         body.transform(&ChatRequestTransformation {
             supports_message_name: false,
             system_in_messages: true,
@@ -117,12 +121,19 @@ impl ChatModelProvider for Ollama {
             },
         };
 
-        Ok(SingleProviderResponse {
-            model: result.model,
-            body: response,
+        // TODO Actually support streaming
+        let info = StreamingResponse::Info(ResponseInfo {
+            model: result.model.clone(),
             meta: Some(meta),
-            latency,
-        })
+        });
+
+        chunk_tx
+            .send_async(Ok(StreamingResponse::Single(response)))
+            .await
+            .ok();
+        chunk_tx.send_async(Ok(info)).await.ok();
+
+        Ok(())
     }
 
     fn is_default_for_model(&self, model: &str) -> bool {

@@ -15,10 +15,7 @@ use reqwest::StatusCode;
 use thiserror::Error;
 
 use crate::{
-    format::{
-        ChatRequest, SingleChatResponse, StreamingChatResponse, StreamingResponseInfo,
-        StreamingResponseReceiver, StreamingResponseSender,
-    },
+    format::{ChatRequest, StreamingResponseSender},
     Error,
 };
 
@@ -44,28 +41,10 @@ pub trait ChatModelProvider: Debug + Send + Sync {
     async fn send_request(
         &self,
         options: SendRequestOptions,
-        chunk_rx: StreamingResponseSender,
+        chunk_tx: StreamingResponseSender,
     ) -> Result<(), Report<Error>>;
 
     fn is_default_for_model(&self, model: &str) -> bool;
-}
-
-pub enum ProviderResponse {
-    Single(SingleProviderResponse),
-    Streaming(StreamingProviderResponse),
-}
-
-/// A generic structure with a provider's response translated into the common format, and possible error codes.
-#[derive(Debug, Clone)]
-pub struct SingleProviderResponse {
-    pub body: SingleChatResponse,
-    pub stats: StreamingResponseInfo,
-}
-
-pub struct StreamingProviderResponse {
-    pub chunks: flume::Receiver<StreamingChatResponse>,
-    /// The model actually used.
-    pub model: String,
 }
 
 #[derive(Debug, Error)]
@@ -200,7 +179,6 @@ impl ProviderErrorKind {
             Self::Server
                 | Self::ParsingResponse
                 | Self::Sending
-                | Self::ProviderClosedConnection
                 | Self::RateLimit { .. }
                 | Self::Generic
         )

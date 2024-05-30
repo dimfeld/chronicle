@@ -5,10 +5,12 @@ use error_stack::Report;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
 
-use super::{
-    openai::send_openai_request, ChatModelProvider, SendRequestOptions, SingleProviderResponse,
+use super::{openai::send_openai_request, ChatModelProvider, SendRequestOptions};
+use crate::{
+    config::CustomProviderConfig,
+    format::{ChatRequestTransformation, StreamingResponseSender},
+    Error,
 };
-use crate::{config::CustomProviderConfig, format::ChatRequestTransformation, Error};
 
 #[derive(Debug, Clone)]
 pub struct CustomProvider {
@@ -72,7 +74,8 @@ impl ChatModelProvider for CustomProvider {
     async fn send_request(
         &self,
         options: SendRequestOptions,
-    ) -> Result<SingleProviderResponse, Report<Error>> {
+        chunk_tx: StreamingResponseSender,
+    ) -> Result<(), Report<Error>> {
         match &self.config.format {
             ProviderRequestFormat::OpenAi(OpenAiRequestFormatOptions { transforms }) => {
                 send_openai_request(
@@ -80,6 +83,7 @@ impl ChatModelProvider for CustomProvider {
                     &self.config.url,
                     Some(&self.headers),
                     self.config.api_key.as_deref(),
+                    chunk_tx,
                     &transforms,
                     options,
                 )

@@ -6,12 +6,12 @@ use serde::Deserialize;
 
 use super::{
     openai::handle_rate_limit_headers, ChatModelProvider, ProviderErrorKind, SendRequestOptions,
-    SingleProviderResponse,
 };
 use crate::{
     format::{
-        ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, SingleChatResponse,
-        ToolCall, ToolCallFunction, UsageResponse,
+        ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, ResponseInfo,
+        SingleChatResponse, StreamingResponse, StreamingResponseSender, ToolCall, ToolCallFunction,
+        UsageResponse,
     },
     request::{parse_response_json, send_standard_request},
     Error,
@@ -50,7 +50,8 @@ impl ChatModelProvider for Groq {
             api_key,
             mut body,
         }: SendRequestOptions,
-    ) -> Result<SingleProviderResponse, Report<Error>> {
+        chunk_tx: StreamingResponseSender,
+    ) -> Result<(), Report<Error>> {
         body.transform(&ChatRequestTransformation {
             supports_message_name: true,
             system_in_messages: true,
@@ -124,11 +125,7 @@ impl ChatModelProvider for Groq {
                         },
                     });
 
-                if let Some(recovered_tool_use) = recovered_tool_use {
-                    Ok((recovered_tool_use, err.latency))
-                } else {
-                    Err(e)
-                }
+                recovered_tool_use.ok_or(e)
             }
             Err(e) => Err(e),
             Ok((response, latency)) => {
@@ -136,18 +133,24 @@ impl ChatModelProvider for Groq {
                     .await
                     .change_context(Error::ModelError)?;
 
-                Ok((result, latency))
+                Ok(result)
             }
         };
 
-        let (result, latency) = response.change_context(Error::ModelError)?;
+        let result = response.change_context(Error::ModelError)?;
 
-        Ok(SingleProviderResponse {
-            model: result.model.clone().or(body.model).unwrap_or_default(),
-            body: result,
-            latency,
+        // TODO Actually support streaming
+        let info = StreamingResponse::Info(ResponseInfo {
+            model: result.model.clone().unwrap_or_default(),
             meta: None,
-        })
+        });
+
+        chunk_tx
+            .send_async(Ok(StreamingResponse::Single(result.into())))
+            .await
+            .ok();
+        chunk_tx.send_async(Ok(info)).await.ok();
+        Ok(())
     }
 
     fn is_default_for_model(&self, model: &str) -> bool {

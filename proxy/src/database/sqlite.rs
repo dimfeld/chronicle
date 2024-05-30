@@ -131,14 +131,10 @@ impl ProxyDatabase for SqliteDatabase {
         let mut query = sqlx::query(&query);
 
         for item in items.into_iter() {
-            let (rmodel, rprovider, rbody, rmeta) = match item.response.map(|r| {
-                (
-                    r.body.body.model.clone(),
-                    r.provider,
-                    r.body.body,
-                    r.body.stats.meta,
-                )
-            }) {
+            let (rmodel, rprovider, rbody, rmeta) = match item
+                .response
+                .map(|r| (r.body.model.clone(), r.provider, r.body, r.info.meta))
+            {
                 Some((rmodel, rprovider, rbody, rmeta)) => {
                     (rmodel, Some(rprovider), Some(rbody), rmeta)
                 }
