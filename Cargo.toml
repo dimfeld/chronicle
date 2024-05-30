@@ -18,6 +18,3 @@ filigree = { version = "0.3.0", features = ["tracing", "tracing_export"] }
 
 [profile.dev.package.insta]
 opt-level = 3
-
-[profile.dev.package.similar]
-opt-level = 3

@@ -15,7 +15,10 @@ use reqwest::StatusCode;
 use thiserror::Error;
 
 use crate::{
-    format::{ChatRequest, StreamingChatResponse, StreamingResponseInfo, SynchronousChatResponse},
+    format::{
+        ChatRequest, SingleChatResponse, StreamingChatResponse, StreamingResponseInfo,
+        StreamingResponseReceiver, StreamingResponseSender,
+    },
     Error,
 };
 
@@ -41,20 +44,21 @@ pub trait ChatModelProvider: Debug + Send + Sync {
     async fn send_request(
         &self,
         options: SendRequestOptions,
-    ) -> Result<SynchronousProviderResponse, Report<Error>>;
+        chunk_rx: StreamingResponseSender,
+    ) -> Result<(), Report<Error>>;
 
     fn is_default_for_model(&self, model: &str) -> bool;
 }
 
 pub enum ProviderResponse {
-    Synchronous(SynchronousProviderResponse),
+    Single(SingleProviderResponse),
     Streaming(StreamingProviderResponse),
 }
 
 /// A generic structure with a provider's response translated into the common format, and possible error codes.
 #[derive(Debug, Clone)]
-pub struct SynchronousProviderResponse {
-    pub body: SynchronousChatResponse,
+pub struct SingleProviderResponse {
+    pub body: SingleChatResponse,
     pub stats: StreamingResponseInfo,
 }
 
@@ -114,6 +118,8 @@ pub enum ProviderErrorKind {
     Sending,
     #[error("Failed while parsing response")]
     ParsingResponse,
+    #[error("Provider closed connection prematurely")]
+    ProviderClosedConnection,
     /// The provider returned a rate limit error.
     #[error("Model provider rate limited this request")]
     RateLimit {
@@ -177,6 +183,7 @@ impl ProviderErrorKind {
             ProviderErrorKind::Server => StatusCode::SERVICE_UNAVAILABLE,
             ProviderErrorKind::Sending => StatusCode::BAD_GATEWAY,
             ProviderErrorKind::ParsingResponse => StatusCode::BAD_GATEWAY,
+            ProviderErrorKind::ProviderClosedConnection => StatusCode::BAD_GATEWAY,
             ProviderErrorKind::RateLimit { .. } => StatusCode::TOO_MANY_REQUESTS,
             ProviderErrorKind::Timeout => StatusCode::GATEWAY_TIMEOUT,
             ProviderErrorKind::Permanent => StatusCode::INTERNAL_SERVER_ERROR,
@@ -193,6 +200,7 @@ impl ProviderErrorKind {
             Self::Server
                 | Self::ParsingResponse
                 | Self::Sending
+                | Self::ProviderClosedConnection
                 | Self::RateLimit { .. }
                 | Self::Generic
         )
@@ -202,6 +210,7 @@ impl ProviderErrorKind {
         match self {
             ProviderErrorKind::Generic => "generic",
             ProviderErrorKind::Server => "provider_server_error",
+            ProviderErrorKind::ProviderClosedConnection => "provider_connection_closed",
             ProviderErrorKind::Sending => "provider_connection_error",
             ProviderErrorKind::ParsingResponse => "parsing_provider_response",
             ProviderErrorKind::RateLimit { .. } => "rate_limit",

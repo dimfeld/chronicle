@@ -7,7 +7,7 @@ use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use super::{ChatModelProvider, SendRequestOptions, SynchronousProviderResponse};
+use super::{ChatModelProvider, SendRequestOptions, SingleProviderResponse};
 use crate::{
     format::{ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, UsageResponse},
     request::{parse_response_json, send_standard_request},
@@ -47,7 +47,7 @@ impl ChatModelProvider for Ollama {
             mut body,
             ..
         }: SendRequestOptions,
-    ) -> Result<SynchronousProviderResponse, Report<Error>> {
+    ) -> Result<SingleProviderResponse, Report<Error>> {
         body.transform(&ChatRequestTransformation {
             supports_message_name: false,
             system_in_messages: true,
@@ -117,7 +117,7 @@ impl ChatModelProvider for Ollama {
             },
         };
 
-        Ok(SynchronousProviderResponse {
+        Ok(SingleProviderResponse {
             model: result.model,
             body: response,
             meta: Some(meta),

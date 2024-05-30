@@ -6,7 +6,7 @@ use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
 
 use super::{
-    openai::send_openai_request, ChatModelProvider, SendRequestOptions, SynchronousProviderResponse,
+    openai::send_openai_request, ChatModelProvider, SendRequestOptions, SingleProviderResponse,
 };
 use crate::{config::CustomProviderConfig, format::ChatRequestTransformation, Error};
 
@@ -72,7 +72,7 @@ impl ChatModelProvider for CustomProvider {
     async fn send_request(
         &self,
         options: SendRequestOptions,
-    ) -> Result<SynchronousProviderResponse, Report<Error>> {
+    ) -> Result<SingleProviderResponse, Report<Error>> {
         match &self.config.format {
             ProviderRequestFormat::OpenAi(OpenAiRequestFormatOptions { transforms }) => {
                 send_openai_request(

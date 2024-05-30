@@ -110,19 +110,18 @@ impl ProxyDatabase for PostgresDatabase {
         let mut query = sqlx::query(&query);
 
         for item in items.into_iter() {
-            let (rmodel, rprovider, rbody, rmeta, rlatency) = match item.response.map(|r| {
+            let (rmodel, rprovider, rbody, rmeta) = match item.response.map(|r| {
                 (
                     r.body.body.model.clone(),
                     r.provider,
                     r.body.body,
                     r.body.stats.meta,
-                    r.body.stats.latency.as_millis() as i64,
                 )
             }) {
-                Some((rmodel, rprovider, rbody, rmeta, rlatency)) => {
-                    (rmodel, Some(rprovider), Some(rbody), rmeta, Some(rlatency))
+                Some((rmodel, rprovider, rbody, rmeta)) => {
+                    (rmodel, Some(rprovider), Some(rbody), rmeta)
                 }
-                None => (None, None, None, None, None),
+                None => (None, None, None, None),
             };
 
             let model = rmodel
@@ -158,7 +157,7 @@ impl ProxyDatabase for PostgresDatabase {
                 .bind(rmeta)
                 .bind(item.num_retries.map(|n| n as i32))
                 .bind(item.was_rate_limited)
-                .bind(rlatency)
+                .bind(item.latency.map(|d| d.as_millis() as i64))
                 .bind(item.total_latency.map(|d| d.as_millis() as i64))
                 .bind(item.timestamp);
         }

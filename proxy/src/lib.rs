@@ -8,6 +8,7 @@ pub mod format;
 mod provider_lookup;
 pub mod providers;
 pub mod request;
+mod response;
 #[cfg(test)]
 mod testing;
 
@@ -17,11 +18,15 @@ use config::{AliasConfig, ApiKeyConfig};
 use database::logging::ProxyLogEntry;
 pub use error::Error;
 use error_stack::{Report, ResultExt};
-use format::{ChatRequest, SynchronousChatResponse};
+use format::{
+    ChatRequest, SingleChatResponse, StreamingResponse, StreamingResponseReceiver,
+    StreamingResponseSender,
+};
 use http::HeaderMap;
 use provider_lookup::ProviderLookup;
 use providers::ChatModelProvider;
 use request::RetryOptions;
+use response::{handle_response, record_error};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
 use tracing::instrument;
@@ -46,7 +51,7 @@ pub struct ProxiedChatResponseMeta {
 #[derive(Debug, Serialize)]
 pub struct ProxiedChatResponse {
     #[serde(flatten)]
-    pub response: SynchronousChatResponse,
+    pub response: SingleChatResponse,
     pub meta: ProxiedChatResponseMeta,
 }
 
@@ -107,6 +112,7 @@ impl Proxy {
             request: None,
             response: None,
             total_latency: None,
+            latency: None,
             was_rate_limited: None,
             num_retries: None,
             error: body.error.and_then(|e| serde_json::to_string(&e).ok()),
@@ -120,6 +126,22 @@ impl Proxy {
         log_tx.send_async(log_entry).await.ok();
 
         id
+    }
+
+    pub async fn send(
+        &self,
+        options: ProxyRequestOptions,
+        body: ChatRequest,
+    ) -> StreamingResponseReceiver {
+        let (chunk_tx, chunk_rx) = flume::unbounded();
+
+        tokio::task::spawn(async move {
+            let res = self.send_request(options, body, chunk_tx.clone()).await;
+            if let Err(e) = res {
+                chunk_tx.send_async(Err(e)).await.ok();
+            }
+        });
+        chunk_rx
     }
 
     /// Send a request, choosing the provider based on the requested `model` and `provider`.
@@ -180,22 +202,12 @@ impl Proxy {
             llm.user = body.user,
         )
     )]
-    pub async fn send(
+    async fn send_request(
         &self,
         options: ProxyRequestOptions,
         body: ChatRequest,
-    ) -> Result<ProxiedChatResponse, Report<Error>> {
-        // TODO This should take a channel as the argument, and we'll send back
-        // the response, whether streaming or not.
-        // Wrap this in a helper function to automate the channel creation and spawning.
-        // Add another helper function to also wait for the response to finish
-        // and collect the results, for when we want to call the function without
-        // actually streaming.
-        //
-        // Consider if the internals should always use channels or not. It might end up
-        // simpler to just have a single mode for all this. Still need to distinguish
-        // between the two though so that we send back the correct structure for
-        // streaming or not, so perhaps it doesn't matter so much.
+        output_tx: StreamingResponseSender,
+    ) -> Result<(), Report<Error>> {
         let id = uuid::Uuid::now_v7();
         let current_span = tracing::Span::current();
         current_span.record("llm.item_id", id.to_string());
@@ -251,8 +263,10 @@ impl Proxy {
 
         let retry = options.retry.clone().unwrap_or_default();
 
+        let (chunk_tx, chunk_rx) = flume::bounded(5);
+
         let timestamp = chrono::Utc::now();
-        let send_start = tokio::time::Instant::now();
+        let global_start = tokio::time::Instant::now();
         let response = try_model_choices(
             models,
             options.override_url.clone(),
@@ -262,105 +276,53 @@ impl Proxy {
                 .or(self.default_timeout)
                 .unwrap_or_else(|| Duration::from_millis(60_000)),
             body.clone(),
+            chunk_tx,
         )
         .await;
 
-        let send_time = send_start.elapsed().as_millis();
+        // Fill in what we can now, the rest will be filled in once the response is done.
+        let log_entry = ProxyLogEntry {
+            id,
+            event_type: Cow::Borrowed("chronicle_llm_request"),
+            timestamp,
+            request: Some(body),
+            response: None,
+            total_latency: None,
+            latency: None,
+            num_retries: None,
+            was_rate_limited: None,
+            error: None,
+            options,
+        };
 
-        // In case of retries, this might be meaningfully different from the main latency.
-        current_span.record("llm.total_latency", send_time);
-
-        match &response {
-            Ok(response) => {
-                current_span.record(
-                    "llm.completions",
-                    response
-                        .body
-                        .choices
-                        .iter()
-                        .filter_map(|c| c.message.content.as_deref())
-                        .collect::<Vec<_>>()
-                        .join("\n\n"),
-                );
-                current_span.record(
-                    "llm.completions.raw",
-                    serde_json::to_string(&response.body.choices).ok(),
-                );
-                current_span.record("llm.vendor", &response.provider);
-                current_span.record("llm.response.model", &response.body.model);
-                current_span.record("llm.latency", response.latency.as_millis());
-                current_span.record("llm.retries", response.num_retries);
-                current_span.record("llm.rate_limited", response.was_rate_limited);
-                current_span.record("llm.usage.prompt_tokens", response.body.usage.prompt_tokens);
-                current_span.record(
-                    "llm.finish_reason",
-                    response.body.choices.get(0).map(|c| &c.finish_reason),
-                );
-                current_span.record(
-                    "llm.usage.completion_tokens",
-                    response.body.usage.completion_tokens,
-                );
-                let total_tokens = response.body.usage.total_tokens.unwrap_or_else(|| {
-                    response.body.usage.prompt_tokens.unwrap_or(0)
-                        + response.body.usage.completion_tokens.unwrap_or(0)
-                });
-                current_span.record("llm.usage.total_tokens", total_tokens);
-
-                if let Some(log_tx) = &self.log_tx {
-                    let log_entry = ProxyLogEntry {
-                        id,
-                        event_type: Cow::Borrowed("chronicle_llm_request"),
-                        timestamp,
-                        request: Some(body.clone()),
-                        response: Some(response.clone()),
-                        num_retries: Some(response.num_retries),
-                        was_rate_limited: Some(response.was_rate_limited),
-                        total_latency: Some(send_start.elapsed()),
-                        error: None,
-                        options,
-                    };
-
-                    log_tx.send_async(log_entry).await.ok();
-                }
+        match response {
+            Ok(res) => {
+                handle_response(
+                    current_span,
+                    log_entry,
+                    global_start,
+                    res,
+                    chunk_rx,
+                    output_tx,
+                    self.log_tx.as_ref(),
+                )
+                .await;
             }
             Err(e) => {
-                tracing::error!(error.full=?e.error, "Request failed");
-
-                current_span.record("error", e.error.to_string());
-                current_span.record("llm.retries", e.num_retries);
-                current_span.record("llm.rate_limited", e.was_rate_limited);
-
-                if let Some(log_tx) = &self.log_tx {
-                    let log_entry = ProxyLogEntry {
-                        id,
-                        event_type: Cow::Borrowed("chronicle_llm_request"),
-                        timestamp,
-                        request: Some(body),
-                        response: None,
-                        total_latency: Some(send_start.elapsed()),
-                        num_retries: Some(e.num_retries),
-                        was_rate_limited: Some(e.was_rate_limited),
-                        error: Some(format!("{:?}", e)),
-                        options,
-                    };
-
-                    log_tx.send_async(log_entry).await.ok();
-                }
+                record_error(
+                    log_entry,
+                    &e.error,
+                    global_start,
+                    e.num_retries,
+                    e.was_rate_limited,
+                    current_span,
+                    self.log_tx.as_ref(),
+                )
+                .await;
             }
         }
 
-        response
-            .map(|r| ProxiedChatResponse {
-                // todo this should be a channel
-                response: r.body,
-                meta: ProxiedChatResponseMeta {
-                    id,
-                    provider: r.provider,
-                    response_meta: r.meta,
-                    was_rate_limited: r.was_rate_limited,
-                },
-            })
-            .map_err(|e| e.error)
+        Ok(())
     }
 
     /// Add a provider to the system. This will replace any existing provider with the same `name`.

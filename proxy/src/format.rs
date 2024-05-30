@@ -3,7 +3,10 @@
 
 use std::{borrow::Cow, collections::BTreeMap};
 
+use error_stack::Report;
 use serde::{Deserialize, Serialize};
+
+use crate::{providers::SingleProviderResponse, Error};
 
 /// A chat response, in non-chunked format
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -20,7 +23,7 @@ pub struct ChatResponse<CHOICE> {
 }
 
 pub type StreamingChatResponse = ChatResponse<ChatChoiceDelta>;
-pub type SynchronousChatResponse = ChatResponse<ChatChoice>;
+pub type SingleChatResponse = ChatResponse<ChatChoice>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ChatChoice {
@@ -68,15 +71,20 @@ impl UsageResponse {
 pub struct StreamingResponseInfo {
     /// Any other metadata from the provider that should be logged.
     pub meta: Option<serde_json::Value>,
-    /// The latency of the request. If the request was retried this should only count the
-    /// final successful one. Total latency including retries is tracked outside of the provider.
-    pub latency: std::time::Duration,
+    /// The model used for the request
+    pub model: String,
 }
 
+#[derive(Debug, Clone)]
 pub enum StreamingResponse {
     Chunk(StreamingChatResponse),
     Finished(StreamingResponseInfo),
+    /// All the information is in this one message. Used for non-streaming requests.
+    Single(SingleProviderResponse),
 }
+
+pub type StreamingResponseSender = flume::Sender<Result<StreamingResponse, Report<Error>>>;
+pub type StreamingResponseReceiver = flume::Receiver<Result<StreamingResponse, Report<Error>>>;
 
 /// For providers that conform almost, but not quite, to the OpenAI spec, these transformations
 /// apply small changes that can alter the request in place to the form needed for the provider.
@@ -150,9 +158,18 @@ pub struct ChatRequest {
     /// The "user" to send to the provider.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
-    // /// Send the response back as a stream of chunks.
-    // #[serde(default)]
-    // pub stream: bool,
+    /// Send the response back as a stream of chunks.
+    #[serde(default)]
+    pub stream: bool,
+    /// For OpenAI, this lets us enable usage when streaming. Chronicle will set this
+    /// automatically when appropriate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_options: Option<StreamOptions>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct StreamOptions {
+    pub include_usage: bool,
 }
 
 impl ChatRequest {

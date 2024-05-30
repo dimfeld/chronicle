@@ -3,6 +3,8 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use error_stack::{Report, ResultExt};
+use eventsource_stream::{Event, Eventsource};
+use futures::stream::StreamExt;
 use rand::Rng;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
@@ -10,14 +12,12 @@ use tracing::instrument;
 
 use crate::{
     format::{
-        ChatRequest, StreamingChatResponse, StreamingResponse, StreamingResponseInfo,
-        SynchronousChatResponse,
+        ChatRequest, ChatResponse, SingleChatResponse, StreamingChatResponse, StreamingResponse,
+        StreamingResponseInfo, StreamingResponseReceiver, StreamingResponseSender,
     },
     provider_lookup::{ModelLookupChoice, ModelLookupResult},
-    providers::{
-        ProviderError, ProviderErrorKind, SendRequestOptions, SynchronousProviderResponse,
-    },
-    Error,
+    providers::{ProviderError, ProviderErrorKind, SendRequestOptions, SingleProviderResponse},
+    Error, ProxiedChatResponseMeta,
 };
 
 #[serde_as]
@@ -157,18 +157,12 @@ impl<'a> BackoffValue<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub enum ProxiedResultBody {
-    Streaming(flume::Receiver<StreamingResponse>),
-    Synchronous(SynchronousProviderResponse),
-}
-
-#[derive(Debug, Clone)]
 pub struct ProxiedResult {
-    pub body: ProxiedResultBody,
     /// The provider which was used for the successful response.
     pub provider: String,
     pub num_retries: u32,
     pub was_rate_limited: bool,
+    pub start_time: tokio::time::Instant,
 }
 
 #[derive(Debug)]
@@ -190,6 +184,7 @@ pub async fn try_model_choices(
     options: RetryOptions,
     timeout: Duration,
     request: ChatRequest,
+    chunk_tx: StreamingResponseSender,
 ) -> Result<ProxiedResult, ProxiedResultError> {
     let single_choice = choices.len() == 1;
     let start_choice = if random_order && !single_choice {
@@ -215,23 +210,28 @@ pub async fn try_model_choices(
 
         let mut body = request.clone();
         body.model = Some(model.to_string());
+        let start_time = tokio::time::Instant::now();
         let result = provider
-            .send_request(SendRequestOptions {
-                override_url: override_url.clone(),
-                timeout,
-                api_key: api_key.clone(),
-                body,
-            })
+            .send_request(
+                SendRequestOptions {
+                    override_url: override_url.clone(),
+                    timeout,
+                    api_key: api_key.clone(),
+                    body,
+                },
+                chunk_tx.clone(),
+            )
             .await;
 
         let provider_name = provider.name();
         let error = match result {
-            Ok(value) => {
+            Ok(_) => {
+                // The caller will stream the response from here.
                 return Ok(ProxiedResult {
-                    body: ProxiedResultBody::Synchronous(value),
-                    provider: provider_name.to_string(),
-                    num_retries: current_try - 1,
                     was_rate_limited,
+                    num_retries: current_try - 1,
+                    provider: provider.name().to_string(),
+                    start_time,
                 });
             }
             Err(e) => {
@@ -356,6 +356,74 @@ pub async fn send_standard_request(
         let latency = start.elapsed();
         Ok::<_, Report<ProviderError>>((result, latency))
     }
+}
+
+pub fn response_is_sse(response: &reqwest::Response) -> bool {
+    response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .map(|ct| ct == "text/event-stream")
+        .unwrap_or_default()
+}
+
+/// Stream an SSE response to the channel
+///
+/// `start_time` - the time the request was started
+/// `response` - the response to stream
+/// `chunk_tx` - the channel to send the chunks to
+/// `map_chunk` - a function to map the event to a standard chat response.
+///
+/// `map_chunk` can return Ok(None) if the event should be skipped, as with Anthropic's
+/// ping event.
+pub async fn stream_sse_to_channel(
+    start_time: tokio::time::Instant,
+    response: reqwest::Response,
+    chunk_tx: StreamingResponseSender,
+    map_chunk: impl Fn(&Event) -> Result<Option<StreamingChatResponse>, Report<ProviderError>>,
+) {
+    let mut stream = response.bytes_stream().eventsource();
+
+    while let Some(event) = stream.next().await {
+        match event {
+            Ok(event) => {
+                let chunk = map_chunk(&event);
+                match chunk {
+                    Ok(None) => continue,
+                    Ok(Some(chunk)) => {
+                        let result = chunk_tx
+                            .send_async(Ok(StreamingResponse::Chunk(chunk)))
+                            .await;
+                        if result.is_err() {
+                            // Channel was closed
+                            return;
+                        }
+                    }
+                    Err(e) => {
+                        chunk_tx
+                            .send_async(Err(e).change_context(Error::ModelError))
+                            .await
+                            .ok();
+                        return;
+                    }
+                }
+            }
+            Err(e) => {
+                chunk_tx
+                    .send_async(Err(e).change_context(Error::ModelError))
+                    .await
+                    .ok();
+                return;
+            }
+        }
+    }
+
+    chunk_tx
+        .send_async(Ok(StreamingResponse::Finished(StreamingResponseInfo {
+            meta: None,
+            latency: start_time.elapsed(),
+        })))
+        .await
+        .ok();
 }
 
 /// Parse a JSON response, with informative errors when the format does not match the expected
