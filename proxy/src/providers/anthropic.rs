@@ -57,7 +57,6 @@ impl ChatModelProvider for Anthropic {
             strip_model_prefix: Some("anthropic/".into()),
         });
 
-        let has_tools = !body.tools.is_empty();
         let body = AnthropicChatRequest {
             model: body.model.unwrap_or_default(),
             max_tokens: body.max_tokens,
@@ -83,18 +82,11 @@ impl ChatModelProvider for Anthropic {
         let (response, latency) = send_standard_request(
             timeout,
             || {
-                let req = self
-                    .client
+                self.client
                     .post("https://api.anthropic.com/v1/messages")
                     .header("x-api-key", api_token)
                     .header("anthropic-version", "2023-06-01")
-                    .header(CONTENT_TYPE, "application/json; charset=utf8");
-
-                if has_tools {
-                    req.header("anthropic-beta", "tools-2024-04-04")
-                } else {
-                    req
-                }
+                    .header(CONTENT_TYPE, "application/json; charset=utf8")
             },
             handle_retry_after,
             body,
