@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use error_stack::{Report, ResultExt};
+use error_stack::Report;
 
 use crate::{
     format::{
@@ -11,7 +11,6 @@ use crate::{
         StreamingResponse, StreamingResponseSender, UsageResponse,
     },
     providers::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions},
-    Error,
 };
 
 #[derive(Debug)]
@@ -67,7 +66,7 @@ impl ChatModelProvider for TestProvider {
         &self,
         options: SendRequestOptions,
         chunk_tx: StreamingResponseSender,
-    ) -> Result<(), Report<Error>> {
+    ) -> Result<(), Report<ProviderError>> {
         let current_call = self
             .calls
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -81,9 +80,15 @@ impl ChatModelProvider for TestProvider {
                     Err(ProviderErrorKind::RateLimit { retry_after: None })
                 }
                 Some(TestFailure::Auth) => Err(ProviderErrorKind::AuthRejected),
-                Some(TestFailure::TransformingRequest) => return Err(Error::TransformingRequest)?,
+                Some(TestFailure::TransformingRequest) => {
+                    return Err(ProviderError::from_kind(
+                        ProviderErrorKind::TransformingRequest,
+                    ))?
+                }
                 Some(TestFailure::TransformingResponse) => {
-                    return Err(Error::TransformingResponse)?
+                    return Err(ProviderError::from_kind(
+                        ProviderErrorKind::TransformingResponse,
+                    ))?
                 }
                 None => Ok(()),
             }
@@ -92,11 +97,9 @@ impl ChatModelProvider for TestProvider {
                 status_code: None,
                 body: None,
                 latency: Duration::from_millis(500),
-            })
-            .change_context(Error::ModelError)?;
+            })?;
         }
 
-        // TODO support streaming when the request specifies it
         let body = ChatResponse {
             created: 1,
             model: options.body.model.clone(),
@@ -111,11 +114,11 @@ impl ChatModelProvider for TestProvider {
                 },
                 finish_reason: "stop".to_string(),
             }],
-            usage: UsageResponse {
+            usage: Some(UsageResponse {
                 prompt_tokens: Some(1),
                 completion_tokens: Some(2),
                 total_tokens: Some(3),
-            },
+            }),
         };
 
         let response_info = StreamingResponse::ResponseInfo(ResponseInfo {
@@ -130,7 +133,7 @@ impl ChatModelProvider for TestProvider {
             body1.choices[0].delta.content =
                 Some(self.response[0..self.response.len() / 2].to_string());
             body1.choices[0].finish_reason = None;
-            body1.usage = UsageResponse::default();
+            body1.usage = Some(UsageResponse::default());
             body2.choices[0].delta.content =
                 Some(self.response[self.response.len() / 2..].to_string());
             body2.choices[0].delta.role = None;

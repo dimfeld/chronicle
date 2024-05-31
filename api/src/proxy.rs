@@ -89,10 +89,27 @@ async fn proxy_request(
         .await
         .change_context(Error::Proxy)?;
 
+    // The first item will always be a RequestInfo or an error. We pull it off here so that if the
+    // model provider returned an error we can catch it in advance and return a proper error.
+    let request_info = result
+        .recv_async()
+        .await
+        .change_context(Error::Proxy)
+        .attach_printable("Connection terminated unexpectedly")?
+        .change_context(Error::Proxy)?;
+
+    let request_info = match request_info {
+        StreamingResponse::RequestInfo(info) => Some(info),
+        _ => {
+            tracing::error!("First stream item was not a RequestInfo");
+            None
+        }
+    };
+
     if stream {
         let stream = result
             .into_stream()
-            .scan(None, |request_info, chunk| {
+            .scan(request_info, |request_info, chunk| {
                 let result = match chunk {
                     Ok(StreamingResponse::Chunk(chunk)) => {
                         if let Some(info) = request_info.take() {
@@ -119,9 +136,9 @@ async fn proxy_request(
                             Some(sse::Event::default().json_data(chunk))
                         }
                     }
-                    Ok(StreamingResponse::RequestInfo(info)) => {
-                        // Save to send with the next chunk
-                        *request_info = Some(info);
+                    Ok(StreamingResponse::RequestInfo(_)) => {
+                        // This should never happen since we already received it above.
+                        debug_assert!(false, "got multiple RequestInfo");
                         None
                     }
                     Ok(StreamingResponse::ResponseInfo(_)) => {

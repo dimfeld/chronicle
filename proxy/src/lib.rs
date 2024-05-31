@@ -138,7 +138,7 @@ impl Proxy {
         let (chunk_tx, chunk_rx) = if body.stream {
             flume::unbounded()
         } else {
-            flume::bounded(2)
+            flume::bounded(5)
         };
 
         let models = self.lookup.find_model_and_provider(&options, &body)?;
@@ -336,7 +336,7 @@ impl Proxy {
                     res,
                     chunk_rx,
                     output_tx,
-                    log_tx.as_ref(),
+                    log_tx,
                 )
                 .await;
             }
@@ -351,6 +351,7 @@ impl Proxy {
                     log_tx.as_ref(),
                 )
                 .await;
+                output_tx.send_async(Err(e.error)).await.ok();
             }
         }
     }
@@ -708,11 +709,11 @@ mod test {
                 created: 1,
                 model: None,
                 system_fingerprint: None,
-                usage: UsageResponse {
+                usage: Some(UsageResponse {
                     prompt_tokens: Some(1),
                     completion_tokens: Some(1),
                     total_tokens: Some(2),
-                },
+                }),
                 choices: vec![ChatChoice {
                     index: 0,
                     message: ChatMessage {
@@ -782,11 +783,11 @@ mod test {
             created: 1,
             model: Some("a_model".to_string()),
             system_fingerprint: Some("abbadada".to_string()),
-            usage: UsageResponse {
+            usage: Some(UsageResponse {
                 prompt_tokens: Some(1),
                 completion_tokens: Some(1),
                 total_tokens: Some(2),
-            },
+            }),
             choices: vec![ChatChoiceDelta {
                 index: 0,
                 delta: ChatMessage {
@@ -803,11 +804,11 @@ mod test {
             created: 2,
             model: None,
             system_fingerprint: None,
-            usage: UsageResponse {
+            usage: Some(UsageResponse {
                 prompt_tokens: Some(1),
                 completion_tokens: Some(1),
                 total_tokens: Some(2),
-            },
+            }),
             choices: vec![ChatChoiceDelta {
                 index: 0,
                 delta: ChatMessage {

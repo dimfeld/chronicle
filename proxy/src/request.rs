@@ -17,7 +17,6 @@ use crate::{
     },
     provider_lookup::{ModelLookupChoice, ModelLookupResult},
     providers::{ProviderError, ProviderErrorKind, SendRequestOptions},
-    Error,
 };
 
 #[serde_as]
@@ -172,7 +171,7 @@ pub struct TryModelChoicesResult {
 
 #[derive(Debug)]
 pub struct TryModelChoicesError {
-    pub error: Report<Error>,
+    pub error: Report<ProviderError>,
     pub num_retries: u32,
     pub was_rate_limited: bool,
 }
@@ -368,7 +367,8 @@ pub fn response_is_sse(response: &reqwest::Response) -> bool {
     response
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
-        .map(|ct| ct == "text/event-stream")
+        .and_then(|ct| ct.to_str().ok())
+        .map(|ct| ct.starts_with("text/event-stream"))
         .unwrap_or_default()
 }
 
@@ -384,58 +384,65 @@ pub fn response_is_sse(response: &reqwest::Response) -> bool {
 pub async fn stream_sse_to_channel(
     response: reqwest::Response,
     chunk_tx: StreamingResponseSender,
-    map_chunk: impl Fn(&Event) -> Result<Option<StreamingChatResponse>, Report<ProviderError>>,
-) {
-    let mut stream = response.bytes_stream().eventsource();
-    let mut model: Option<String> = None;
+    map_chunk: impl Fn(&Event) -> Result<Option<StreamingChatResponse>, Report<ProviderError>>
+        + Send
+        + Sync
+        + 'static,
+) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn(async move {
+        let mut stream = response.bytes_stream().eventsource();
+        let mut model: Option<String> = None;
 
-    while let Some(event) = stream.next().await {
-        match event {
-            Ok(event) => {
-                let chunk = map_chunk(&event);
-                match chunk {
-                    Ok(None) => continue,
-                    Ok(Some(chunk)) => {
-                        if model.is_none() {
-                            model = chunk.model.clone();
+        while let Some(event) = stream.next().await {
+            match event {
+                Ok(event) => {
+                    let chunk = map_chunk(&event);
+                    tracing::trace!(chunk = ?chunk);
+                    match chunk {
+                        Ok(None) => continue,
+                        Ok(Some(chunk)) => {
+                            if model.is_none() {
+                                model = chunk.model.clone();
+                            }
+
+                            let result = chunk_tx
+                                .send_async(Ok(StreamingResponse::Chunk(chunk)))
+                                .await;
+                            if result.is_err() {
+                                // Channel was closed
+                                tracing::warn!("channel closed early");
+                                return;
+                            }
                         }
-
-                        let result = chunk_tx
-                            .send_async(Ok(StreamingResponse::Chunk(chunk)))
-                            .await;
-                        if result.is_err() {
-                            // Channel was closed
+                        Err(e) => {
+                            chunk_tx.send_async(Err(e)).await.ok();
                             return;
                         }
                     }
-                    Err(e) => {
-                        chunk_tx.send_async(Err(e)).await.ok();
-                        return;
-                    }
+                }
+                Err(e) => {
+                    chunk_tx
+                        .send_async(Err(e).change_context(ProviderError {
+                            kind: ProviderErrorKind::ProviderClosedConnection,
+                            status_code: None,
+                            body: None,
+                            latency: Duration::ZERO,
+                        }))
+                        .await
+                        .ok();
+                    return;
                 }
             }
-            Err(e) => {
-                chunk_tx
-                    .send_async(Err(e).change_context(ProviderError {
-                        kind: ProviderErrorKind::ProviderClosedConnection,
-                        status_code: None,
-                        body: None,
-                        latency: Duration::ZERO,
-                    }))
-                    .await
-                    .ok();
-                return;
-            }
         }
-    }
 
-    chunk_tx
-        .send_async(Ok(StreamingResponse::ResponseInfo(ResponseInfo {
-            meta: None,
-            model: model.unwrap_or_default(),
-        })))
-        .await
-        .ok();
+        chunk_tx
+            .send_async(Ok(StreamingResponse::ResponseInfo(ResponseInfo {
+                meta: None,
+                model: model.unwrap_or_default(),
+            })))
+            .await
+            .ok();
+    })
 }
 
 /// Parse a JSON response, with informative errors when the format does not match the expected

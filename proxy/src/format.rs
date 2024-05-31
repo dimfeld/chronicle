@@ -19,8 +19,8 @@ pub struct ChatResponse<CHOICE> {
     pub model: Option<String>,
     pub system_fingerprint: Option<String>,
     pub choices: Vec<CHOICE>,
-    #[serde(default, skip_serializing_if = "UsageResponse::is_empty")]
-    pub usage: UsageResponse,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<UsageResponse>,
 }
 
 pub type StreamingChatResponse = ChatResponse<ChatChoiceDelta>;
@@ -34,11 +34,11 @@ impl ChatResponse<ChatChoice> {
             model: None,
             system_fingerprint: None,
             choices: Vec::with_capacity(num_choices),
-            usage: UsageResponse {
+            usage: Some(UsageResponse {
                 prompt_tokens: None,
                 completion_tokens: None,
                 total_tokens: None,
-            },
+            }),
         }
     }
 
@@ -55,7 +55,7 @@ impl ChatResponse<ChatChoice> {
             self.system_fingerprint = chunk.system_fingerprint.clone();
         }
 
-        if !chunk.usage.is_empty() {
+        if !chunk.usage.is_none() {
             self.usage = chunk.usage.clone();
         }
 

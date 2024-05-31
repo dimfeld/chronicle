@@ -13,7 +13,6 @@ use crate::{
         StreamingChatResponse, StreamingResponse, StreamingResponseSender,
     },
     request::{parse_response_json, response_is_sse, send_standard_request, stream_sse_to_channel},
-    Error,
 };
 
 /// OpenAI or fully-compatible provider
@@ -50,7 +49,7 @@ impl ChatModelProvider for OpenAi {
         &self,
         options: SendRequestOptions,
         chunk_tx: StreamingResponseSender,
-    ) -> Result<(), Report<Error>> {
+    ) -> Result<(), Report<ProviderError>> {
         send_openai_request(
             &self.client,
             &self.url,
@@ -86,7 +85,7 @@ pub async fn send_openai_request(
         api_key,
         mut body,
     }: SendRequestOptions,
-) -> Result<(), Report<Error>> {
+) -> Result<(), Report<ProviderError>> {
     body.transform(transform);
 
     if body.stream {
@@ -96,7 +95,8 @@ pub async fn send_openai_request(
         });
     }
 
-    let bytes = serde_json::to_vec(&body).change_context(Error::TransformingRequest)?;
+    let bytes = serde_json::to_vec(&body)
+        .change_context_lazy(|| ProviderError::from_kind(ProviderErrorKind::TransformingRequest))?;
     let bytes = Bytes::from(bytes);
 
     let token = api_key
@@ -125,11 +125,10 @@ pub async fn send_openai_request(
         handle_rate_limit_headers,
         bytes,
     )
-    .await
-    .change_context(Error::ModelError)?;
+    .await?;
 
     if response_is_sse(&response) {
-        stream_sse_to_channel(response, chunk_tx, |event| {
+        stream_sse_to_channel(response, chunk_tx, move |event| {
             if event.data == "[DONE]" {
                 return Ok(None);
             }

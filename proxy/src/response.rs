@@ -20,7 +20,7 @@ pub async fn handle_response(
     meta: TryModelChoicesResult,
     chunk_rx: StreamingResponseReceiver,
     output_tx: StreamingResponseSender,
-    log_tx: Option<&flume::Sender<ProxyLogEntry>>,
+    log_tx: Option<flume::Sender<ProxyLogEntry>>,
 ) {
     let response = collect_stream(
         current_span.clone(),
@@ -30,7 +30,7 @@ pub async fn handle_response(
         &meta,
         chunk_rx,
         output_tx,
-        log_tx,
+        log_tx.as_ref(),
     )
     .await;
     let Ok((response, info, mut log_entry)) = response else {
@@ -62,18 +62,18 @@ pub async fn handle_response(
     current_span.record("llm.latency", this_send_time.as_millis());
     current_span.record("llm.retries", meta.num_retries);
     current_span.record("llm.rate_limited", meta.was_rate_limited);
-    current_span.record("llm.usage.prompt_tokens", response.usage.prompt_tokens);
+
+    let usage = response.usage.clone().unwrap_or_default();
+
+    current_span.record("llm.usage.prompt_tokens", usage.prompt_tokens);
     current_span.record(
         "llm.finish_reason",
         response.choices.get(0).map(|c| &c.finish_reason),
     );
-    current_span.record(
-        "llm.usage.completion_tokens",
-        response.usage.completion_tokens,
-    );
-    let total_tokens = response.usage.total_tokens.unwrap_or_else(|| {
-        response.usage.prompt_tokens.unwrap_or(0) + response.usage.completion_tokens.unwrap_or(0)
-    });
+    current_span.record("llm.usage.completion_tokens", usage.completion_tokens);
+    let total_tokens = usage
+        .total_tokens
+        .unwrap_or_else(|| usage.prompt_tokens.unwrap_or(0) + usage.completion_tokens.unwrap_or(0));
     current_span.record("llm.usage.total_tokens", total_tokens);
 
     if let Some(log_tx) = log_tx {
@@ -110,6 +110,7 @@ async fn collect_stream(
 
     // Collect the message chunks so we can log the result, while also passing them on to the output channel.
     while let Some(chunk) = chunk_rx.recv_async().await.ok() {
+        tracing::info!(?chunk, "Got chunk");
         match &chunk {
             Ok(StreamingResponse::Chunk(chunk)) => {
                 response.merge_delta(chunk);
@@ -140,6 +141,7 @@ async fn collect_stream(
             }
         }
 
+        tracing::debug!(?chunk, "Sending chunk");
         output_tx.send_async(chunk).await.ok();
     }
 

@@ -5,7 +5,8 @@ use reqwest::header::CONTENT_TYPE;
 use serde::Deserialize;
 
 use super::{
-    openai::handle_rate_limit_headers, ChatModelProvider, ProviderErrorKind, SendRequestOptions,
+    openai::handle_rate_limit_headers, ChatModelProvider, ProviderError, ProviderErrorKind,
+    SendRequestOptions,
 };
 use crate::{
     format::{
@@ -14,7 +15,6 @@ use crate::{
         UsageResponse,
     },
     request::{parse_response_json, send_standard_request},
-    Error,
 };
 
 #[derive(Debug)]
@@ -51,7 +51,7 @@ impl ChatModelProvider for Groq {
             mut body,
         }: SendRequestOptions,
         chunk_tx: StreamingResponseSender,
-    ) -> Result<(), Report<Error>> {
+    ) -> Result<(), Report<ProviderError>> {
         body.transform(&ChatRequestTransformation {
             supports_message_name: true,
             system_in_messages: true,
@@ -64,13 +64,15 @@ impl ChatModelProvider for Groq {
         body.top_logprobs = None;
         body.n = None;
 
-        let bytes = serde_json::to_vec(&body).change_context(Error::TransformingRequest)?;
+        let bytes = serde_json::to_vec(&body).change_context_lazy(|| {
+            ProviderError::from_kind(ProviderErrorKind::TransformingRequest)
+        })?;
         let bytes = Bytes::from(bytes);
 
         let api_token = api_key
             .as_deref()
             .or(self.token.as_deref())
-            .ok_or(Error::MissingApiKey)?;
+            .ok_or(ProviderError::from_kind(ProviderErrorKind::AuthMissing))?;
 
         let response = send_standard_request(
             timeout,
@@ -117,27 +119,25 @@ impl ChatModelProvider for Groq {
                             },
                             finish_reason: "tool_calls".to_string(),
                         }],
-                        usage: UsageResponse {
+                        usage: Some(UsageResponse {
                             // TODO This should be better
                             prompt_tokens: None,
                             completion_tokens: None,
                             total_tokens: None,
-                        },
+                        }),
                     });
 
                 recovered_tool_use.ok_or(e)
             }
             Err(e) => Err(e),
             Ok((response, latency)) => {
-                let result = parse_response_json::<SingleChatResponse>(response, latency)
-                    .await
-                    .change_context(Error::ModelError)?;
+                let result = parse_response_json::<SingleChatResponse>(response, latency).await?;
 
                 Ok(result)
             }
         };
 
-        let result = response.change_context(Error::ModelError)?;
+        let result = response?;
 
         // TODO Actually support streaming
         let info = StreamingResponse::ResponseInfo(ResponseInfo {

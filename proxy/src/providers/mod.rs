@@ -14,10 +14,7 @@ use error_stack::Report;
 use reqwest::StatusCode;
 use thiserror::Error;
 
-use crate::{
-    format::{ChatRequest, StreamingResponseSender},
-    Error,
-};
+use crate::format::{ChatRequest, StreamingResponseSender};
 
 #[derive(Debug)]
 pub struct SendRequestOptions {
@@ -42,7 +39,7 @@ pub trait ChatModelProvider: Debug + Send + Sync {
         &self,
         options: SendRequestOptions,
         chunk_tx: StreamingResponseSender,
-    ) -> Result<(), Report<Error>>;
+    ) -> Result<(), Report<ProviderError>>;
 
     fn is_default_for_model(&self, model: &str) -> bool;
 }
@@ -58,6 +55,18 @@ pub struct ProviderError {
     pub body: Option<serde_json::Value>,
     /// How much time it took before we received the error
     pub latency: std::time::Duration,
+}
+
+impl ProviderError {
+    /// A simple constructor for a [ProviderError] that only needs a kind
+    pub fn from_kind(kind: ProviderErrorKind) -> Self {
+        Self {
+            kind,
+            status_code: None,
+            body: None,
+            latency: std::time::Duration::ZERO,
+        }
+    }
 }
 
 #[cfg(feature = "filigree")]
@@ -97,6 +106,10 @@ pub enum ProviderErrorKind {
     Sending,
     #[error("Failed while parsing response")]
     ParsingResponse,
+    #[error("Error transforming a model request")]
+    TransformingRequest,
+    #[error("Error transforming a model response")]
+    TransformingResponse,
     #[error("Provider closed connection prematurely")]
     ProviderClosedConnection,
     /// The provider returned a rate limit error.
@@ -119,6 +132,9 @@ pub enum ProviderErrorKind {
     /// The API token was rejected or not allowed to perform the requested operation
     #[error("Model provider authorization error")]
     AuthRejected,
+    /// The API token was rejected or not allowed to perform the requested operation
+    #[error("No API key provided")]
+    AuthMissing,
     /// The provider needs more money.
     #[error("Out of credits with this provider")]
     OutOfCredits,
@@ -168,7 +184,10 @@ impl ProviderErrorKind {
             ProviderErrorKind::Permanent => StatusCode::INTERNAL_SERVER_ERROR,
             ProviderErrorKind::BadInput => StatusCode::UNPROCESSABLE_ENTITY,
             ProviderErrorKind::AuthRejected => StatusCode::UNAUTHORIZED,
+            ProviderErrorKind::AuthMissing => StatusCode::UNAUTHORIZED,
             ProviderErrorKind::OutOfCredits => StatusCode::PAYMENT_REQUIRED,
+            ProviderErrorKind::TransformingRequest => StatusCode::BAD_REQUEST,
+            ProviderErrorKind::TransformingResponse => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
@@ -178,6 +197,7 @@ impl ProviderErrorKind {
             self,
             Self::Server
                 | Self::ParsingResponse
+                | Self::TransformingResponse
                 | Self::Sending
                 | Self::RateLimit { .. }
                 | Self::Generic
@@ -196,7 +216,10 @@ impl ProviderErrorKind {
             ProviderErrorKind::Permanent => "unrecoverable_server_error",
             ProviderErrorKind::BadInput => "provider_rejected_input",
             ProviderErrorKind::AuthRejected => "provider_rejected_token",
+            ProviderErrorKind::AuthMissing => "auth_missing",
             ProviderErrorKind::OutOfCredits => "out_of_credits",
+            ProviderErrorKind::TransformingRequest => "transforming_request",
+            ProviderErrorKind::TransformingResponse => "transforming_response",
         }
     }
 }
