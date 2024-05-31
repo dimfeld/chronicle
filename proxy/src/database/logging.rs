@@ -6,18 +6,29 @@ use tracing::instrument;
 use uuid::Uuid;
 
 use super::{Database, ProxyDatabase};
-use crate::{format::ChatRequest, request::ProxiedResult, ProxyRequestOptions};
+use crate::{
+    format::{ChatRequest, ResponseInfo, SingleChatResponse},
+    ProxyRequestOptions,
+};
 pub struct ProxyLogEntry {
     pub id: Uuid,
     pub event_type: Cow<'static, str>,
     pub timestamp: chrono::DateTime<Utc>,
     pub request: Option<ChatRequest>,
-    pub response: Option<ProxiedResult>,
+    pub response: Option<CollectedProxiedResult>,
+    pub latency: Option<Duration>,
     pub total_latency: Option<Duration>,
     pub was_rate_limited: Option<bool>,
     pub num_retries: Option<u32>,
     pub error: Option<String>,
     pub options: ProxyRequestOptions,
+}
+
+pub struct CollectedProxiedResult {
+    pub body: SingleChatResponse,
+    pub info: ResponseInfo,
+    /// The provider which was used for the successful response.
+    pub provider: String,
 }
 
 pub fn start_database_logger(

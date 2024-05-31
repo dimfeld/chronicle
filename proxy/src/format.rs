@@ -3,32 +3,123 @@
 
 use std::{borrow::Cow, collections::BTreeMap};
 
+use error_stack::Report;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use crate::providers::ProviderError;
 
 /// A chat response, in non-chunked format
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct ChatResponse {
+pub struct ChatResponse<CHOICE> {
     // Omitted certain fields that aren't really useful
     // id: String,
     // object: String,
     pub created: u64,
     pub model: Option<String>,
     pub system_fingerprint: Option<String>,
-    pub choices: Vec<ChatChoice>,
-    pub usage: UsageResponse,
+    pub choices: Vec<CHOICE>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<UsageResponse>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+pub type StreamingChatResponse = ChatResponse<ChatChoiceDelta>;
+pub type SingleChatResponse = ChatResponse<ChatChoice>;
+
+impl ChatResponse<ChatChoice> {
+    ///Create a new, empty ChatResponse designed for collecting streaming chat responses.
+    pub fn new_for_collection(num_choices: usize) -> Self {
+        SingleChatResponse {
+            created: 0,
+            model: None,
+            system_fingerprint: None,
+            choices: Vec::with_capacity(num_choices),
+            usage: Some(UsageResponse {
+                prompt_tokens: None,
+                completion_tokens: None,
+                total_tokens: None,
+            }),
+        }
+    }
+
+    pub fn merge_delta(&mut self, chunk: &ChatResponse<ChatChoiceDelta>) {
+        if self.created == 0 {
+            self.created = chunk.created;
+        }
+
+        if self.model.is_none() {
+            self.model = chunk.model.clone();
+        }
+
+        if self.system_fingerprint.is_none() {
+            self.system_fingerprint = chunk.system_fingerprint.clone();
+        }
+
+        if !chunk.usage.is_none() {
+            self.usage = chunk.usage.clone();
+        }
+
+        for choice in chunk.choices.iter() {
+            if choice.index >= self.choices.len() {
+                // Resize to either the index mentioned here, or the total number of choices in
+                // this message. This way we only resize once.
+                let new_size = std::cmp::max(chunk.choices.len(), choice.index + 1);
+                self.choices.resize(new_size, ChatChoice::default());
+
+                for i in 0..self.choices.len() {
+                    self.choices[i].index = i;
+                }
+            }
+
+            let c = &mut self.choices[choice.index];
+            c.message.add_delta(&choice.delta);
+
+            if let Some(finish) = choice.finish_reason.as_ref() {
+                c.finish_reason = finish.clone();
+            }
+        }
+    }
+}
+
+/// For when we need to make a non-streaming chat response appear like it was a streaming response
+impl From<SingleChatResponse> for StreamingChatResponse {
+    fn from(value: SingleChatResponse) -> Self {
+        ChatResponse {
+            created: value.created,
+            model: value.model,
+            system_fingerprint: value.system_fingerprint,
+            choices: value
+                .choices
+                .into_iter()
+                .map(|c| ChatChoiceDelta {
+                    index: c.index,
+                    delta: c.message,
+                    finish_reason: Some(c.finish_reason),
+                })
+                .collect(),
+            usage: value.usage,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct ChatChoice {
     pub index: usize,
     pub message: ChatMessage,
     pub finish_reason: String,
 }
 
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+pub struct ChatChoiceDelta {
+    pub index: usize,
+    pub delta: ChatMessage,
+    pub finish_reason: Option<String>,
+}
+
 /// A single message in a chat
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct ChatMessage {
-    pub role: String,
+    pub role: Option<String>,
     /// Some providers support this natively. For those that don't, the name
     /// will be prepended to the message using the format "{name}: {content}".
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -38,12 +129,86 @@ pub struct ChatMessage {
     pub tool_calls: Vec<ToolCall>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+impl ChatMessage {
+    /// Merge a chat delta into this message. This replaces most fields, but will concatenate
+    /// message content.
+    pub fn add_delta(&mut self, delta: &ChatMessage) {
+        if self.role.is_none() {
+            self.role = delta.role.clone();
+        }
+        if self.name.is_none() {
+            self.name = delta.name.clone();
+        }
+
+        match (&mut self.content, &delta.content) {
+            (Some(content), Some(new_content)) => content.push_str(new_content),
+            (None, Some(new_content)) => {
+                self.content = Some(new_content.clone());
+            }
+            _ => {}
+        }
+
+        if self.tool_calls.is_empty() {
+            self.tool_calls = delta.tool_calls.clone();
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct UsageResponse {
     pub prompt_tokens: Option<usize>,
     pub completion_tokens: Option<usize>,
     pub total_tokens: Option<usize>,
 }
+
+impl UsageResponse {
+    pub fn is_empty(&self) -> bool {
+        self.prompt_tokens.is_none()
+            && self.completion_tokens.is_none()
+            && self.total_tokens.is_none()
+    }
+}
+
+/// Metadata about the request, from the proxy.
+#[derive(Debug, Clone, Serialize)]
+pub struct RequestInfo {
+    pub id: Uuid,
+    /// Which provider was used for the successful request.
+    pub provider: String,
+    /// Which model was used for the request
+    pub model: String,
+    /// How many times we had to retry before we got a successful response.
+    pub num_retries: u32,
+    /// If we retried due to hitting a rate limit.
+    pub was_rate_limited: bool,
+}
+
+/// Metadata about the response, from the provider.
+#[derive(Debug, Clone, Serialize)]
+pub struct ResponseInfo {
+    /// Any other metadata from the provider that should be logged.
+    pub meta: Option<serde_json::Value>,
+    /// The model used for the request, as returned by the provider.
+    pub model: String,
+}
+
+#[cfg_attr(test, derive(Serialize))]
+#[derive(Debug, Clone)]
+pub enum StreamingResponse {
+    /// Metadata about the request, from the proxy. This will always be the first message in the
+    /// stream.
+    RequestInfo(RequestInfo),
+    /// A chunk of a streaming response.
+    Chunk(StreamingChatResponse),
+    /// The chat response is completely in this one message. Used for non-streaming requests.
+    Single(SingleChatResponse),
+    /// Metadata about the response, from the provider. This chunk might not be sent.
+    ResponseInfo(ResponseInfo),
+}
+
+pub type StreamingResponseSender = flume::Sender<Result<StreamingResponse, Report<ProviderError>>>;
+pub type StreamingResponseReceiver =
+    flume::Receiver<Result<StreamingResponse, Report<ProviderError>>>;
 
 /// For providers that conform almost, but not quite, to the OpenAI spec, these transformations
 /// apply small changes that can alter the request in place to the form needed for the provider.
@@ -114,11 +279,21 @@ pub struct ChatRequest {
     pub tools: Vec<Tool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<serde_json::Value>,
+    /// The "user" to send to the provider.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
-    // /// Send the response back as a stream of chunks.
-    // #[serde(default)]
-    // pub stream: bool,
+    /// Send the response back as a stream of chunks.
+    #[serde(default)]
+    pub stream: bool,
+    /// For OpenAI, this lets us enable usage when streaming. Chronicle will set this
+    /// automatically when appropriate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream_options: Option<StreamOptions>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct StreamOptions {
+    pub include_usage: bool,
 }
 
 impl ChatRequest {
@@ -158,7 +333,7 @@ impl ChatRequest {
         let system = self.system.take();
         if let Some(system) = system {
             self.messages = std::iter::once(ChatMessage {
-                role: "system".to_string(),
+                role: Some("system".to_string()),
                 content: Some(system),
                 tool_calls: Vec::new(),
                 name: None,
@@ -173,7 +348,7 @@ impl ChatRequest {
         if self
             .messages
             .get(0)
-            .map(|m| m.role == "system")
+            .map(|m| m.role.as_deref().unwrap_or_default() == "system")
             .unwrap_or(false)
         {
             let system = self.messages.remove(0);

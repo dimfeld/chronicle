@@ -2,14 +2,17 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use error_stack::{Report, ResultExt};
+use http::header::ACCEPT;
 use reqwest::{header::CONTENT_TYPE, Response};
 use tracing::instrument;
 
-use super::{ChatModelProvider, ProviderResponse, SendRequestOptions};
+use super::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions};
 use crate::{
-    format::{ChatRequestTransformation, ChatResponse},
-    request::{parse_response_json, send_standard_request},
-    Error,
+    format::{
+        ChatRequestTransformation, ResponseInfo, SingleChatResponse, StreamOptions,
+        StreamingChatResponse, StreamingResponse, StreamingResponseSender,
+    },
+    request::{parse_response_json, response_is_sse, send_standard_request, stream_sse_to_channel},
 };
 
 /// OpenAI or fully-compatible provider
@@ -45,12 +48,14 @@ impl ChatModelProvider for OpenAi {
     async fn send_request(
         &self,
         options: SendRequestOptions,
-    ) -> Result<ProviderResponse, Report<Error>> {
+        chunk_tx: StreamingResponseSender,
+    ) -> Result<(), Report<ProviderError>> {
         send_openai_request(
             &self.client,
             &self.url,
             None,
             self.token.as_deref(),
+            chunk_tx,
             &ChatRequestTransformation {
                 supports_message_name: false,
                 system_in_messages: true,
@@ -58,7 +63,8 @@ impl ChatModelProvider for OpenAi {
             },
             options,
         )
-        .await
+        .await?;
+        Ok(())
     }
 
     fn is_default_for_model(&self, model: &str) -> bool {
@@ -71,6 +77,7 @@ pub async fn send_openai_request(
     url: &str,
     headers: Option<&reqwest::header::HeaderMap>,
     provider_token: Option<&str>,
+    chunk_tx: StreamingResponseSender,
     transform: &ChatRequestTransformation<'_>,
     SendRequestOptions {
         override_url,
@@ -78,10 +85,18 @@ pub async fn send_openai_request(
         api_key,
         mut body,
     }: SendRequestOptions,
-) -> Result<ProviderResponse, Report<Error>> {
+) -> Result<(), Report<ProviderError>> {
     body.transform(transform);
 
-    let bytes = serde_json::to_vec(&body).change_context(Error::TransformingRequest)?;
+    if body.stream {
+        // Enable usage when in streaming mode.
+        body.stream_options = Some(StreamOptions {
+            include_usage: true,
+        });
+    }
+
+    let bytes = serde_json::to_vec(&body)
+        .change_context_lazy(|| ProviderError::from_kind(ProviderErrorKind::TransformingRequest))?;
     let bytes = Bytes::from(bytes);
 
     let token = api_key
@@ -90,31 +105,71 @@ pub async fn send_openai_request(
         // Allow no API key since we could be sending to an internal OpenAI-compatible service.
         .unwrap_or_default();
 
+    let streaming = body.stream;
+    let start_time = tokio::time::Instant::now();
     let (response, latency) = send_standard_request(
         timeout,
         || {
-            client
+            let req = client
                 .post(override_url.as_deref().unwrap_or(url))
                 .bearer_auth(token)
                 .header(CONTENT_TYPE, "application/json; charset=utf8")
-                .headers(headers.cloned().unwrap_or_default())
+                .headers(headers.cloned().unwrap_or_default());
+
+            if streaming {
+                req.header(ACCEPT, "text/event-stream")
+            } else {
+                req
+            }
         },
         handle_rate_limit_headers,
         bytes,
     )
-    .await
-    .change_context(Error::ModelError)?;
+    .await?;
 
-    let result: ChatResponse = parse_response_json(response, latency)
-        .await
-        .change_context(Error::ModelError)?;
+    if response_is_sse(&response) {
+        stream_sse_to_channel(response, chunk_tx, move |event| {
+            if event.data == "[DONE]" {
+                return Ok(None);
+            }
 
-    Ok(ProviderResponse {
-        model: result.model.clone().or(body.model).unwrap_or_default(),
-        body: result,
-        latency,
-        meta: None,
-    })
+            if event.event == "error" {
+                Err(Report::new(ProviderError {
+                    kind: ProviderErrorKind::Generic,
+                    status_code: None,
+                    body: serde_json::from_str(&event.data).ok(),
+                    latency: start_time.elapsed(),
+                }))
+            } else {
+                serde_json::from_str::<StreamingChatResponse>(&event.data)
+                    .map(Some)
+                    .change_context_lazy(|| ProviderError {
+                        kind: ProviderErrorKind::ParsingResponse,
+                        status_code: None,
+                        body: serde_json::from_str(&event.data).ok(),
+                        latency: start_time.elapsed(),
+                    })
+            }
+        })
+        .await;
+    } else {
+        let result = parse_response_json::<SingleChatResponse>(response, latency).await;
+
+        match result {
+            Ok(result) => {
+                let model = result.model.clone().or(body.model).unwrap_or_default();
+                let response = StreamingResponse::Single(result);
+                let info = StreamingResponse::ResponseInfo(ResponseInfo { model, meta: None });
+                chunk_tx.send_async(Ok(response)).await.ok();
+                chunk_tx.send_async(Ok(info)).await.ok();
+            }
+            Err(e) => {
+                chunk_tx.send_async(Err(e)).await.ok();
+            }
+        }
+    }
+
+    Ok(())
 }
 
 pub fn handle_rate_limit_headers(res: &Response) -> Option<Duration> {

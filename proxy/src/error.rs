@@ -20,10 +20,6 @@ pub enum Error {
     MissingApiKey,
     #[error("Did not find environment variable {1} for API key {0}")]
     MissingApiKeyEnv(String, String),
-    #[error("Error transforming a model request")]
-    TransformingRequest,
-    #[error("Error transforming a model response")]
-    TransformingResponse,
     #[error("Failed to parse model provider's output")]
     ResultParseError,
     #[error("Failed to read configuration file")]
@@ -32,4 +28,6 @@ pub enum Error {
     LoadingDatabase,
     #[error("Failed to parse header value {0}")]
     ReadingHeader(String),
+    #[error("Did not see {0} in response stream")]
+    MissingStreamInformation(&'static str),
 }

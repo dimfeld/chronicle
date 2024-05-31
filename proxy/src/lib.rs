@@ -8,6 +8,7 @@ pub mod format;
 mod provider_lookup;
 pub mod providers;
 pub mod request;
+mod response;
 #[cfg(test)]
 mod testing;
 
@@ -17,14 +18,20 @@ use config::{AliasConfig, ApiKeyConfig};
 use database::logging::ProxyLogEntry;
 pub use error::Error;
 use error_stack::{Report, ResultExt};
-use format::{ChatRequest, ChatResponse};
+use flume::Sender;
+use format::{
+    ChatRequest, RequestInfo, SingleChatResponse, StreamingResponse, StreamingResponseReceiver,
+    StreamingResponseSender,
+};
 use http::HeaderMap;
-use provider_lookup::ProviderLookup;
+use provider_lookup::{ModelLookupResult, ProviderLookup};
 use providers::ChatModelProvider;
 use request::RetryOptions;
+pub use response::{collect_response, CollectedResponse};
+use response::{handle_response, record_error};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
-use tracing::instrument;
+use tracing::{instrument, Span};
 use uuid::Uuid;
 
 use crate::request::try_model_choices;
@@ -46,7 +53,7 @@ pub struct ProxiedChatResponseMeta {
 #[derive(Debug, Serialize)]
 pub struct ProxiedChatResponse {
     #[serde(flatten)]
-    pub response: ChatResponse,
+    pub response: SingleChatResponse,
     pub meta: ProxiedChatResponseMeta,
 }
 
@@ -62,11 +69,9 @@ pub struct EventPayload {
 
 #[derive(Debug)]
 pub struct Proxy {
-    database: Option<database::Database>,
     log_tx: Option<flume::Sender<ProxyLogEntry>>,
     log_task: Option<tokio::task::JoinHandle<()>>,
     lookup: ProviderLookup,
-    client: reqwest::Client,
     default_timeout: Option<Duration>,
 }
 
@@ -109,6 +114,7 @@ impl Proxy {
             request: None,
             response: None,
             total_latency: None,
+            latency: None,
             was_rate_limited: None,
             num_retries: None,
             error: body.error.and_then(|e| serde_json::to_string(&e).ok()),
@@ -124,6 +130,41 @@ impl Proxy {
         id
     }
 
+    pub async fn send(
+        &self,
+        options: ProxyRequestOptions,
+        body: ChatRequest,
+    ) -> Result<StreamingResponseReceiver, Report<Error>> {
+        let (chunk_tx, chunk_rx) = if body.stream {
+            flume::unbounded()
+        } else {
+            flume::bounded(5)
+        };
+
+        let models = self.lookup.find_model_and_provider(&options, &body)?;
+
+        if models.choices.is_empty() {
+            return Err(Report::new(Error::AliasEmpty(models.alias)));
+        }
+
+        let parent_span = tracing::Span::current();
+        let log_tx = self.log_tx.clone();
+        let default_timeout = self.default_timeout;
+        tokio::task::spawn(async move {
+            Self::send_request(
+                parent_span,
+                options,
+                models,
+                body,
+                default_timeout,
+                chunk_tx,
+                log_tx,
+            )
+            .await
+        });
+        Ok(chunk_rx)
+    }
+
     /// Send a request, choosing the provider based on the requested `model` and `provider`.
     ///
     /// `options.models` can be used to specify a list of models and providers to use.
@@ -133,7 +174,8 @@ impl Proxy {
     /// `body["model"]` is used if options.model is empty.
     #[instrument(
         name = "llm.send_request",
-        skip(self, options),
+        parent=&parent_span,
+        skip(options),
         fields(
             error,
             llm.options=serde_json::to_string(&options).ok(),
@@ -182,11 +224,15 @@ impl Proxy {
             llm.user = body.user,
         )
     )]
-    pub async fn send(
-        &self,
+    async fn send_request(
+        parent_span: Span,
         options: ProxyRequestOptions,
+        models: ModelLookupResult,
         body: ChatRequest,
-    ) -> Result<ProxiedChatResponse, Report<Error>> {
+        default_timeout: Option<Duration>,
+        output_tx: StreamingResponseSender,
+        log_tx: Option<Sender<ProxyLogEntry>>,
+    ) {
         let id = uuid::Uuid::now_v7();
         let current_span = tracing::Span::current();
         current_span.record("llm.item_id", id.to_string());
@@ -212,7 +258,7 @@ impl Proxy {
 
                         Some(format!(
                             "{}: {}",
-                            m.name.as_ref().unwrap_or(&m.role),
+                            m.name.as_deref().or(m.role.as_deref()).unwrap_or_default(),
                             content
                         ))
                     })
@@ -226,12 +272,6 @@ impl Proxy {
         };
         current_span.record("llm.prompts", messages_field.as_deref());
 
-        let models = self.lookup.find_model_and_provider(&options, &body)?;
-
-        if models.choices.is_empty() {
-            return Err(Report::new(Error::AliasEmpty(models.alias)));
-        }
-
         if models.choices.len() == 1 {
             // If there's just one provider we can record this in advance to get it even in case of
             // error.
@@ -242,115 +282,78 @@ impl Proxy {
 
         let retry = options.retry.clone().unwrap_or_default();
 
+        let (chunk_tx, chunk_rx) = flume::bounded(5);
+
         let timestamp = chrono::Utc::now();
-        let send_start = tokio::time::Instant::now();
+        let global_start = tokio::time::Instant::now();
         let response = try_model_choices(
             models,
             options.override_url.clone(),
             retry,
             options
                 .timeout
-                .or(self.default_timeout)
+                .or(default_timeout)
                 .unwrap_or_else(|| Duration::from_millis(60_000)),
             body.clone(),
+            chunk_tx,
         )
         .await;
 
-        let send_time = send_start.elapsed().as_millis();
+        let n = body.n.unwrap_or(1) as usize;
 
-        // In case of retries, this might be meaningfully different from the main latency.
-        current_span.record("llm.total_latency", send_time);
+        // Fill in what we can now, the rest will be filled in once the response is done.
+        let log_entry = ProxyLogEntry {
+            id,
+            event_type: Cow::Borrowed("chronicle_llm_request"),
+            timestamp,
+            request: Some(body),
+            response: None,
+            total_latency: None,
+            latency: None,
+            num_retries: None,
+            was_rate_limited: None,
+            error: None,
+            options,
+        };
 
-        match &response {
-            Ok(response) => {
-                current_span.record(
-                    "llm.completions",
-                    response
-                        .body
-                        .choices
-                        .iter()
-                        .filter_map(|c| c.message.content.as_deref())
-                        .collect::<Vec<_>>()
-                        .join("\n\n"),
-                );
-                current_span.record(
-                    "llm.completions.raw",
-                    serde_json::to_string(&response.body.choices).ok(),
-                );
-                current_span.record("llm.vendor", &response.provider);
-                current_span.record("llm.response.model", &response.body.model);
-                current_span.record("llm.latency", response.latency.as_millis());
-                current_span.record("llm.retries", response.num_retries);
-                current_span.record("llm.rate_limited", response.was_rate_limited);
-                current_span.record("llm.usage.prompt_tokens", response.body.usage.prompt_tokens);
-                current_span.record(
-                    "llm.finish_reason",
-                    response.body.choices.get(0).map(|c| &c.finish_reason),
-                );
-                current_span.record(
-                    "llm.usage.completion_tokens",
-                    response.body.usage.completion_tokens,
-                );
-                let total_tokens = response.body.usage.total_tokens.unwrap_or_else(|| {
-                    response.body.usage.prompt_tokens.unwrap_or(0)
-                        + response.body.usage.completion_tokens.unwrap_or(0)
-                });
-                current_span.record("llm.usage.total_tokens", total_tokens);
-
-                if let Some(log_tx) = &self.log_tx {
-                    let log_entry = ProxyLogEntry {
+        match response {
+            Ok(res) => {
+                output_tx
+                    .send_async(Ok(StreamingResponse::RequestInfo(RequestInfo {
                         id,
-                        event_type: Cow::Borrowed("chronicle_llm_request"),
-                        timestamp,
-                        request: Some(body.clone()),
-                        response: Some(response.clone()),
-                        num_retries: Some(response.num_retries),
-                        was_rate_limited: Some(response.was_rate_limited),
-                        total_latency: Some(send_start.elapsed()),
-                        error: None,
-                        options,
-                    };
-
-                    log_tx.send_async(log_entry).await.ok();
-                }
+                        provider: res.provider.clone(),
+                        model: res.model.clone(),
+                        num_retries: res.num_retries,
+                        was_rate_limited: res.was_rate_limited,
+                    })))
+                    .await
+                    .ok();
+                handle_response(
+                    current_span,
+                    log_entry,
+                    global_start,
+                    n,
+                    res,
+                    chunk_rx,
+                    output_tx,
+                    log_tx,
+                )
+                .await;
             }
             Err(e) => {
-                tracing::error!(error.full=?e.error, "Request failed");
-
-                current_span.record("error", e.error.to_string());
-                current_span.record("llm.retries", e.num_retries);
-                current_span.record("llm.rate_limited", e.was_rate_limited);
-
-                if let Some(log_tx) = &self.log_tx {
-                    let log_entry = ProxyLogEntry {
-                        id,
-                        event_type: Cow::Borrowed("chronicle_llm_request"),
-                        timestamp,
-                        request: Some(body),
-                        response: None,
-                        total_latency: Some(send_start.elapsed()),
-                        num_retries: Some(e.num_retries),
-                        was_rate_limited: Some(e.was_rate_limited),
-                        error: Some(format!("{:?}", e)),
-                        options,
-                    };
-
-                    log_tx.send_async(log_entry).await.ok();
-                }
+                record_error(
+                    log_entry,
+                    &e.error,
+                    global_start,
+                    e.num_retries,
+                    e.was_rate_limited,
+                    current_span,
+                    log_tx.as_ref(),
+                )
+                .await;
+                output_tx.send_async(Err(e.error)).await.ok();
             }
         }
-
-        response
-            .map(|r| ProxiedChatResponse {
-                response: r.body,
-                meta: ProxiedChatResponseMeta {
-                    id,
-                    provider: r.provider,
-                    response_meta: r.meta,
-                    was_rate_limited: r.was_rate_limited,
-                },
-            })
-            .map_err(|e| e.error)
     }
 
     /// Add a provider to the system. This will replace any existing provider with the same `name`.
@@ -661,8 +664,12 @@ mod test {
     };
 
     use crate::{
+        collect_response,
         config::CustomProviderConfig,
-        format::{ChatChoice, ChatMessage, ChatRequest, ChatResponse, UsageResponse},
+        format::{
+            ChatChoice, ChatChoiceDelta, ChatMessage, ChatRequest, ChatResponse,
+            StreamingChatResponse, UsageResponse,
+        },
         providers::custom::{OpenAiRequestFormatOptions, ProviderRequestFormat},
         ProxyRequestMetadata,
     };
@@ -694,7 +701,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn call_provider() {
+    async fn call_provider_nonstreaming() {
         let mock_server = wiremock::MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
@@ -702,15 +709,15 @@ mod test {
                 created: 1,
                 model: None,
                 system_fingerprint: None,
-                usage: UsageResponse {
+                usage: Some(UsageResponse {
                     prompt_tokens: Some(1),
                     completion_tokens: Some(1),
                     total_tokens: Some(2),
-                },
+                }),
                 choices: vec![ChatChoice {
                     index: 0,
                     message: ChatMessage {
-                        role: "assistant".to_string(),
+                        role: Some("assistant".to_string()),
                         content: Some("hello".to_string()),
                         tool_calls: Vec::new(),
                         name: None,
@@ -744,7 +751,7 @@ mod test {
             .await
             .expect("Building proxy");
 
-        let mut result = proxy
+        let chan = proxy
             .send(
                 crate::ProxyRequestOptions {
                     ..Default::default()
@@ -752,7 +759,7 @@ mod test {
                 ChatRequest {
                     model: Some("me/a-test-model".to_string()),
                     messages: vec![ChatMessage {
-                        role: "user".to_string(),
+                        role: Some("user".to_string()),
                         content: Some("hello".to_string()),
                         tool_calls: Vec::new(),
                         name: None,
@@ -763,8 +770,119 @@ mod test {
             .await
             .expect("should have succeeded");
 
+        let mut response = collect_response(chan, 1).await.unwrap();
+
         // ID will be different every time, so zero it for the snapshot
-        result.meta.id = uuid::Uuid::nil();
-        insta::assert_json_snapshot!(result);
+        response.request_info.id = uuid::Uuid::nil();
+        insta::assert_json_snapshot!(response);
+    }
+
+    #[tokio::test]
+    async fn call_provider_streaming() {
+        let response1 = StreamingChatResponse {
+            created: 1,
+            model: Some("a_model".to_string()),
+            system_fingerprint: Some("abbadada".to_string()),
+            usage: Some(UsageResponse {
+                prompt_tokens: Some(1),
+                completion_tokens: Some(1),
+                total_tokens: Some(2),
+            }),
+            choices: vec![ChatChoiceDelta {
+                index: 0,
+                delta: ChatMessage {
+                    role: Some("assistant".to_string()),
+                    content: Some("hello".to_string()),
+                    tool_calls: Vec::new(),
+                    name: None,
+                },
+                finish_reason: None,
+            }],
+        };
+
+        let response2 = StreamingChatResponse {
+            created: 2,
+            model: None,
+            system_fingerprint: None,
+            usage: Some(UsageResponse {
+                prompt_tokens: Some(1),
+                completion_tokens: Some(1),
+                total_tokens: Some(2),
+            }),
+            choices: vec![ChatChoiceDelta {
+                index: 0,
+                delta: ChatMessage {
+                    role: None,
+                    content: Some(" and hello again".to_string()),
+                    tool_calls: Vec::new(),
+                    name: None,
+                },
+                finish_reason: Some("stop".to_string()),
+            }],
+        };
+
+        let response_data = format!(
+            "data: {}\n\ndata: {}\n\ndata: [DONE]",
+            serde_json::to_string(&response1).unwrap(),
+            serde_json::to_string(&response2).unwrap(),
+        );
+
+        let mock_server = wiremock::MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(response_data, "text/event-stream"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let url = format!("{}/v1/chat/completions", mock_server.uri());
+
+        let proxy = super::Proxy::builder()
+            .with_custom_provider(CustomProviderConfig {
+                name: "test".to_string(),
+                url,
+                format: ProviderRequestFormat::OpenAi(OpenAiRequestFormatOptions {
+                    transforms: crate::format::ChatRequestTransformation {
+                        supports_message_name: false,
+                        system_in_messages: true,
+                        strip_model_prefix: Some("me/".into()),
+                    },
+                }),
+                label: None,
+                api_key: None,
+                api_key_source: None,
+                headers: BTreeMap::default(),
+                prefix: Some("me/".to_string()),
+            })
+            .build()
+            .await
+            .expect("Building proxy");
+
+        let chan = proxy
+            .send(
+                crate::ProxyRequestOptions {
+                    ..Default::default()
+                },
+                ChatRequest {
+                    model: Some("me/a-test-model".to_string()),
+                    messages: vec![ChatMessage {
+                        role: Some("user".to_string()),
+                        content: Some("hello".to_string()),
+                        tool_calls: Vec::new(),
+                        name: None,
+                    }],
+                    stream: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("should have succeeded");
+
+        let mut response = collect_response(chan, 1).await.unwrap();
+
+        // ID will be different every time, so zero it for the snapshot
+        response.request_info.id = uuid::Uuid::nil();
+        insta::assert_json_snapshot!(response);
     }
 }

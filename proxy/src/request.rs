@@ -3,16 +3,20 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use error_stack::{Report, ResultExt};
+use eventsource_stream::{Event, Eventsource};
+use futures::stream::StreamExt;
 use rand::Rng;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
 use tracing::instrument;
 
 use crate::{
-    format::{ChatRequest, ChatResponse},
+    format::{
+        ChatRequest, ResponseInfo, StreamingChatResponse, StreamingResponse,
+        StreamingResponseSender,
+    },
     provider_lookup::{ModelLookupChoice, ModelLookupResult},
     providers::{ProviderError, ProviderErrorKind, SendRequestOptions},
-    Error,
 };
 
 #[serde_as]
@@ -152,22 +156,22 @@ impl<'a> BackoffValue<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ProxiedResult {
-    pub body: ChatResponse,
-    /// The provider which was used for the successful response
+pub struct TryModelChoicesResult {
+    /// The provider which was used for the successful request.
     pub provider: String,
-    /// Any other metadata from the provider that should be logged.
-    pub meta: Option<serde_json::Value>,
-    /// The latency of the request. If the request was retried this should only count the
-    /// final successful one. Total latency including retries is tracked outside of the provider.
-    pub latency: std::time::Duration,
+    /// The model which was used for the successful request
+    pub model: String,
+    /// How many times we had to retry before we got a successful response.
     pub num_retries: u32,
+    /// If we retried due to hitting a rate limit.
     pub was_rate_limited: bool,
+    /// When the latest, successful request started
+    pub start_time: tokio::time::Instant,
 }
 
 #[derive(Debug)]
-pub struct ProxiedResultError {
-    pub error: Report<Error>,
+pub struct TryModelChoicesError {
+    pub error: Report<ProviderError>,
     pub num_retries: u32,
     pub was_rate_limited: bool,
 }
@@ -184,7 +188,8 @@ pub async fn try_model_choices(
     options: RetryOptions,
     timeout: Duration,
     request: ChatRequest,
-) -> Result<ProxiedResult, ProxiedResultError> {
+    chunk_tx: StreamingResponseSender,
+) -> Result<TryModelChoicesResult, TryModelChoicesError> {
     let single_choice = choices.len() == 1;
     let start_choice = if random_order && !single_choice {
         rand::thread_rng().gen_range(0..choices.len())
@@ -209,26 +214,30 @@ pub async fn try_model_choices(
 
         let mut body = request.clone();
         body.model = Some(model.to_string());
+        let start_time = tokio::time::Instant::now();
         let result = provider
-            .send_request(SendRequestOptions {
-                override_url: override_url.clone(),
-                timeout,
-                api_key: api_key.clone(),
-                body,
-            })
+            .send_request(
+                SendRequestOptions {
+                    override_url: override_url.clone(),
+                    timeout,
+                    api_key: api_key.clone(),
+                    body,
+                },
+                chunk_tx.clone(),
+            )
             .await;
 
         let provider_name = provider.name();
         let error = match result {
-            Ok(value) => {
-                return Ok(ProxiedResult {
-                    body: value.body,
-                    provider: provider_name.to_string(),
-                    meta: value.meta,
-                    latency: value.latency,
-                    num_retries: current_try - 1,
+            Ok(_) => {
+                // The caller will stream the response from here.
+                return Ok(TryModelChoicesResult {
                     was_rate_limited,
-                })
+                    num_retries: current_try - 1,
+                    provider: provider.name().to_string(),
+                    model: model.to_string(),
+                    start_time,
+                });
             }
             Err(e) => {
                 tracing::error!(err=?e, "llm.try"=current_try - 1, llm.vendor=provider_name, llm.request.model = model, llm.alias=alias);
@@ -251,7 +260,7 @@ pub async fn try_model_choices(
             || (on_final_model_choice
                 && !provider_error.map(|e| e.kind.retryable()).unwrap_or(false))
         {
-            return Err(ProxiedResultError {
+            return Err(TryModelChoicesError {
                 error,
                 num_retries: current_try - 1,
                 was_rate_limited,
@@ -284,7 +293,7 @@ pub async fn try_model_choices(
                         && *retry_after > options.max_backoff
                     {
                         // Rate limited with a retry time that exceeds max backoff.
-                        return Err(ProxiedResultError {
+                        return Err(TryModelChoicesError {
                             error,
                             num_retries: current_try - 1,
                             was_rate_limited,
@@ -354,6 +363,88 @@ pub async fn send_standard_request(
     }
 }
 
+pub fn response_is_sse(response: &reqwest::Response) -> bool {
+    response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|ct| ct.to_str().ok())
+        .map(|ct| ct.starts_with("text/event-stream"))
+        .unwrap_or_default()
+}
+
+/// Stream an SSE response to the channel
+///
+/// `start_time` - the time the request was started
+/// `response` - the response to stream
+/// `chunk_tx` - the channel to send the chunks to
+/// `map_chunk` - a function to map the event to a standard chat response.
+///
+/// `map_chunk` can return Ok(None) if the event should be skipped, as with Anthropic's
+/// ping event.
+pub async fn stream_sse_to_channel(
+    response: reqwest::Response,
+    chunk_tx: StreamingResponseSender,
+    map_chunk: impl Fn(&Event) -> Result<Option<StreamingChatResponse>, Report<ProviderError>>
+        + Send
+        + Sync
+        + 'static,
+) -> tokio::task::JoinHandle<()> {
+    tokio::task::spawn(async move {
+        let mut stream = response.bytes_stream().eventsource();
+        let mut model: Option<String> = None;
+
+        while let Some(event) = stream.next().await {
+            match event {
+                Ok(event) => {
+                    let chunk = map_chunk(&event);
+                    tracing::trace!(chunk = ?chunk);
+                    match chunk {
+                        Ok(None) => continue,
+                        Ok(Some(chunk)) => {
+                            if model.is_none() {
+                                model = chunk.model.clone();
+                            }
+
+                            let result = chunk_tx
+                                .send_async(Ok(StreamingResponse::Chunk(chunk)))
+                                .await;
+                            if result.is_err() {
+                                // Channel was closed
+                                tracing::warn!("channel closed early");
+                                return;
+                            }
+                        }
+                        Err(e) => {
+                            chunk_tx.send_async(Err(e)).await.ok();
+                            return;
+                        }
+                    }
+                }
+                Err(e) => {
+                    chunk_tx
+                        .send_async(Err(e).change_context(ProviderError {
+                            kind: ProviderErrorKind::ProviderClosedConnection,
+                            status_code: None,
+                            body: None,
+                            latency: Duration::ZERO,
+                        }))
+                        .await
+                        .ok();
+                    return;
+                }
+            }
+        }
+
+        chunk_tx
+            .send_async(Ok(StreamingResponse::ResponseInfo(ResponseInfo {
+                meta: None,
+                model: model.unwrap_or_default(),
+            })))
+            .await
+            .ok();
+    })
+}
+
 /// Parse a JSON response, with informative errors when the format does not match the expected
 /// structure.
 pub async fn parse_response_json<RESPONSE: DeserializeOwned>(
@@ -386,17 +477,18 @@ pub async fn parse_response_json<RESPONSE: DeserializeOwned>(
 mod test {
     use std::time::Duration;
 
-    use super::ProxiedResultError;
+    use super::TryModelChoicesError;
     use crate::{
-        format::{ChatMessage, ChatRequest},
+        format::{ChatMessage, ChatRequest, StreamingResponse, StreamingResponseReceiver},
         provider_lookup::{ModelLookupChoice, ModelLookupResult},
-        request::{try_model_choices, ProxiedResult, RetryOptions},
+        request::{try_model_choices, RetryOptions, TryModelChoicesResult},
     };
 
     async fn test_request(
         choices: Vec<ModelLookupChoice>,
-    ) -> Result<ProxiedResult, ProxiedResultError> {
-        try_model_choices(
+    ) -> Result<(TryModelChoicesResult, StreamingResponseReceiver), TryModelChoicesError> {
+        let (chunk_tx, chunk_rx) = flume::bounded(5);
+        let res = try_model_choices(
             ModelLookupResult {
                 alias: String::new(),
                 random_order: false,
@@ -407,15 +499,30 @@ mod test {
             Duration::from_secs(5),
             ChatRequest {
                 messages: vec![ChatMessage {
-                    role: "user".to_string(),
+                    role: Some("user".to_string()),
                     content: Some("Tell me a story".to_string()),
                     tool_calls: Vec::new(),
                     name: None,
                 }],
                 ..Default::default()
             },
+            chunk_tx,
         )
-        .await
+        .await?;
+        Ok((res, chunk_rx))
+    }
+
+    async fn test_response(chunk_rx: StreamingResponseReceiver) {
+        let chunk = chunk_rx.recv_async().await.unwrap().unwrap();
+        match chunk {
+            StreamingResponse::Single(res) => {
+                assert_eq!(
+                    res.choices[0].message.content.as_deref().unwrap(),
+                    "A response"
+                );
+            }
+            _ => panic!("Unexpected chunk {chunk:?}"),
+        }
     }
 
     mod single_choice {
@@ -426,7 +533,7 @@ mod test {
 
         #[tokio::test(start_paused = true)]
         async fn success() {
-            let response = test_request(vec![ModelLookupChoice {
+            let (result, chunk_rx) = test_request(vec![ModelLookupChoice {
                 model: "test-model".to_string(),
                 provider: TestProvider::default().into(),
                 api_key: None,
@@ -434,14 +541,12 @@ mod test {
             .await
             .expect("Failed");
 
-            assert_eq!(response.num_retries, 0);
-            assert_eq!(response.was_rate_limited, false);
-            assert_eq!(response.provider, "test");
-            assert_eq!(response.body.model.unwrap(), "test-model");
-            assert_eq!(
-                response.body.choices[0].message.content.as_deref().unwrap(),
-                "A response"
-            );
+            assert_eq!(result.num_retries, 0);
+            assert_eq!(result.was_rate_limited, false);
+            assert_eq!(result.provider, "test");
+            assert_eq!(result.model, "test-model");
+
+            super::test_response(chunk_rx).await;
         }
 
         #[tokio::test(start_paused = true)]
@@ -450,7 +555,7 @@ mod test {
                 fail: Some(crate::testing::TestFailure::BadRequest),
                 ..Default::default()
             });
-            let response = test_request(vec![ModelLookupChoice {
+            let result = test_request(vec![ModelLookupChoice {
                 model: "test-model".to_string(),
                 provider: provider.clone(),
                 api_key: None,
@@ -459,8 +564,8 @@ mod test {
             .expect_err("Should have failed");
 
             assert_eq!(provider.calls.load(std::sync::atomic::Ordering::Relaxed), 1);
-            assert_eq!(response.num_retries, 0);
-            assert_eq!(response.was_rate_limited, false);
+            assert_eq!(result.num_retries, 0);
+            assert_eq!(result.was_rate_limited, false);
         }
 
         #[tokio::test(start_paused = true)]
@@ -470,7 +575,7 @@ mod test {
                 fail_times: 2,
                 ..Default::default()
             });
-            let response = test_request(vec![ModelLookupChoice {
+            let (result, chunk_rx) = test_request(vec![ModelLookupChoice {
                 model: "test-model".to_string(),
                 provider: provider.clone(),
                 api_key: None,
@@ -483,14 +588,11 @@ mod test {
                 3,
                 "Should succeed on third try"
             );
-            assert_eq!(response.num_retries, 2);
-            assert_eq!(response.was_rate_limited, false);
-            assert_eq!(response.provider, "test");
-            assert_eq!(response.body.model.unwrap(), "test-model");
-            assert_eq!(
-                response.body.choices[0].message.content.as_deref().unwrap(),
-                "A response"
-            );
+            assert_eq!(result.num_retries, 2);
+            assert_eq!(result.was_rate_limited, false);
+            assert_eq!(result.provider, "test");
+            assert_eq!(result.model, "test-model");
+            super::test_response(chunk_rx).await;
         }
 
         #[tokio::test(start_paused = true)]
@@ -500,7 +602,7 @@ mod test {
                 fail_times: 2,
                 ..Default::default()
             });
-            let response = test_request(vec![ModelLookupChoice {
+            let (result, chunk_rx) = test_request(vec![ModelLookupChoice {
                 model: "test-model".to_string(),
                 provider: provider.clone(),
                 api_key: None,
@@ -513,14 +615,11 @@ mod test {
                 3,
                 "Should succeed on third try"
             );
-            assert_eq!(response.num_retries, 2);
-            assert_eq!(response.was_rate_limited, true);
-            assert_eq!(response.provider, "test");
-            assert_eq!(response.body.model.unwrap(), "test-model");
-            assert_eq!(
-                response.body.choices[0].message.content.as_deref().unwrap(),
-                "A response"
-            );
+            assert_eq!(result.num_retries, 2);
+            assert_eq!(result.was_rate_limited, true);
+            assert_eq!(result.provider, "test");
+            assert_eq!(result.model, "test-model");
+            super::test_response(chunk_rx).await;
         }
 
         #[tokio::test(start_paused = true)]
@@ -558,7 +657,7 @@ mod test {
 
         #[tokio::test(start_paused = true)]
         async fn success() {
-            let response = test_request(vec![
+            let (result, chunk_rx) = test_request(vec![
                 ModelLookupChoice {
                     model: "test-model".to_string(),
                     provider: TestProvider::default().into(),
@@ -573,19 +672,16 @@ mod test {
             .await
             .expect("Failed");
 
-            assert_eq!(response.num_retries, 0);
-            assert_eq!(response.was_rate_limited, false);
-            assert_eq!(response.provider, "test");
-            assert_eq!(response.body.model.unwrap(), "test-model");
-            assert_eq!(
-                response.body.choices[0].message.content.as_deref().unwrap(),
-                "A response"
-            );
+            assert_eq!(result.num_retries, 0);
+            assert_eq!(result.was_rate_limited, false);
+            assert_eq!(result.provider, "test");
+            assert_eq!(result.model, "test-model");
+            super::test_response(chunk_rx).await;
         }
 
         #[tokio::test(start_paused = true)]
         async fn transient_failures() {
-            let response = test_request(vec![
+            let (result, chunk_rx) = test_request(vec![
                 ModelLookupChoice {
                     model: "test-model".to_string(),
                     provider: TestProvider {
@@ -613,19 +709,16 @@ mod test {
             .await
             .expect("Failed");
 
-            assert_eq!(response.num_retries, 2);
-            assert_eq!(response.was_rate_limited, false);
-            assert_eq!(response.provider, "test");
-            assert_eq!(response.body.model.unwrap(), "test-model-3");
-            assert_eq!(
-                response.body.choices[0].message.content.as_deref().unwrap(),
-                "A response"
-            );
+            assert_eq!(result.num_retries, 2);
+            assert_eq!(result.was_rate_limited, false);
+            assert_eq!(result.provider, "test");
+            assert_eq!(result.model, "test-model-3");
+            super::test_response(chunk_rx).await;
         }
 
         #[tokio::test(start_paused = true)]
         async fn rate_limit() {
-            let response = test_request(vec![
+            let (result, chunk_rx) = test_request(vec![
                 ModelLookupChoice {
                     model: "test-model".to_string(),
                     provider: TestProvider {
@@ -644,14 +737,11 @@ mod test {
             .await
             .expect("Failed");
 
-            assert_eq!(response.num_retries, 1);
-            assert_eq!(response.was_rate_limited, true);
-            assert_eq!(response.provider, "test");
-            assert_eq!(response.body.model.unwrap(), "test-model-2");
-            assert_eq!(
-                response.body.choices[0].message.content.as_deref().unwrap(),
-                "A response"
-            );
+            assert_eq!(result.num_retries, 1);
+            assert_eq!(result.was_rate_limited, true);
+            assert_eq!(result.provider, "test");
+            assert_eq!(result.model, "test-model-2");
+            super::test_response(chunk_rx).await;
         }
 
         #[tokio::test(start_paused = true)]
@@ -708,7 +798,7 @@ mod test {
                 ..Default::default()
             });
 
-            let response = test_request(vec![
+            let (result, _) = test_request(vec![
                 ModelLookupChoice {
                     model: "test-model".to_string(),
                     provider: p1.clone(),
@@ -728,11 +818,11 @@ mod test {
             .await
             .expect("Should have succeeded");
 
-            assert_eq!(response.num_retries, 3);
-            assert_eq!(response.was_rate_limited, true);
-            assert_eq!(response.provider, "test");
+            assert_eq!(result.num_retries, 3);
+            assert_eq!(result.was_rate_limited, true);
+            assert_eq!(result.provider, "test");
             // Should have wrapped around to the first one again.
-            assert_eq!(response.body.model.unwrap(), "test-model");
+            assert_eq!(result.model, "test-model");
             assert_eq!(p1.calls.load(std::sync::atomic::Ordering::Relaxed), 2);
             assert_eq!(p2.calls.load(std::sync::atomic::Ordering::Relaxed), 1);
             assert_eq!(p3.calls.load(std::sync::atomic::Ordering::Relaxed), 1);

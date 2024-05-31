@@ -6,14 +6,14 @@ use itertools::Itertools;
 use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Serialize};
 
-use super::{ChatModelProvider, ProviderResponse, SendRequestOptions};
+use super::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions};
 use crate::{
     format::{
-        ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, Tool, ToolCall,
+        ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, ResponseInfo,
+        SingleChatResponse, StreamingResponse, StreamingResponseSender, Tool, ToolCall,
         ToolCallFunction, UsageResponse,
     },
     request::{parse_response_json, send_standard_request},
-    Error,
 };
 
 #[derive(Debug)]
@@ -49,7 +49,8 @@ impl ChatModelProvider for Anthropic {
             mut body,
             ..
         }: SendRequestOptions,
-    ) -> Result<ProviderResponse, Report<Error>> {
+        chunk_tx: StreamingResponseSender,
+    ) -> Result<(), Report<ProviderError>> {
         body.transform(&ChatRequestTransformation {
             supports_message_name: false,
             system_in_messages: false,
@@ -69,13 +70,15 @@ impl ChatModelProvider for Anthropic {
             tool_choice: body.tool_choice.map(|c| c.into()),
         };
 
-        let body = serde_json::to_vec(&body).change_context(Error::TransformingRequest)?;
+        let body = serde_json::to_vec(&body).change_context_lazy(|| {
+            ProviderError::from_kind(ProviderErrorKind::TransformingRequest)
+        })?;
         let body = Bytes::from(body);
 
         let api_token = api_key
             .as_deref()
             .or(self.token.as_deref())
-            .ok_or(Error::MissingApiKey)?;
+            .ok_or_else(|| ProviderError::from_kind(ProviderErrorKind::AuthMissing))?;
 
         let (response, latency) = send_standard_request(
             timeout,
@@ -96,19 +99,23 @@ impl ChatModelProvider for Anthropic {
             handle_retry_after,
             body,
         )
-        .await
-        .change_context(Error::ModelError)?;
+        .await?;
 
-        let result: AnthropicChatResponse = parse_response_json(response, latency)
-            .await
-            .change_context(Error::ModelError)?;
+        let result: AnthropicChatResponse = parse_response_json(response, latency).await?;
 
-        Ok(ProviderResponse {
+        // TODO Actually support streaming
+        let info = StreamingResponse::ResponseInfo(ResponseInfo {
             model: result.model.clone(),
-            body: result.into(),
-            latency,
             meta: None,
-        })
+        });
+
+        chunk_tx
+            .send_async(Ok(StreamingResponse::Single(result.into())))
+            .await
+            .ok();
+        chunk_tx.send_async(Ok(info)).await.ok();
+
+        Ok(())
     }
 
     fn is_default_for_model(&self, model: &str) -> bool {
@@ -267,8 +274,8 @@ struct AnthropicChatResponse {
     pub usage: AnthropicUsageResponse,
 }
 
-impl Into<ChatResponse> for AnthropicChatResponse {
-    fn into(mut self) -> ChatResponse {
+impl Into<SingleChatResponse> for AnthropicChatResponse {
+    fn into(mut self) -> SingleChatResponse {
         let (text, tool_calls) = if self.content.len() == 1 {
             match self.content.pop().unwrap() {
                 AnthropicChatContent::Text { text } => (Some(text), Vec::new()),
@@ -314,17 +321,17 @@ impl Into<ChatResponse> for AnthropicChatResponse {
                 // TODO align this with OpenAI finish_reason
                 finish_reason: self.stop_reason,
                 message: ChatMessage {
-                    role: self.role,
+                    role: Some(self.role),
                     name: None,
                     content: text,
                     tool_calls,
                 },
             }],
-            usage: UsageResponse {
+            usage: Some(UsageResponse {
                 prompt_tokens: Some(self.usage.input_tokens),
                 completion_tokens: Some(self.usage.output_tokens),
                 total_tokens: Some(self.usage.input_tokens + self.usage.output_tokens),
-            },
+            }),
         }
     }
 }

@@ -1,16 +1,21 @@
-use std::sync::Arc;
+use std::{future::ready, sync::Arc};
 
 use axum::{
     extract::State,
     http::HeaderMap,
-    response::{IntoResponse, Response},
+    response::{sse, IntoResponse, Response, Sse},
     Json,
 };
 use chronicle_proxy::{
-    database::Database, format::ChatRequest, EventPayload, Proxy, ProxyRequestInternalMetadata,
-    ProxyRequestOptions,
+    collect_response,
+    database::Database,
+    format::{
+        ChatRequest, RequestInfo, SingleChatResponse, StreamingChatResponse, StreamingResponse,
+    },
+    EventPayload, Proxy, ProxyRequestInternalMetadata, ProxyRequestOptions,
 };
 use error_stack::{Report, ResultExt};
+use futures::StreamExt;
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -47,6 +52,26 @@ struct ProxyRequestPayload {
     options: ProxyRequestOptions,
 }
 
+#[derive(Debug, Serialize)]
+struct ProxyRequestNonstreamingResult {
+    #[serde(flatten)]
+    response: SingleChatResponse,
+    meta: RequestInfo,
+}
+
+#[derive(Serialize)]
+struct DeltaWithRequestInfo {
+    #[serde(flatten)]
+    data: StreamingChatResponse,
+    meta: RequestInfo,
+}
+
+#[derive(Serialize)]
+struct OpenAiSseError {
+    error: Option<serde_json::Value>,
+    message: String,
+}
+
 async fn proxy_request(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -56,13 +81,127 @@ async fn proxy_request(
         .merge_request_headers(&headers)
         .change_context(Error::InvalidProxyHeader)?;
 
+    let n = body.request.n.unwrap_or(1) as usize;
+    let stream = body.request.stream;
     let result = state
         .proxy
         .send(body.options, body.request)
         .await
         .change_context(Error::Proxy)?;
 
-    Ok(Json(result).into_response())
+    if stream {
+        // The first item will always be a RequestInfo or an error. We pull it off here so that if the
+        // model provider returned an error we can catch it in advance and return a proper error.
+        let request_info = result
+            .recv_async()
+            .await
+            .change_context(Error::Proxy)
+            .attach_printable("Connection terminated unexpectedly")?
+            .change_context(Error::Proxy)?;
+
+        let request_info = match request_info {
+            StreamingResponse::RequestInfo(info) => Some(info),
+            _ => {
+                tracing::error!("First stream item was not a RequestInfo");
+                None
+            }
+        };
+
+        let stream = result
+            .into_stream()
+            .scan(request_info, |request_info, chunk| {
+                let result = match chunk {
+                    Ok(StreamingResponse::Chunk(chunk)) => {
+                        if let Some(info) = request_info.take() {
+                            // Attach RequestInfo to the chunk if we have it
+                            let chunk = DeltaWithRequestInfo {
+                                data: chunk,
+                                meta: info,
+                            };
+                            Some(sse::Event::default().json_data(chunk))
+                        } else {
+                            Some(sse::Event::default().json_data(chunk))
+                        }
+                    }
+                    Ok(StreamingResponse::Single(chunk)) => {
+                        // Attach RequestInfo to the chunk if we have it
+                        let chunk = StreamingChatResponse::from(chunk);
+                        if let Some(info) = request_info.take() {
+                            let chunk = DeltaWithRequestInfo {
+                                data: chunk,
+                                meta: info,
+                            };
+                            Some(sse::Event::default().json_data(chunk))
+                        } else {
+                            Some(sse::Event::default().json_data(chunk))
+                        }
+                    }
+                    Ok(StreamingResponse::RequestInfo(_)) => {
+                        // This should never happen since we already received it above.
+                        debug_assert!(false, "got multiple RequestInfo");
+                        None
+                    }
+                    Ok(StreamingResponse::ResponseInfo(_)) => {
+                        // Need to figure out if there's some way we can send this along with the
+                        // deltas as metadata, but it's difficult since the OpenAI format uses
+                        // data-only SSE so we can't just define a new event type or something.
+                        // Might work to send an extra chunk with an empty choices but need to see if
+                        // that messes things up. Not a big deal though since the ResponseInfo
+                        // doesn't contain much important, and it gets logged anyway.
+                        None
+                    }
+                    Err(e) => {
+                        let err = e.current_context();
+                        let err_payload = if let Some(body) = &err.body {
+                            // See if the error body looks like the OpenAI format, and if so just use it.
+                            let message = &body["message"];
+                            let error = &body["error"];
+
+                            if let serde_json::Value::String(message) = message {
+                                OpenAiSseError {
+                                    error: Some(error.clone()),
+                                    message: message.clone(),
+                                }
+                            } else {
+                                OpenAiSseError {
+                                    error: Some(body.clone()),
+                                    message: err.to_string(),
+                                }
+                            }
+                        } else {
+                            OpenAiSseError {
+                                error: None,
+                                message: err.to_string(),
+                            }
+                        };
+
+                        Some(sse::Event::default().event("error").json_data(err_payload))
+                    }
+                };
+
+                // We're really just using `scan` to attach `request_info` as a persistent piece of
+                // state. We don't actually want to end the stream, so wrap the value in Some so
+                // `scan` won't end things. The `filter_map` in the next stage will filter out the
+                // None values that come from the match statement.
+                ready(Some(result))
+            })
+            .filter_map(|x| ready(x))
+            .chain(futures::stream::once(ready(Ok(
+                // Mimic OpenAI's [DONE] message
+                sse::Event::default().data("[DONE]"),
+            ))));
+
+        Ok(Sse::new(stream).into_response())
+    } else {
+        let result = collect_response(result, n)
+            .await
+            .change_context(Error::Proxy)?;
+        Ok(Json(ProxyRequestNonstreamingResult {
+            response: result.response,
+            meta: result.request_info,
+        })
+        .into_response())
+    }
 }
 
 #[derive(Serialize)]

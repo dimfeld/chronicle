@@ -360,12 +360,10 @@ impl ProxyBuilder {
         let lookup = ProviderLookup::new(providers, aliases, api_keys);
 
         Ok(Proxy {
-            database: self.database,
             lookup,
             default_timeout: self.config.default_timeout,
             log_tx,
             log_task,
-            client,
         })
     }
 }

@@ -7,11 +7,13 @@ use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use super::{ChatModelProvider, ProviderResponse, SendRequestOptions};
+use super::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions};
 use crate::{
-    format::{ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, UsageResponse},
+    format::{
+        ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, ResponseInfo,
+        StreamingResponse, StreamingResponseSender, UsageResponse,
+    },
     request::{parse_response_json, send_standard_request},
-    Error,
 };
 
 #[derive(Debug)]
@@ -47,14 +49,18 @@ impl ChatModelProvider for Ollama {
             mut body,
             ..
         }: SendRequestOptions,
-    ) -> Result<ProviderResponse, Report<Error>> {
+        chunk_tx: StreamingResponseSender,
+    ) -> Result<(), Report<ProviderError>> {
         body.transform(&ChatRequestTransformation {
             supports_message_name: false,
             system_in_messages: true,
             strip_model_prefix: Some(Cow::Borrowed("ollama/")),
         });
 
-        let model = body.model.ok_or(Error::ModelNotSpecified)?;
+        let model = body
+            .model
+            .ok_or_else(|| ProviderError::from_kind(ProviderErrorKind::TransformingRequest))
+            .attach_printable("Model not specified ")?;
 
         let request = OllamaChatRequest {
             model,
@@ -72,7 +78,9 @@ impl ChatModelProvider for Ollama {
             keep_alive: None,
         };
 
-        let body = serde_json::to_vec(&request).change_context(Error::TransformingRequest)?;
+        let body = serde_json::to_vec(&request).change_context_lazy(|| {
+            ProviderError::from_kind(ProviderErrorKind::TransformingRequest)
+        })?;
         let body = Bytes::from(body);
 
         let now = Utc::now().timestamp();
@@ -88,12 +96,9 @@ impl ChatModelProvider for Ollama {
             |_| None,
             body,
         )
-        .await
-        .change_context(Error::ModelError)?;
+        .await?;
 
-        let result: OllamaResponse = parse_response_json(response, latency)
-            .await
-            .change_context(Error::ModelError)?;
+        let result: OllamaResponse = parse_response_json(response, latency).await?;
 
         let meta = json!({
             "load_duration": result.load_duration,
@@ -110,19 +115,26 @@ impl ChatModelProvider for Ollama {
                 finish_reason: "stop".to_string(),
                 message: result.message,
             }],
-            usage: UsageResponse {
+            usage: Some(UsageResponse {
                 prompt_tokens: Some(result.prompt_eval_count as usize),
                 completion_tokens: Some(result.eval_count as usize),
                 total_tokens: None,
-            },
+            }),
         };
 
-        Ok(ProviderResponse {
-            model: result.model,
-            body: response,
+        // TODO Actually support streaming
+        let info = StreamingResponse::ResponseInfo(ResponseInfo {
+            model: result.model.clone(),
             meta: Some(meta),
-            latency,
-        })
+        });
+
+        chunk_tx
+            .send_async(Ok(StreamingResponse::Single(response)))
+            .await
+            .ok();
+        chunk_tx.send_async(Ok(info)).await.ok();
+
+        Ok(())
     }
 
     fn is_default_for_model(&self, model: &str) -> bool {
