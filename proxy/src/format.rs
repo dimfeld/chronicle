@@ -139,14 +139,13 @@ impl ChatMessage {
         if self.name.is_none() {
             self.name = delta.name.clone();
         }
-        if self.content.is_none() {
-            match (&mut self.content, &delta.content) {
-                (Some(content), Some(new_content)) => content.push_str(new_content),
-                (None, Some(new_content)) => {
-                    self.content = Some(new_content.clone());
-                }
-                _ => {}
+
+        match (&mut self.content, &delta.content) {
+            (Some(content), Some(new_content)) => content.push_str(new_content),
+            (None, Some(new_content)) => {
+                self.content = Some(new_content.clone());
             }
+            _ => {}
         }
 
         if self.tool_calls.is_empty() {
@@ -176,6 +175,8 @@ pub struct RequestInfo {
     pub id: Uuid,
     /// Which provider was used for the successful request.
     pub provider: String,
+    /// Which model was used for the request
+    pub model: String,
     /// How many times we had to retry before we got a successful response.
     pub num_retries: u32,
     /// If we retried due to hitting a rate limit.
@@ -187,20 +188,21 @@ pub struct RequestInfo {
 pub struct ResponseInfo {
     /// Any other metadata from the provider that should be logged.
     pub meta: Option<serde_json::Value>,
-    /// The model used for the request
+    /// The model used for the request, as returned by the provider.
     pub model: String,
 }
 
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone)]
 pub enum StreamingResponse {
+    /// Metadata about the request, from the proxy. This will always be the first message in the
+    /// stream.
+    RequestInfo(RequestInfo),
     /// A chunk of a streaming response.
     Chunk(StreamingChatResponse),
     /// The chat response is completely in this one message. Used for non-streaming requests.
     Single(SingleChatResponse),
-    /// Metadata about the request, from the proxy.
-    RequestInfo(RequestInfo),
-    /// Metadata about the response, from the provider.
+    /// Metadata about the response, from the provider. This chunk might not be sent.
     ResponseInfo(ResponseInfo),
 }
 

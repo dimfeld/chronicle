@@ -4,13 +4,11 @@ use std::{
 };
 
 use error_stack::{Report, ResultExt};
-use serde::Serialize;
 
 use crate::{
     format::{
-        ChatChoice, ChatMessage, ChatResponse, RequestInfo, ResponseInfo, SingleChatResponse,
-        StreamingChatResponse, StreamingResponse, StreamingResponseReceiver,
-        StreamingResponseSender, UsageResponse,
+        ChatChoice, ChatMessage, ChatResponse, ResponseInfo, StreamingChatResponse,
+        StreamingResponse, StreamingResponseSender, UsageResponse,
     },
     providers::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions},
     Error,
@@ -120,16 +118,39 @@ impl ChatModelProvider for TestProvider {
             },
         };
 
-        let info = StreamingResponse::ResponseInfo(ResponseInfo {
+        let response_info = StreamingResponse::ResponseInfo(ResponseInfo {
             model: options.body.model.clone().unwrap_or_default(),
             meta: None,
         });
 
-        chunk_tx
-            .send_async(Ok(StreamingResponse::Single(body)))
-            .await
-            .ok();
-        chunk_tx.send_async(Ok(info)).await.ok();
+        if options.body.stream {
+            let mut body1 = StreamingChatResponse::from(body.clone());
+            let mut body2 = StreamingChatResponse::from(body);
+
+            body1.choices[0].delta.content =
+                Some(self.response[0..self.response.len() / 2].to_string());
+            body1.choices[0].finish_reason = None;
+            body1.usage = UsageResponse::default();
+            body2.choices[0].delta.content =
+                Some(self.response[self.response.len() / 2..].to_string());
+            body2.choices[0].delta.role = None;
+            body2.created = 2;
+
+            chunk_tx
+                .send_async(Ok(StreamingResponse::Chunk(body1)))
+                .await
+                .ok();
+            chunk_tx
+                .send_async(Ok(StreamingResponse::Chunk(body2)))
+                .await
+                .ok();
+        } else {
+            chunk_tx
+                .send_async(Ok(StreamingResponse::Single(body)))
+                .await
+                .ok();
+        }
+        chunk_tx.send_async(Ok(response_info)).await.ok();
         Ok(())
     }
 

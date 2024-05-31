@@ -194,12 +194,17 @@ pub async fn collect_response(
     while let Ok(res) = receiver.recv_async().await {
         tracing::debug!(?res, "Got response chunk");
         match res? {
-            StreamingResponse::RequestInfo(info) => request_info = Some(info),
-            StreamingResponse::ResponseInfo(info) => response_info = Some(info),
+            StreamingResponse::RequestInfo(info) => {
+                debug_assert!(request_info.is_none(), "Saw multiple RequestInfo objects");
+                debug_assert_eq!(num_chunks, 0, "RequestInfo was not the first chunk");
+                request_info = Some(info);
+            }
+            StreamingResponse::ResponseInfo(info) => {
+                debug_assert!(response_info.is_none(), "Saw multiple ResponseInfo objects");
+                response_info = Some(info);
+            }
             StreamingResponse::Single(res) => {
-                if num_chunks != 0 {
-                    panic!("Saw more than one non-streaming chunk");
-                }
+                debug_assert_eq!(num_chunks, 0, "Saw more than one non-streaming chunk");
                 num_chunks += 1;
                 response = res;
             }
@@ -211,9 +216,13 @@ pub async fn collect_response(
         }
     }
 
+    let request_info = request_info.ok_or(Error::MissingStreamInformation("request info"))?;
     Ok(CollectedResponse {
-        request_info: request_info.ok_or(Error::MissingStreamInformation("request info"))?,
-        response_info: response_info.ok_or(Error::MissingStreamInformation("response info"))?,
+        response_info: response_info.unwrap_or_else(|| ResponseInfo {
+            meta: None,
+            model: request_info.model.clone(),
+        }),
+        request_info,
         was_streaming,
         num_chunks,
         response,

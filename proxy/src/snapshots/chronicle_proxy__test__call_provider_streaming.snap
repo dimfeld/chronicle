@@ -1,0 +1,39 @@
+---
+source: proxy/src/lib.rs
+expression: response
+---
+{
+  "request_info": {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "provider": "test",
+    "model": "me/a-test-model",
+    "num_retries": 0,
+    "was_rate_limited": false
+  },
+  "response_info": {
+    "meta": null,
+    "model": "a_model"
+  },
+  "was_streaming": true,
+  "num_chunks": 2,
+  "response": {
+    "created": 1,
+    "model": "a_model",
+    "system_fingerprint": "abbadada",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "hello and hello again"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 1,
+      "completion_tokens": 1,
+      "total_tokens": 2
+    }
+  }
+}

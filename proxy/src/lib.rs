@@ -325,6 +325,7 @@ impl Proxy {
                     .send_async(Ok(StreamingResponse::RequestInfo(RequestInfo {
                         id,
                         provider: res.provider.clone(),
+                        model: res.model.clone(),
                         num_retries: res.num_retries,
                         was_rate_limited: res.was_rate_limited,
                     })))
@@ -667,10 +668,13 @@ mod test {
     };
 
     use crate::{
+        collect_response,
         config::CustomProviderConfig,
-        format::{ChatChoice, ChatMessage, ChatRequest, ChatResponse, UsageResponse},
+        format::{
+            ChatChoice, ChatChoiceDelta, ChatMessage, ChatRequest, ChatResponse,
+            StreamingChatResponse, UsageResponse,
+        },
         providers::custom::{OpenAiRequestFormatOptions, ProviderRequestFormat},
-        testing::collect_responses,
         ProxyRequestMetadata,
     };
 
@@ -701,7 +705,7 @@ mod test {
     }
 
     #[tokio::test]
-    async fn call_provider() {
+    async fn call_provider_nonstreaming() {
         let mock_server = wiremock::MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/v1/chat/completions"))
@@ -770,7 +774,116 @@ mod test {
             .await
             .expect("should have succeeded");
 
-        let mut response = collect_responses(chan).await.unwrap();
+        let mut response = collect_response(chan, 1).await.unwrap();
+
+        // ID will be different every time, so zero it for the snapshot
+        response.request_info.id = uuid::Uuid::nil();
+        insta::assert_json_snapshot!(response);
+    }
+
+    #[tokio::test]
+    async fn call_provider_streaming() {
+        let response1 = StreamingChatResponse {
+            created: 1,
+            model: Some("a_model".to_string()),
+            system_fingerprint: Some("abbadada".to_string()),
+            usage: UsageResponse {
+                prompt_tokens: Some(1),
+                completion_tokens: Some(1),
+                total_tokens: Some(2),
+            },
+            choices: vec![ChatChoiceDelta {
+                index: 0,
+                delta: ChatMessage {
+                    role: Some("assistant".to_string()),
+                    content: Some("hello".to_string()),
+                    tool_calls: Vec::new(),
+                    name: None,
+                },
+                finish_reason: None,
+            }],
+        };
+
+        let response2 = StreamingChatResponse {
+            created: 2,
+            model: None,
+            system_fingerprint: None,
+            usage: UsageResponse {
+                prompt_tokens: Some(1),
+                completion_tokens: Some(1),
+                total_tokens: Some(2),
+            },
+            choices: vec![ChatChoiceDelta {
+                index: 0,
+                delta: ChatMessage {
+                    role: None,
+                    content: Some(" and hello again".to_string()),
+                    tool_calls: Vec::new(),
+                    name: None,
+                },
+                finish_reason: Some("stop".to_string()),
+            }],
+        };
+
+        let response_data = format!(
+            "data: {}\n\ndata: {}\n\ndata: [DONE]",
+            serde_json::to_string(&response1).unwrap(),
+            serde_json::to_string(&response2).unwrap(),
+        );
+
+        let mock_server = wiremock::MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_raw(response_data, "text/event-stream"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let url = format!("{}/v1/chat/completions", mock_server.uri());
+
+        let proxy = super::Proxy::builder()
+            .with_custom_provider(CustomProviderConfig {
+                name: "test".to_string(),
+                url,
+                format: ProviderRequestFormat::OpenAi(OpenAiRequestFormatOptions {
+                    transforms: crate::format::ChatRequestTransformation {
+                        supports_message_name: false,
+                        system_in_messages: true,
+                        strip_model_prefix: Some("me/".into()),
+                    },
+                }),
+                label: None,
+                api_key: None,
+                api_key_source: None,
+                headers: BTreeMap::default(),
+                prefix: Some("me/".to_string()),
+            })
+            .build()
+            .await
+            .expect("Building proxy");
+
+        let chan = proxy
+            .send(
+                crate::ProxyRequestOptions {
+                    ..Default::default()
+                },
+                ChatRequest {
+                    model: Some("me/a-test-model".to_string()),
+                    messages: vec![ChatMessage {
+                        role: Some("user".to_string()),
+                        content: Some("hello".to_string()),
+                        tool_calls: Vec::new(),
+                        name: None,
+                    }],
+                    stream: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("should have succeeded");
+
+        let mut response = collect_response(chan, 1).await.unwrap();
 
         // ID will be different every time, so zero it for the snapshot
         response.request_info.id = uuid::Uuid::nil();

@@ -112,7 +112,7 @@ async fn proxy_request(
                     }
                 }
             })
-            .chain(futures::stream::once(ready!(Ok(
+            .chain(futures::stream::once(ready(Ok(
                 sse::Event::default().data("[DONE]")
             ))));
 
