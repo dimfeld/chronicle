@@ -55,8 +55,12 @@ impl ChatResponse<ChatChoice> {
             self.system_fingerprint = chunk.system_fingerprint.clone();
         }
 
-        if !chunk.usage.is_none() {
-            self.usage = chunk.usage.clone();
+        if let Some(delta_usage) = chunk.usage.as_ref() {
+            if let Some(usage) = self.usage.as_mut() {
+                usage.merge(delta_usage);
+            } else {
+                self.usage = chunk.usage.clone();
+            }
         }
 
         for choice in chunk.choices.iter() {
@@ -166,6 +170,22 @@ impl UsageResponse {
         self.prompt_tokens.is_none()
             && self.completion_tokens.is_none()
             && self.total_tokens.is_none()
+    }
+
+    /// Merge another UsageResponse into this one. Any fields present in `other` will overwrite
+    /// the current values.
+    pub fn merge(&mut self, other: &UsageResponse) {
+        if other.prompt_tokens.is_some() {
+            self.prompt_tokens = other.prompt_tokens;
+        }
+
+        if other.completion_tokens.is_some() {
+            self.completion_tokens = other.completion_tokens;
+        }
+
+        if other.total_tokens.is_some() {
+            self.total_tokens = other.total_tokens;
+        }
     }
 }
 

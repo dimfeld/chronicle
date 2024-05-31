@@ -13,7 +13,7 @@ use crate::{
         SingleChatResponse, StreamingResponse, StreamingResponseSender, Tool, ToolCall,
         ToolCallFunction, UsageResponse,
     },
-    request::{parse_response_json, send_standard_request},
+    request::{parse_response_json, response_is_sse, send_standard_request, stream_sse_to_channel},
 };
 
 #[derive(Debug)]
@@ -67,6 +67,7 @@ impl ChatModelProvider for Anthropic {
             top_p: body.top_p,
             tools: body.tools.into_iter().map(From::from).collect::<Vec<_>>(),
             tool_choice: body.tool_choice.map(|c| c.into()),
+            stream: body.stream,
         };
 
         let body = serde_json::to_vec(&body).change_context_lazy(|| {
@@ -93,19 +94,42 @@ impl ChatModelProvider for Anthropic {
         )
         .await?;
 
-        let result: AnthropicChatResponse = parse_response_json(response, latency).await?;
+        if response_is_sse(&response) {
+            stream_sse_to_channel(response, chunk_tx, |event| {
+                match event.event.as_str() {
+                    "error" => {}
+                    "content_block_start" => {}
+                    "content_block_delta" => {}
+                    "content_block_end" => {}
+                    "message_delta" => {}
+                    "message_stop" => {}
+                    _ => None,
+                }
 
-        // TODO Actually support streaming
-        let info = StreamingResponse::ResponseInfo(ResponseInfo {
-            model: result.model.clone(),
-            meta: None,
-        });
+                None
+            })
+            .await;
+        } else {
+            let result = parse_response_json::<AnthropicChatResponse>(response, latency).await;
+            match result {
+                Ok(result) => {
+                    let info = StreamingResponse::ResponseInfo(ResponseInfo {
+                        model: result.model.clone(),
+                        meta: None,
+                    });
 
-        chunk_tx
-            .send_async(Ok(StreamingResponse::Single(result.into())))
-            .await
-            .ok();
-        chunk_tx.send_async(Ok(info)).await.ok();
+                    chunk_tx
+                        .send_async(Ok(StreamingResponse::Single(result.into())))
+                        .await
+                        .ok();
+                    chunk_tx.send_async(Ok(info)).await.ok();
+                }
+
+                Err(e) => {
+                    chunk_tx.send_async(Err(e)).await.ok();
+                }
+            }
+        }
 
         Ok(())
     }
@@ -192,6 +216,7 @@ struct AnthropicChatRequest {
     tools: Vec<AnthropicTool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<AnthropicToolChoice>,
+    stream: bool,
 }
 
 #[derive(Serialize, Debug, Clone)]
