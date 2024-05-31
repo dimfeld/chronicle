@@ -9,12 +9,14 @@ use axum::{
 use chronicle_proxy::{
     collect_response,
     database::Database,
-    format::{ChatRequest, SingleChatResponse, StreamingChatResponse, StreamingResponse},
+    format::{
+        ChatRequest, RequestInfo, SingleChatResponse, StreamingChatResponse, StreamingResponse,
+    },
     EventPayload, Proxy, ProxyRequestInternalMetadata, ProxyRequestOptions,
 };
 use error_stack::{Report, ResultExt};
 use futures::StreamExt;
-use http::StatusCode;
+use http::{header::ACCEPT, StatusCode};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -54,15 +56,19 @@ struct ProxyRequestPayload {
 struct ProxyRequestNonstreamingResult {
     #[serde(flatten)]
     response: SingleChatResponse,
-    meta: ProxiedChatResponseMeta,
+    meta: RequestInfo,
 }
 
-#[derive(Debug, Serialize)]
-struct ProxiedChatResponseMeta {
-    id: Uuid,
-    provider: String,
-    response_meta: Option<serde_json::Value>,
-    was_rate_limited: bool,
+#[derive(Serialize)]
+struct DeltaWithRequestInfo {
+    #[serde(flatten)]
+    data: StreamingChatResponse,
+    meta: RequestInfo,
+}
+
+#[derive(Serialize)]
+struct OpenAiSseError {
+    message: String,
 }
 
 async fn proxy_request(
@@ -85,35 +91,66 @@ async fn proxy_request(
     if stream {
         let stream = result
             .into_stream()
-            .filter_map(|chunk| async move {
-                match chunk {
+            .scan(None, |request_info, chunk| {
+                let result = match chunk {
                     Ok(StreamingResponse::Chunk(chunk)) => {
-                        Some(sse::Event::default().json_data(chunk))
+                        if let Some(info) = request_info.take() {
+                            // Attach RequestInfo to the chunk if we have it
+                            let chunk = DeltaWithRequestInfo {
+                                data: chunk,
+                                meta: info,
+                            };
+                            Some(sse::Event::default().json_data(chunk))
+                        } else {
+                            Some(sse::Event::default().json_data(chunk))
+                        }
                     }
                     Ok(StreamingResponse::Single(chunk)) => {
+                        // Attach RequestInfo to the chunk if we have it
                         let chunk = StreamingChatResponse::from(chunk);
-                        Some(sse::Event::default().json_data(chunk))
+                        if let Some(info) = request_info.take() {
+                            let chunk = DeltaWithRequestInfo {
+                                data: chunk,
+                                meta: info,
+                            };
+                            Some(sse::Event::default().json_data(chunk))
+                        } else {
+                            Some(sse::Event::default().json_data(chunk))
+                        }
                     }
-                    Ok(StreamingResponse::RequestInfo(_) | StreamingResponse::ResponseInfo(_)) => {
+                    Ok(StreamingResponse::RequestInfo(info)) => {
+                        // Save to send with the next chunk
+                        *request_info = Some(info);
+                        None
+                    }
+                    Ok(StreamingResponse::ResponseInfo(_)) => {
                         // Need to figure out if there's some way we can send this along with the
                         // deltas as metadata, but it's difficult since the OpenAI format uses
                         // data-only SSE so we can't just define a new event type or something.
                         // Might work to send an extra chunk with an empty choices but need to see if
-                        // that messes things up.
-                        //
-                        // Can probably have the request info piggyback along a delta since it comes
-                        // first. But this doesn't matter too much anyway, we're saving it for logging
-                        // which is much more important.
+                        // that messes things up. Not a big deal though since the ResponseInfo
+                        // doesn't contain much important, and it gets logged anyway.
                         None
                     }
                     Err(e) => {
-                        // TODO return the error
-                        None
+                        let e = OpenAiSseError {
+                            message: e.to_string(),
+                        };
+
+                        Some(sse::Event::default().event("error").json_data(e))
                     }
-                }
+                };
+
+                // We're really just using `scan` to attach `request_info` as a persistent piece of
+                // state. We don't actually want to end the stream, so wrap the value in Some so
+                // `scan` won't end things. The `filter_map` in the next stage will filter out the
+                // None values that come from the match statement.
+                ready(Some(result))
             })
+            .filter_map(|x| ready(x))
             .chain(futures::stream::once(ready(Ok(
-                sse::Event::default().data("[DONE]")
+                // Mimic OpenAI's [DONE] message
+                sse::Event::default().data("[DONE]"),
             ))));
 
         Ok(Sse::new(stream).into_response())
@@ -121,15 +158,9 @@ async fn proxy_request(
         let result = collect_response(result, n)
             .await
             .change_context(Error::Proxy)?;
-        // TODO format this into a ProxyRequestNonstreamingResult
         Ok(Json(ProxyRequestNonstreamingResult {
             response: result.response,
-            meta: ProxiedChatResponseMeta {
-                id: result.request_info.id,
-                provider: result.request_info.provider,
-                response_meta: result.response_info.meta,
-                was_rate_limited: result.request_info.was_rate_limited,
-            },
+            meta: result.request_info,
         })
         .into_response())
     }
