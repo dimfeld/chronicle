@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use error_stack::{Report, ResultExt};
+use eventsource_stream::Event;
 use http::header::ACCEPT;
 use reqwest::{header::CONTENT_TYPE, Response};
 use tracing::instrument;
@@ -12,7 +13,8 @@ use crate::{
         ChatRequestTransformation, ResponseInfo, SingleChatResponse, StreamOptions,
         StreamingChatResponse, StreamingResponse, StreamingResponseSender,
     },
-    request::{parse_response_json, response_is_sse, send_standard_request, stream_sse_to_channel},
+    request::{parse_response_json, response_is_sse, send_standard_request},
+    streaming::{stream_sse_to_channel, StreamingChunkMapper},
 };
 
 /// OpenAI or fully-compatible provider
@@ -128,30 +130,8 @@ pub async fn send_openai_request(
     .await?;
 
     if response_is_sse(&response) {
-        stream_sse_to_channel(response, chunk_tx, move |event| {
-            if event.data == "[DONE]" {
-                return Ok(None);
-            }
-
-            if event.event == "error" {
-                Err(Report::new(ProviderError {
-                    kind: ProviderErrorKind::Generic,
-                    status_code: None,
-                    body: serde_json::from_str(&event.data).ok(),
-                    latency: start_time.elapsed(),
-                }))
-            } else {
-                serde_json::from_str::<StreamingChatResponse>(&event.data)
-                    .map(Some)
-                    .change_context_lazy(|| ProviderError {
-                        kind: ProviderErrorKind::ParsingResponse,
-                        status_code: None,
-                        body: serde_json::from_str(&event.data).ok(),
-                        latency: start_time.elapsed(),
-                    })
-            }
-        })
-        .await;
+        let processor = StreamingEventProcessor { start_time };
+        stream_sse_to_channel(response, chunk_tx, processor).await;
     } else {
         let result = parse_response_json::<SingleChatResponse>(response, latency).await;
 
@@ -170,6 +150,39 @@ pub async fn send_openai_request(
     }
 
     Ok(())
+}
+
+struct StreamingEventProcessor {
+    start_time: tokio::time::Instant,
+}
+
+impl StreamingChunkMapper for StreamingEventProcessor {
+    fn process_chunk(
+        &mut self,
+        event: &Event,
+    ) -> Result<Option<StreamingChatResponse>, Report<ProviderError>> {
+        if event.data == "[DONE]" {
+            return Ok(None);
+        }
+
+        if event.event == "error" {
+            Err(Report::new(ProviderError {
+                kind: ProviderErrorKind::Generic,
+                status_code: None,
+                body: serde_json::from_str(&event.data).ok(),
+                latency: self.start_time.elapsed(),
+            }))
+        } else {
+            serde_json::from_str::<StreamingChatResponse>(&event.data)
+                .map(Some)
+                .change_context_lazy(|| ProviderError {
+                    kind: ProviderErrorKind::ParsingResponse,
+                    status_code: None,
+                    body: serde_json::from_str(&event.data).ok(),
+                    latency: self.start_time.elapsed(),
+                })
+        }
+    }
 }
 
 pub fn handle_rate_limit_headers(res: &Response) -> Option<Duration> {

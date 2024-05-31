@@ -21,10 +21,7 @@ use crate::{
 pub async fn stream_sse_to_channel(
     response: reqwest::Response,
     chunk_tx: StreamingResponseSender,
-    map_chunk: impl Fn(&Event) -> Result<Option<StreamingChatResponse>, Report<ProviderError>>
-        + Send
-        + Sync
-        + 'static,
+    mut mapper: impl StreamingChunkMapper,
 ) -> tokio::task::JoinHandle<()> {
     tokio::task::spawn(async move {
         let mut stream = response.bytes_stream().eventsource();
@@ -33,7 +30,7 @@ pub async fn stream_sse_to_channel(
         while let Some(event) = stream.next().await {
             match event {
                 Ok(event) => {
-                    let chunk = map_chunk(&event);
+                    let chunk = mapper.process_chunk(&event);
                     tracing::trace!(chunk = ?chunk);
                     match chunk {
                         Ok(None) => continue,
@@ -80,4 +77,11 @@ pub async fn stream_sse_to_channel(
             .await
             .ok();
     })
+}
+
+pub trait StreamingChunkMapper: Send + Sync + 'static {
+    fn process_chunk(
+        &mut self,
+        event: &Event,
+    ) -> Result<Option<StreamingChatResponse>, Report<ProviderError>>;
 }
