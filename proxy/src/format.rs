@@ -81,6 +81,27 @@ impl ChatResponse<ChatChoice> {
     }
 }
 
+/// For when we need to make a non-streaming chat response appear like it was a streaming response
+impl From<SingleChatResponse> for StreamingChatResponse {
+    fn from(value: SingleChatResponse) -> Self {
+        ChatResponse {
+            created: value.created,
+            model: value.model,
+            system_fingerprint: value.system_fingerprint,
+            choices: value
+                .choices
+                .into_iter()
+                .map(|c| ChatChoiceDelta {
+                    index: c.index,
+                    delta: c.message,
+                    finish_reason: Some(c.finish_reason),
+                })
+                .collect(),
+            usage: value.usage,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct ChatChoice {
     pub index: usize,

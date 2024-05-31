@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{future::ready, sync::Arc};
 
 use axum::{
     extract::State,
@@ -9,7 +9,7 @@ use axum::{
 use chronicle_proxy::{
     collect_response,
     database::Database,
-    format::{ChatRequest, SingleChatResponse, StreamingResponse},
+    format::{ChatRequest, SingleChatResponse, StreamingChatResponse, StreamingResponse},
     EventPayload, Proxy, ProxyRequestInternalMetadata, ProxyRequestOptions,
 };
 use error_stack::{Report, ResultExt};
@@ -83,27 +83,38 @@ async fn proxy_request(
         .change_context(Error::Proxy)?;
 
     if stream {
-        let stream = result.into_stream().filter_map(|chunk| async move {
-            match chunk {
-                Ok(StreamingResponse::Chunk(chunk)) => Some(sse::Event::default().json_data(chunk)),
-                Ok(StreamingResponse::Single(chunk)) => {
-                    // TODO convert to a delta and send
-                    None
+        let stream = result
+            .into_stream()
+            .filter_map(|chunk| async move {
+                match chunk {
+                    Ok(StreamingResponse::Chunk(chunk)) => {
+                        Some(sse::Event::default().json_data(chunk))
+                    }
+                    Ok(StreamingResponse::Single(chunk)) => {
+                        let chunk = StreamingChatResponse::from(chunk);
+                        Some(sse::Event::default().json_data(chunk))
+                    }
+                    Ok(StreamingResponse::RequestInfo(_) | StreamingResponse::ResponseInfo(_)) => {
+                        // Need to figure out if there's some way we can send this along with the
+                        // deltas as metadata, but it's difficult since the OpenAI format uses
+                        // data-only SSE so we can't just define a new event type or something.
+                        // Might work to send an extra chunk with an empty choices but need to see if
+                        // that messes things up.
+                        //
+                        // Can probably have the request info piggyback along a delta since it comes
+                        // first. But this doesn't matter too much anyway, we're saving it for logging
+                        // which is much more important.
+                        None
+                    }
+                    Err(e) => {
+                        // TODO return the error
+                        None
+                    }
                 }
-                Ok(StreamingResponse::RequestInfo(_) | StreamingResponse::ResponseInfo(_)) => {
-                    // Need to figure out if there's some way we can send this along with the
-                    // deltas as metadata, but it's difficult since the OpenAI format uses
-                    // data-only SSE so we can't just define a new event type or something.
-                    // Might work to send an extra chunk with an empty choices but need to see if
-                    // that messes things up.
-                    None
-                }
-                Err(e) => {
-                    // TODO return the error
-                    None
-                }
-            }
-        });
+            })
+            .chain(futures::stream::once(ready!(Ok(
+                sse::Event::default().data("[DONE]")
+            ))));
 
         Ok(Sse::new(stream).into_response())
     } else {
@@ -111,7 +122,16 @@ async fn proxy_request(
             .await
             .change_context(Error::Proxy)?;
         // TODO format this into a ProxyRequestNonstreamingResult
-        Ok(Json(result).into_response())
+        Ok(Json(ProxyRequestNonstreamingResult {
+            response: result.response,
+            meta: ProxiedChatResponseMeta {
+                id: result.request_info.id,
+                provider: result.request_info.provider,
+                response_meta: result.response_info.meta,
+                was_rate_limited: result.request_info.was_rate_limited,
+            },
+        })
+        .into_response())
     }
 }
 
