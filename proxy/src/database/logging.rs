@@ -29,8 +29,6 @@ pub struct CollectedProxiedResult {
     pub info: ResponseInfo,
     /// The provider which was used for the successful response.
     pub provider: String,
-    pub num_retries: u32,
-    pub was_rate_limited: bool,
 }
 
 pub fn start_database_logger(

@@ -122,7 +122,7 @@ impl ChatModelProvider for Ollama {
         };
 
         // TODO Actually support streaming
-        let info = StreamingResponse::Info(ResponseInfo {
+        let info = StreamingResponse::ResponseInfo(ResponseInfo {
             model: result.model.clone(),
             meta: Some(meta),
         });

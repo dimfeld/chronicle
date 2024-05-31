@@ -425,7 +425,7 @@ pub async fn stream_sse_to_channel(
     }
 
     chunk_tx
-        .send_async(Ok(StreamingResponse::Info(ResponseInfo {
+        .send_async(Ok(StreamingResponse::ResponseInfo(ResponseInfo {
             meta: None,
             model: model.unwrap_or_default(),
         })))

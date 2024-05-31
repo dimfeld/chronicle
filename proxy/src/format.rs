@@ -5,6 +5,7 @@ use std::{borrow::Cow, collections::BTreeMap};
 
 use error_stack::Report;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::Error;
 
@@ -24,6 +25,61 @@ pub struct ChatResponse<CHOICE> {
 
 pub type StreamingChatResponse = ChatResponse<ChatChoiceDelta>;
 pub type SingleChatResponse = ChatResponse<ChatChoice>;
+
+impl ChatResponse<ChatChoice> {
+    ///Create a new, empty ChatResponse designed for collecting streaming chat responses.
+    pub fn new_for_collection(num_choices: usize) -> Self {
+        SingleChatResponse {
+            created: 0,
+            model: None,
+            system_fingerprint: None,
+            choices: Vec::with_capacity(num_choices),
+            usage: UsageResponse {
+                prompt_tokens: None,
+                completion_tokens: None,
+                total_tokens: None,
+            },
+        }
+    }
+
+    pub fn merge_delta(&mut self, chunk: &ChatResponse<ChatChoiceDelta>) {
+        if self.created == 0 {
+            self.created = chunk.created;
+        }
+
+        if self.model.is_none() {
+            self.model = chunk.model.clone();
+        }
+
+        if self.system_fingerprint.is_none() {
+            self.system_fingerprint = chunk.system_fingerprint.clone();
+        }
+
+        if !chunk.usage.is_empty() {
+            self.usage = chunk.usage.clone();
+        }
+
+        for choice in chunk.choices.iter() {
+            if choice.index >= self.choices.len() {
+                // Resize to either the index mentioned here, or the total number of choices in
+                // this message. This way we only resize once.
+                let new_size = std::cmp::max(chunk.choices.len(), choice.index + 1);
+                self.choices.resize(new_size, ChatChoice::default());
+
+                for i in 0..self.choices.len() {
+                    self.choices[i].index = i;
+                }
+            }
+
+            let c = &mut self.choices[choice.index];
+            c.message.add_delta(&choice.delta);
+
+            if let Some(finish) = choice.finish_reason.as_ref() {
+                c.finish_reason = finish.clone();
+            }
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct ChatChoice {
@@ -93,7 +149,20 @@ impl UsageResponse {
     }
 }
 
-#[derive(Debug, Clone)]
+/// Metadata about the request, from the proxy.
+#[derive(Debug, Clone, Serialize)]
+pub struct RequestInfo {
+    pub id: Uuid,
+    /// Which provider was used for the successful request.
+    pub provider: String,
+    /// How many times we had to retry before we got a successful response.
+    pub num_retries: u32,
+    /// If we retried due to hitting a rate limit.
+    pub was_rate_limited: bool,
+}
+
+/// Metadata about the response, from the provider.
+#[derive(Debug, Clone, Serialize)]
 pub struct ResponseInfo {
     /// Any other metadata from the provider that should be logged.
     pub meta: Option<serde_json::Value>,
@@ -101,14 +170,17 @@ pub struct ResponseInfo {
     pub model: String,
 }
 
+#[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone)]
 pub enum StreamingResponse {
     /// A chunk of a streaming response.
     Chunk(StreamingChatResponse),
     /// The chat response is completely in this one message. Used for non-streaming requests.
     Single(SingleChatResponse),
-    /// Metadata about the response.
-    Info(ResponseInfo),
+    /// Metadata about the request, from the proxy.
+    RequestInfo(RequestInfo),
+    /// Metadata about the response, from the provider.
+    ResponseInfo(ResponseInfo),
 }
 
 pub type StreamingResponseSender = flume::Sender<Result<StreamingResponse, Report<Error>>>;

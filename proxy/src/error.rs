@@ -32,4 +32,6 @@ pub enum Error {
     LoadingDatabase,
     #[error("Failed to parse header value {0}")]
     ReadingHeader(String),
+    #[error("Did not see {0} in response stream")]
+    MissingStreamInformation(&'static str),
 }

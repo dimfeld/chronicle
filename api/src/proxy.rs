@@ -3,14 +3,17 @@ use std::sync::Arc;
 use axum::{
     extract::State,
     http::HeaderMap,
-    response::{IntoResponse, Response},
+    response::{sse, IntoResponse, Response, Sse},
     Json,
 };
 use chronicle_proxy::{
-    database::Database, format::ChatRequest, EventPayload, Proxy, ProxyRequestInternalMetadata,
-    ProxyRequestOptions,
+    collect_response,
+    database::Database,
+    format::{ChatRequest, SingleChatResponse, StreamingResponse},
+    EventPayload, Proxy, ProxyRequestInternalMetadata, ProxyRequestOptions,
 };
 use error_stack::{Report, ResultExt};
+use futures::StreamExt;
 use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -47,6 +50,21 @@ struct ProxyRequestPayload {
     options: ProxyRequestOptions,
 }
 
+#[derive(Debug, Serialize)]
+struct ProxyRequestNonstreamingResult {
+    #[serde(flatten)]
+    response: SingleChatResponse,
+    meta: ProxiedChatResponseMeta,
+}
+
+#[derive(Debug, Serialize)]
+struct ProxiedChatResponseMeta {
+    id: Uuid,
+    provider: String,
+    response_meta: Option<serde_json::Value>,
+    was_rate_limited: bool,
+}
+
 async fn proxy_request(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
@@ -56,13 +74,45 @@ async fn proxy_request(
         .merge_request_headers(&headers)
         .change_context(Error::InvalidProxyHeader)?;
 
+    let n = body.request.n.unwrap_or(1) as usize;
+    let stream = body.request.stream;
     let result = state
         .proxy
         .send(body.options, body.request)
         .await
         .change_context(Error::Proxy)?;
 
-    Ok(Json(result).into_response())
+    if stream {
+        let stream = result.into_stream().filter_map(|chunk| async move {
+            match chunk {
+                Ok(StreamingResponse::Chunk(chunk)) => Some(sse::Event::default().json_data(chunk)),
+                Ok(StreamingResponse::Single(chunk)) => {
+                    // TODO convert to a delta and send
+                    None
+                }
+                Ok(StreamingResponse::RequestInfo(_) | StreamingResponse::ResponseInfo(_)) => {
+                    // Need to figure out if there's some way we can send this along with the
+                    // deltas as metadata, but it's difficult since the OpenAI format uses
+                    // data-only SSE so we can't just define a new event type or something.
+                    // Might work to send an extra chunk with an empty choices but need to see if
+                    // that messes things up.
+                    None
+                }
+                Err(e) => {
+                    // TODO return the error
+                    None
+                }
+            }
+        });
+
+        Ok(Sse::new(stream).into_response())
+    } else {
+        let result = collect_response(result, n)
+            .await
+            .change_context(Error::Proxy)?;
+        // TODO format this into a ProxyRequestNonstreamingResult
+        Ok(Json(result).into_response())
+    }
 }
 
 #[derive(Serialize)]

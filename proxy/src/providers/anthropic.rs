@@ -106,7 +106,7 @@ impl ChatModelProvider for Anthropic {
             .change_context(Error::ModelError)?;
 
         // TODO Actually support streaming
-        let info = StreamingResponse::Info(ResponseInfo {
+        let info = StreamingResponse::ResponseInfo(ResponseInfo {
             model: result.model.clone(),
             meta: None,
         });

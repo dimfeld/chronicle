@@ -19,11 +19,15 @@ use database::logging::ProxyLogEntry;
 pub use error::Error;
 use error_stack::{Report, ResultExt};
 use flume::Sender;
-use format::{ChatRequest, SingleChatResponse, StreamingResponseReceiver, StreamingResponseSender};
+use format::{
+    ChatRequest, RequestInfo, SingleChatResponse, StreamingResponse, StreamingResponseReceiver,
+    StreamingResponseSender,
+};
 use http::HeaderMap;
 use provider_lookup::{ModelLookupResult, ProviderLookup};
 use providers::ChatModelProvider;
 use request::RetryOptions;
+pub use response::{collect_response, CollectedResponse};
 use response::{handle_response, record_error};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
@@ -298,6 +302,8 @@ impl Proxy {
         )
         .await;
 
+        let n = body.n.unwrap_or(1) as usize;
+
         // Fill in what we can now, the rest will be filled in once the response is done.
         let log_entry = ProxyLogEntry {
             id,
@@ -315,10 +321,20 @@ impl Proxy {
 
         match response {
             Ok(res) => {
+                output_tx
+                    .send_async(Ok(StreamingResponse::RequestInfo(RequestInfo {
+                        id,
+                        provider: res.provider.clone(),
+                        num_retries: res.num_retries,
+                        was_rate_limited: res.was_rate_limited,
+                    })))
+                    .await
+                    .ok();
                 handle_response(
                     current_span,
                     log_entry,
                     global_start,
+                    n,
                     res,
                     chunk_rx,
                     output_tx,
@@ -654,6 +670,7 @@ mod test {
         config::CustomProviderConfig,
         format::{ChatChoice, ChatMessage, ChatRequest, ChatResponse, UsageResponse},
         providers::custom::{OpenAiRequestFormatOptions, ProviderRequestFormat},
+        testing::collect_responses,
         ProxyRequestMetadata,
     };
 
@@ -734,7 +751,7 @@ mod test {
             .await
             .expect("Building proxy");
 
-        let mut result = proxy
+        let chan = proxy
             .send(
                 crate::ProxyRequestOptions {
                     ..Default::default()
@@ -753,8 +770,10 @@ mod test {
             .await
             .expect("should have succeeded");
 
+        let mut response = collect_responses(chan).await.unwrap();
+
         // ID will be different every time, so zero it for the snapshot
-        result.meta.id = uuid::Uuid::nil();
-        insta::assert_json_snapshot!(result);
+        response.request_info.id = uuid::Uuid::nil();
+        insta::assert_json_snapshot!(response);
     }
 }

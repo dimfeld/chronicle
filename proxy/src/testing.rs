@@ -4,10 +4,12 @@ use std::{
 };
 
 use error_stack::{Report, ResultExt};
+use serde::Serialize;
 
 use crate::{
     format::{
-        ChatChoice, ChatMessage, ChatResponse, ResponseInfo, StreamingResponse,
+        ChatChoice, ChatMessage, ChatResponse, RequestInfo, ResponseInfo, SingleChatResponse,
+        StreamingChatResponse, StreamingResponse, StreamingResponseReceiver,
         StreamingResponseSender, UsageResponse,
     },
     providers::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions},
@@ -118,7 +120,7 @@ impl ChatModelProvider for TestProvider {
             },
         };
 
-        let info = StreamingResponse::Info(ResponseInfo {
+        let info = StreamingResponse::ResponseInfo(ResponseInfo {
             model: options.body.model.clone().unwrap_or_default(),
             meta: None,
         });

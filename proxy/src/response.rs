@@ -1,11 +1,12 @@
 use error_stack::Report;
+use serde::Serialize;
 use tracing::Span;
 
 use crate::{
     database::logging::{CollectedProxiedResult, ProxyLogEntry},
     format::{
-        ChatChoice, ResponseInfo, SingleChatResponse, StreamingResponse, StreamingResponseReceiver,
-        StreamingResponseSender, UsageResponse,
+        RequestInfo, ResponseInfo, SingleChatResponse, StreamingResponse,
+        StreamingResponseReceiver, StreamingResponseSender,
     },
     request::TryModelChoicesResult,
     Error,
@@ -15,6 +16,7 @@ pub async fn handle_response(
     current_span: Span,
     log_entry: ProxyLogEntry,
     global_start: tokio::time::Instant,
+    request_n: usize,
     meta: TryModelChoicesResult,
     chunk_rx: StreamingResponseReceiver,
     output_tx: StreamingResponseSender,
@@ -24,6 +26,7 @@ pub async fn handle_response(
         current_span.clone(),
         log_entry,
         global_start,
+        request_n,
         &meta,
         chunk_rx,
         output_tx,
@@ -81,36 +84,26 @@ pub async fn handle_response(
             body: response,
             info,
             provider: meta.provider,
-            num_retries: meta.num_retries,
-            was_rate_limited: meta.was_rate_limited,
         });
 
         log_tx.send_async(log_entry).await.ok();
     }
 }
 
+/// Internal stream collection that saves the information for logging.
 async fn collect_stream(
     current_span: Span,
     log_entry: ProxyLogEntry,
     global_start: tokio::time::Instant,
+    request_n: usize,
     meta: &TryModelChoicesResult,
     chunk_rx: StreamingResponseReceiver,
     output_tx: StreamingResponseSender,
     log_tx: Option<&flume::Sender<ProxyLogEntry>>,
 ) -> Result<(SingleChatResponse, ResponseInfo, ProxyLogEntry), ()> {
-    let mut response = SingleChatResponse {
-        created: 0,
-        model: None,
-        system_fingerprint: None,
-        choices: Vec::with_capacity(1),
-        usage: UsageResponse {
-            prompt_tokens: None,
-            completion_tokens: None,
-            total_tokens: None,
-        },
-    };
+    let mut response = SingleChatResponse::new_for_collection(request_n);
 
-    let mut stats = ResponseInfo {
+    let mut res_stats = ResponseInfo {
         model: String::new(),
         meta: None,
     };
@@ -119,44 +112,14 @@ async fn collect_stream(
     while let Some(chunk) = chunk_rx.recv_async().await.ok() {
         match &chunk {
             Ok(StreamingResponse::Chunk(chunk)) => {
-                if response.created == 0 {
-                    response.created = chunk.created;
-                }
-
-                if response.model.is_none() {
-                    response.model = chunk.model.clone();
-                }
-
-                if response.system_fingerprint.is_none() {
-                    response.system_fingerprint = chunk.system_fingerprint.clone();
-                }
-
-                if !response.usage.is_empty() {
-                    response.usage = chunk.usage.clone();
-                }
-
-                for choice in chunk.choices.iter() {
-                    if choice.index >= response.choices.len() {
-                        // Resize to either the index mentioned here, or the total number of choices in
-                        // this message. This way we only resize once.
-                        let new_size = std::cmp::max(chunk.choices.len(), choice.index + 1);
-                        response.choices.resize(new_size, ChatChoice::default());
-
-                        for i in 0..response.choices.len() {
-                            response.choices[i].index = i;
-                        }
-                    }
-
-                    let c = &mut response.choices[choice.index];
-                    c.message.add_delta(&choice.delta);
-
-                    if let Some(finish) = choice.finish_reason.as_ref() {
-                        c.finish_reason = finish.clone();
-                    }
-                }
+                response.merge_delta(chunk);
             }
-            Ok(StreamingResponse::Info(i)) => {
-                stats = i.clone();
+            Ok(StreamingResponse::ResponseInfo(i)) => {
+                res_stats = i.clone();
+            }
+            Ok(StreamingResponse::RequestInfo(_)) => {
+                // Don't need to handle RequestInfo since we've already incorporated its
+                // information into `log_entry`.
             }
             Ok(StreamingResponse::Single(res)) => {
                 response = res.clone();
@@ -180,7 +143,7 @@ async fn collect_stream(
         output_tx.send_async(chunk).await.ok();
     }
 
-    Ok((response, stats, log_entry))
+    Ok((response, res_stats, log_entry))
 }
 
 pub async fn record_error(
@@ -205,4 +168,54 @@ pub async fn record_error(
         log_entry.error = Some(format!("{:?}", error));
         log_tx.send_async(log_entry).await.ok();
     }
+}
+
+#[derive(Serialize, Debug)]
+pub struct CollectedResponse {
+    pub request_info: RequestInfo,
+    pub response_info: ResponseInfo,
+    pub was_streaming: bool,
+    pub num_chunks: usize,
+    pub response: SingleChatResponse,
+}
+
+/// Collect a stream contents into a single response
+pub async fn collect_response(
+    receiver: StreamingResponseReceiver,
+    request_n: usize,
+) -> Result<CollectedResponse, Report<Error>> {
+    let mut request_info = None;
+    let mut response_info = None;
+    let mut was_streaming = false;
+
+    let mut num_chunks = 0;
+    let mut response = SingleChatResponse::new_for_collection(request_n);
+
+    while let Ok(res) = receiver.recv_async().await {
+        tracing::debug!(?res, "Got response chunk");
+        match res? {
+            StreamingResponse::RequestInfo(info) => request_info = Some(info),
+            StreamingResponse::ResponseInfo(info) => response_info = Some(info),
+            StreamingResponse::Single(res) => {
+                if num_chunks != 0 {
+                    panic!("Saw more than one non-streaming chunk");
+                }
+                num_chunks += 1;
+                response = res;
+            }
+            StreamingResponse::Chunk(res) => {
+                was_streaming = true;
+                num_chunks += 1;
+                response.merge_delta(&res);
+            }
+        }
+    }
+
+    Ok(CollectedResponse {
+        request_info: request_info.ok_or(Error::MissingStreamInformation("request info"))?,
+        response_info: response_info.ok_or(Error::MissingStreamInformation("response info"))?,
+        was_streaming,
+        num_chunks,
+        response,
+    })
 }

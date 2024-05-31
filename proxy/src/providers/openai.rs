@@ -151,7 +151,7 @@ pub async fn send_openai_request(
             Ok(result) => {
                 let model = result.model.clone().or(body.model).unwrap_or_default();
                 let response = StreamingResponse::Single(result);
-                let info = StreamingResponse::Info(ResponseInfo { model, meta: None });
+                let info = StreamingResponse::ResponseInfo(ResponseInfo { model, meta: None });
                 chunk_tx.send_async(Ok(response)).await.ok();
                 chunk_tx.send_async(Ok(info)).await.ok();
             }

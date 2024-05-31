@@ -140,7 +140,7 @@ impl ChatModelProvider for Groq {
         let result = response.change_context(Error::ModelError)?;
 
         // TODO Actually support streaming
-        let info = StreamingResponse::Info(ResponseInfo {
+        let info = StreamingResponse::ResponseInfo(ResponseInfo {
             model: result.model.clone().unwrap_or_default(),
             meta: None,
         });
