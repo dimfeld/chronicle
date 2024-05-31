@@ -79,6 +79,7 @@ pub async fn stream_sse_to_channel(
     })
 }
 
+/// Process an SSE Event and optionally return a chat response
 pub trait StreamingChunkMapper: Send + Sync + 'static {
     fn process_chunk(
         &mut self,

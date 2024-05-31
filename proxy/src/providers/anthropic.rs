@@ -13,7 +13,7 @@ use crate::{
         SingleChatResponse, StreamingResponse, StreamingResponseSender, Tool, ToolCall,
         ToolCallFunction, UsageResponse,
     },
-    request::{parse_response_json, response_is_sse, send_standard_request, stream_sse_to_channel},
+    request::{parse_response_json, response_is_sse, send_standard_request},
 };
 
 #[derive(Debug)]
@@ -95,20 +95,8 @@ impl ChatModelProvider for Anthropic {
         .await?;
 
         if response_is_sse(&response) {
-            stream_sse_to_channel(response, chunk_tx, |event| {
-                match event.event.as_str() {
-                    "error" => {}
-                    "content_block_start" => {}
-                    "content_block_delta" => {}
-                    "content_block_end" => {}
-                    "message_delta" => {}
-                    "message_stop" => {}
-                    _ => None,
-                }
-
-                None
-            })
-            .await;
+            let processor = streaming::ChunkProcessor::new();
+            stream_sse_to_channel(response, chunk_tx, processor).await;
         } else {
             let result = parse_response_json::<AnthropicChatResponse>(response, latency).await;
             match result {
@@ -206,8 +194,7 @@ struct AnthropicChatRequest {
     max_tokens: Option<u32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     stop: Vec<String>,
-    // stream not supported yet
-    // pub stream: Option<bool>
+    stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -216,7 +203,6 @@ struct AnthropicChatRequest {
     tools: Vec<AnthropicTool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<AnthropicToolChoice>,
-    stream: bool,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -288,7 +274,7 @@ struct AnthropicChatResponse {
     pub model: String,
     pub stop_reason: String,
     pub stop_sequence: Option<String>,
-    pub usage: AnthropicUsageResponse,
+    pub usage: Option<AnthropicUsageResponse>,
 }
 
 impl Into<SingleChatResponse> for AnthropicChatResponse {
@@ -345,9 +331,9 @@ impl Into<SingleChatResponse> for AnthropicChatResponse {
                 },
             }],
             usage: Some(UsageResponse {
-                prompt_tokens: Some(self.usage.input_tokens),
-                completion_tokens: Some(self.usage.output_tokens),
-                total_tokens: Some(self.usage.input_tokens + self.usage.output_tokens),
+                prompt_tokens: self.usage.as_ref().and_then(|u| u.input_tokens),
+                completion_tokens: self.usage.as_ref().and_then(|u| u.output_tokens),
+                total_tokens: None,
             }),
         }
     }
@@ -389,6 +375,62 @@ impl From<AnthropicToolUse> for ToolCall {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct AnthropicUsageResponse {
-    pub input_tokens: usize,
-    pub output_tokens: usize,
+    pub input_tokens: Option<usize>,
+    pub output_tokens: Option<usize>,
+}
+
+mod streaming {
+    use super::{AnthropicChatResponse, AnthropicToolUse};
+    use crate::streaming::StreamingChunkMapper;
+
+    pub type MessageStart = AnthropicChatResponse;
+
+    pub struct ChunkProcessor {
+        accumulated_tools: Vec<AnthropicToolUse>,
+        accumulating_tool: String,
+    }
+
+    impl ChunkProcessor {
+        pub fn new() -> Self {
+            Self {
+                accumulated_tools: Vec::new(),
+                accumulating_tool: String::new(),
+            }
+        }
+    }
+
+    impl StreamingChunkMapper for ChunkProcessor {
+        fn process_chunk(
+            &mut self,
+            event: &eventsource_stream::Event,
+        ) -> Result<
+            Option<crate::format::StreamingChatResponse>,
+            error_stack::Report<crate::providers::ProviderError>,
+        > {
+            match event.event.as_str() {
+                "error" => {}
+                "content_block_start" => {
+                    // If this is a text block then just pass it on
+                    // If this is a JSON delta block then start accumulating it
+                }
+                "content_block_delta" => {
+                    // Same as content_block_start
+                }
+                "content_block_stop" => {
+                    // if accumulating_tool has something, then try to parse it
+                }
+                "message_start" => {
+                    // Send as much of the message event as we know.
+                    // Maybe save the data here for later?
+                }
+                "message_delta" => {
+                    // Update the saved message and send it out again
+                }
+                "message_stop" => Ok(None),
+                _ => Ok(None),
+            }
+
+            Ok(None)
+        }
+    }
 }
