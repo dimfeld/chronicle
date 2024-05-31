@@ -7,7 +7,7 @@ use error_stack::Report;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::Error;
+use crate::providers::ProviderError;
 
 /// A chat response, in non-chunked format
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -206,8 +206,9 @@ pub enum StreamingResponse {
     ResponseInfo(ResponseInfo),
 }
 
-pub type StreamingResponseSender = flume::Sender<Result<StreamingResponse, Report<Error>>>;
-pub type StreamingResponseReceiver = flume::Receiver<Result<StreamingResponse, Report<Error>>>;
+pub type StreamingResponseSender = flume::Sender<Result<StreamingResponse, Report<ProviderError>>>;
+pub type StreamingResponseReceiver =
+    flume::Receiver<Result<StreamingResponse, Report<ProviderError>>>;
 
 /// For providers that conform almost, but not quite, to the OpenAI spec, these transformations
 /// apply small changes that can alter the request in place to the form needed for the provider.

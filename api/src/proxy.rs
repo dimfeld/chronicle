@@ -16,7 +16,7 @@ use chronicle_proxy::{
 };
 use error_stack::{Report, ResultExt};
 use futures::StreamExt;
-use http::{header::ACCEPT, StatusCode};
+use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -68,6 +68,7 @@ struct DeltaWithRequestInfo {
 
 #[derive(Serialize)]
 struct OpenAiSseError {
+    error: Option<serde_json::Value>,
     message: String,
 }
 
@@ -133,11 +134,31 @@ async fn proxy_request(
                         None
                     }
                     Err(e) => {
-                        let e = OpenAiSseError {
-                            message: e.to_string(),
+                        let err = e.current_context();
+                        let err_payload = if let Some(body) = &err.body {
+                            // See if the error body looks like the OpenAI format, and if so just use it.
+                            let message = &body["message"];
+                            let error = &body["error"];
+
+                            if let serde_json::Value::String(message) = message {
+                                OpenAiSseError {
+                                    error: Some(error.clone()),
+                                    message: message.clone(),
+                                }
+                            } else {
+                                OpenAiSseError {
+                                    error: Some(body.clone()),
+                                    message: err.to_string(),
+                                }
+                            }
+                        } else {
+                            OpenAiSseError {
+                                error: None,
+                                message: err.to_string(),
+                            }
                         };
 
-                        Some(sse::Event::default().event("error").json_data(e))
+                        Some(sse::Event::default().event("error").json_data(err_payload))
                     }
                 };
 

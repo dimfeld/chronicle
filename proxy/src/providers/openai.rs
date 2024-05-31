@@ -134,14 +134,23 @@ pub async fn send_openai_request(
                 return Ok(None);
             }
 
-            serde_json::from_str::<StreamingChatResponse>(&event.data)
-                .map(Some)
-                .change_context_lazy(|| ProviderError {
-                    kind: ProviderErrorKind::ParsingResponse,
+            if event.event == "error" {
+                Err(Report::new(ProviderError {
+                    kind: ProviderErrorKind::Generic,
                     status_code: None,
                     body: serde_json::from_str(&event.data).ok(),
                     latency: start_time.elapsed(),
-                })
+                }))
+            } else {
+                serde_json::from_str::<StreamingChatResponse>(&event.data)
+                    .map(Some)
+                    .change_context_lazy(|| ProviderError {
+                        kind: ProviderErrorKind::ParsingResponse,
+                        status_code: None,
+                        body: serde_json::from_str(&event.data).ok(),
+                        latency: start_time.elapsed(),
+                    })
+            }
         })
         .await;
     } else {
@@ -156,10 +165,7 @@ pub async fn send_openai_request(
                 chunk_tx.send_async(Ok(info)).await.ok();
             }
             Err(e) => {
-                chunk_tx
-                    .send_async(Err(e).change_context(Error::ModelError))
-                    .await
-                    .ok();
+                chunk_tx.send_async(Err(e)).await.ok();
             }
         }
     }

@@ -151,19 +151,16 @@ impl Proxy {
         let log_tx = self.log_tx.clone();
         let default_timeout = self.default_timeout;
         tokio::task::spawn(async move {
-            let res = Self::send_request(
+            Self::send_request(
                 parent_span,
                 options,
                 models,
                 body,
                 default_timeout,
-                chunk_tx.clone(),
+                chunk_tx,
                 log_tx,
             )
-            .await;
-            if let Err(e) = res {
-                chunk_tx.send_async(Err(e)).await.ok();
-            }
+            .await
         });
         Ok(chunk_rx)
     }
@@ -235,7 +232,7 @@ impl Proxy {
         default_timeout: Option<Duration>,
         output_tx: StreamingResponseSender,
         log_tx: Option<Sender<ProxyLogEntry>>,
-    ) -> Result<(), Report<Error>> {
+    ) {
         let id = uuid::Uuid::now_v7();
         let current_span = tracing::Span::current();
         current_span.record("llm.item_id", id.to_string());
@@ -356,8 +353,6 @@ impl Proxy {
                 .await;
             }
         }
-
-        Ok(())
     }
 
     /// Add a provider to the system. This will replace any existing provider with the same `name`.

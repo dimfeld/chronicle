@@ -409,17 +409,19 @@ pub async fn stream_sse_to_channel(
                         }
                     }
                     Err(e) => {
-                        chunk_tx
-                            .send_async(Err(e).change_context(Error::ModelError))
-                            .await
-                            .ok();
+                        chunk_tx.send_async(Err(e)).await.ok();
                         return;
                     }
                 }
             }
             Err(e) => {
                 chunk_tx
-                    .send_async(Err(e).change_context(Error::ModelError))
+                    .send_async(Err(e).change_context(ProviderError {
+                        kind: ProviderErrorKind::ProviderClosedConnection,
+                        status_code: None,
+                        body: None,
+                        latency: Duration::ZERO,
+                    }))
                     .await
                     .ok();
                 return;

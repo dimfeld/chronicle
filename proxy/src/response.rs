@@ -1,4 +1,4 @@
-use error_stack::Report;
+use error_stack::{Report, ResultExt};
 use serde::Serialize;
 use tracing::Span;
 
@@ -146,9 +146,9 @@ async fn collect_stream(
     Ok((response, res_stats, log_entry))
 }
 
-pub async fn record_error(
+pub async fn record_error<E: std::fmt::Debug + std::fmt::Display>(
     mut log_entry: ProxyLogEntry,
-    error: &Report<Error>,
+    error: E,
     send_start: tokio::time::Instant,
     num_retries: u32,
     was_rate_limited: bool,
@@ -193,7 +193,7 @@ pub async fn collect_response(
 
     while let Ok(res) = receiver.recv_async().await {
         tracing::debug!(?res, "Got response chunk");
-        match res? {
+        match res.change_context(Error::ModelError)? {
             StreamingResponse::RequestInfo(info) => {
                 debug_assert!(request_info.is_none(), "Saw multiple RequestInfo objects");
                 debug_assert_eq!(num_chunks, 0, "RequestInfo was not the first chunk");
