@@ -63,6 +63,8 @@ impl ChatModelProvider for Groq {
         body.logit_bias = None;
         body.top_logprobs = None;
         body.n = None;
+        // TODO enable streaming
+        body.stream = false;
 
         let bytes = serde_json::to_vec(&body).change_context_lazy(|| {
             ProviderError::from_kind(ProviderErrorKind::TransformingRequest)
