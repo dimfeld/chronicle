@@ -1,5 +1,9 @@
 # chronicle-proxy changelog
 
+## Unreleased
+
+- Streaming support for OpenAI-compatible providers
+
 ## 0.2.0
 
 - Support Anthropic `tool_choice` field
