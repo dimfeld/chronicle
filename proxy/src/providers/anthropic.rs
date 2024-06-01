@@ -9,11 +9,12 @@ use serde::{Deserialize, Serialize};
 use super::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions};
 use crate::{
     format::{
-        ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, ResponseInfo,
-        SingleChatResponse, StreamingResponse, StreamingResponseSender, Tool, ToolCall,
-        ToolCallFunction, UsageResponse,
+        ChatChoice, ChatChoiceDelta, ChatMessage, ChatRequestTransformation, ChatResponse,
+        ResponseInfo, SingleChatResponse, StreamingChatResponse, StreamingResponse,
+        StreamingResponseSender, Tool, ToolCall, ToolCallFunction, UsageResponse,
     },
     request::{parse_response_json, response_is_sse, send_standard_request},
+    streaming::stream_sse_to_channel,
 };
 
 #[derive(Debug)]
@@ -96,7 +97,7 @@ impl ChatModelProvider for Anthropic {
 
         if response_is_sse(&response) {
             let processor = streaming::ChunkProcessor::new();
-            stream_sse_to_channel(response, chunk_tx, processor).await;
+            stream_sse_to_channel(response, chunk_tx, processor);
         } else {
             let result = parse_response_json::<AnthropicChatResponse>(response, latency).await;
             match result {
@@ -272,49 +273,14 @@ struct AnthropicChatResponse {
     pub role: String,
     pub content: Vec<AnthropicChatContent>,
     pub model: String,
-    pub stop_reason: String,
+    pub stop_reason: Option<String>,
     pub stop_sequence: Option<String>,
     pub usage: Option<AnthropicUsageResponse>,
 }
 
 impl Into<SingleChatResponse> for AnthropicChatResponse {
-    fn into(mut self) -> SingleChatResponse {
-        let (text, tool_calls) = if self.content.len() == 1 {
-            match self.content.pop().unwrap() {
-                AnthropicChatContent::Text { text } => (Some(text), Vec::new()),
-                AnthropicChatContent::ToolUse(tool) => {
-                    let tools = vec![ToolCall::from(tool)];
-                    (None, tools)
-                }
-                _ => (None, Vec::new()),
-            }
-        } else {
-            let text = self
-                .content
-                .iter()
-                .filter_map(|c| match c {
-                    AnthropicChatContent::Text { text } => Some(text),
-                    _ => None,
-                })
-                .join("");
-
-            let tools = self
-                .content
-                .into_iter()
-                .filter_map(|c| {
-                    if let AnthropicChatContent::ToolUse(tool) = c {
-                        Some(ToolCall::from(tool))
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            let text = if text.is_empty() { None } else { Some(text) };
-
-            (text, tools)
-        };
-
+    fn into(self) -> SingleChatResponse {
+        let (text, tool_calls) = convert_content(self.content);
         ChatResponse {
             created: chrono::Utc::now().timestamp() as u64,
             model: Some(self.model),
@@ -322,7 +288,7 @@ impl Into<SingleChatResponse> for AnthropicChatResponse {
             choices: vec![ChatChoice {
                 index: 0,
                 // TODO align this with OpenAI finish_reason
-                finish_reason: self.stop_reason,
+                finish_reason: self.stop_reason.unwrap_or_default(),
                 message: ChatMessage {
                     role: Some(self.role),
                     name: None,
@@ -336,6 +302,71 @@ impl Into<SingleChatResponse> for AnthropicChatResponse {
                 total_tokens: None,
             }),
         }
+    }
+}
+
+impl AnthropicChatResponse {
+    /// Do the conversion as required by the message_start streaming event
+    fn as_new_streaming_message(self) -> StreamingChatResponse {
+        let (text, tool_calls) = convert_content(self.content);
+        ChatResponse {
+            created: chrono::Utc::now().timestamp() as u64,
+            model: Some(self.model),
+            system_fingerprint: None,
+            choices: vec![ChatChoiceDelta {
+                index: 0,
+                // TODO align this with OpenAI finish_reason
+                finish_reason: self.stop_reason,
+                delta: ChatMessage {
+                    role: Some(self.role),
+                    name: None,
+                    content: text,
+                    tool_calls,
+                },
+            }],
+            usage: Some(UsageResponse {
+                prompt_tokens: self.usage.as_ref().and_then(|u| u.input_tokens),
+                completion_tokens: self.usage.as_ref().and_then(|u| u.output_tokens),
+                total_tokens: None,
+            }),
+        }
+    }
+}
+
+/// Extract the text and tool calls from the chat content
+fn convert_content(mut content: Vec<AnthropicChatContent>) -> (Option<String>, Vec<ToolCall>) {
+    if content.len() == 1 {
+        match content.pop().unwrap() {
+            AnthropicChatContent::Text { text } => (Some(text), Vec::new()),
+            AnthropicChatContent::ToolUse(tool) => {
+                let tools = vec![ToolCall::from(tool)];
+                (None, tools)
+            }
+            _ => (None, Vec::new()),
+        }
+    } else {
+        let text = content
+            .iter()
+            .filter_map(|c| match c {
+                AnthropicChatContent::Text { text } => Some(text),
+                _ => None,
+            })
+            .join("");
+
+        let tools = content
+            .into_iter()
+            .filter_map(|c| {
+                if let AnthropicChatContent::ToolUse(tool) = c {
+                    Some(ToolCall::from(tool))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let text = if text.is_empty() { None } else { Some(text) };
+
+        (text, tools)
     }
 }
 
@@ -363,11 +394,12 @@ struct AnthropicToolUse {
 impl From<AnthropicToolUse> for ToolCall {
     fn from(tool: AnthropicToolUse) -> ToolCall {
         ToolCall {
-            id: tool.id,
-            typ: "function".to_string(),
+            index: None,
+            id: Some(tool.id),
+            typ: Some("function".to_string()),
             function: ToolCallFunction {
-                name: tool.name,
-                arguments: tool.input.to_string(),
+                name: Some(tool.name),
+                arguments: Some(tool.input.to_string()),
             },
         }
     }
@@ -380,21 +412,149 @@ struct AnthropicUsageResponse {
 }
 
 mod streaming {
-    use super::{AnthropicChatResponse, AnthropicToolUse};
-    use crate::streaming::StreamingChunkMapper;
+    use std::time::Duration;
 
-    pub type MessageStart = AnthropicChatResponse;
+    use error_stack::ResultExt;
+    use serde::Deserialize;
+
+    use super::{AnthropicChatResponse, AnthropicToolUse, AnthropicUsageResponse};
+    use crate::{
+        format::{
+            ChatChoiceDelta, ChatMessage, StreamingChatResponse, ToolCall, ToolCallFunction,
+            UsageResponse,
+        },
+        providers::ProviderError,
+        streaming::StreamingChunkMapper,
+    };
 
     pub struct ChunkProcessor {
-        accumulated_tools: Vec<AnthropicToolUse>,
-        accumulating_tool: String,
+        message: StreamingChatResponse,
     }
 
     impl ChunkProcessor {
         pub fn new() -> Self {
             Self {
-                accumulated_tools: Vec::new(),
-                accumulating_tool: String::new(),
+                message: StreamingChatResponse {
+                    created: 0,
+                    model: None,
+                    system_fingerprint: None,
+                    choices: Vec::new(),
+                    usage: None,
+                },
+            }
+        }
+
+        fn handle_data(
+            &mut self,
+            data: StreamingMessage,
+        ) -> Result<Option<StreamingChatResponse>, error_stack::Report<ProviderError>> {
+            match data {
+                StreamingMessage::MessageStart {
+                    message: new_message,
+                } => {
+                    // transform and save the message, then return it
+                    self.message = new_message.as_new_streaming_message();
+
+                    let ret = Ok(Some(self.message.clone()));
+                    // Clear the saved copy of `choices` so we can easily reuse it for later
+                    // messages.
+                    self.message.choices.clear();
+                    ret
+                }
+                StreamingMessage::MessageDelta { message, usage } => {
+                    let delta = ChatChoiceDelta {
+                        index: 0,
+                        delta: ChatMessage {
+                            content: Some(String::new()),
+                            ..Default::default()
+                        },
+                        finish_reason: message.stop_reason,
+                    };
+
+                    if let Some(usage) = usage {
+                        let usage = UsageResponse {
+                            prompt_tokens: usage.input_tokens,
+                            completion_tokens: usage.output_tokens,
+                            total_tokens: None,
+                        };
+
+                        match self.message.usage.as_mut() {
+                            Some(msg_usage) => {
+                                msg_usage.merge(&usage);
+                            }
+                            None => {
+                                self.message.usage = Some(usage);
+                            }
+                        }
+                    }
+
+                    let mut message = self.message.clone();
+                    message.choices.push(delta);
+
+                    Ok(Some(message))
+                }
+                StreamingMessage::ContentBlockStart {
+                    index,
+                    content_block,
+                } => {
+                    let mut message = self.message.clone();
+                    let delta = match content_block {
+                        ContentBlock::Text { text } => ChatMessage {
+                            content: Some(text),
+                            ..Default::default()
+                        },
+                        ContentBlock::ToolUse(tool) => ChatMessage {
+                            tool_calls: vec![ToolCall {
+                                index: Some(index),
+                                id: Some(tool.id),
+                                typ: Some("function".to_string()),
+                                function: ToolCallFunction {
+                                    name: Some(tool.name),
+                                    arguments: None,
+                                },
+                            }],
+                            ..Default::default()
+                        },
+                    };
+
+                    message.choices.push(ChatChoiceDelta {
+                        index,
+                        delta,
+                        finish_reason: None,
+                    });
+
+                    Ok(Some(message))
+                }
+                StreamingMessage::ContentBlockDelta { index, delta } => {
+                    let mut message = self.message.clone();
+                    let delta = match delta {
+                        ContentBlockDelta::TextDelta { text } => ChatMessage {
+                            content: Some(text),
+                            ..Default::default()
+                        },
+                        ContentBlockDelta::InputJsonDelta { partial_json } => ChatMessage {
+                            tool_calls: vec![ToolCall {
+                                index: Some(index),
+                                id: None,
+                                typ: None,
+                                function: ToolCallFunction {
+                                    name: None,
+                                    arguments: Some(partial_json),
+                                },
+                            }],
+                            ..Default::default()
+                        },
+                    };
+
+                    message.choices.push(ChatChoiceDelta {
+                        index,
+                        delta,
+                        finish_reason: None,
+                    });
+
+                    Ok(Some(message))
+                }
+                StreamingMessage::ContentBlockStop { .. } => Ok(None),
             }
         }
     }
@@ -408,29 +568,72 @@ mod streaming {
             error_stack::Report<crate::providers::ProviderError>,
         > {
             match event.event.as_str() {
-                "error" => {}
-                "content_block_start" => {
-                    // If this is a text block then just pass it on
-                    // If this is a JSON delta block then start accumulating it
-                }
-                "content_block_delta" => {
-                    // Same as content_block_start
-                }
-                "content_block_stop" => {
-                    // if accumulating_tool has something, then try to parse it
-                }
-                "message_start" => {
-                    // Send as much of the message event as we know.
-                    // Maybe save the data here for later?
-                }
-                "message_delta" => {
-                    // Update the saved message and send it out again
+                "message_start"
+                | "message_delta"
+                | "content_block_start"
+                | "content_block_delta"
+                | "content_block_stop" => {
+                    let data = serde_json::from_str::<StreamingMessage>(&event.data)
+                        .change_context_lazy(|| ProviderError {
+                            kind: crate::providers::ProviderErrorKind::ParsingResponse,
+                            body: serde_json::from_str(&event.data).ok(),
+                            status_code: None,
+                            latency: Duration::ZERO,
+                        })?;
+                    self.handle_data(data)
                 }
                 "message_stop" => Ok(None),
+                "error" => Err(todo!()),
                 _ => Ok(None),
             }
-
-            Ok(None)
         }
+    }
+
+    #[derive(Deserialize, Debug)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum StreamingMessage {
+        MessageStart {
+            message: AnthropicChatResponse,
+        },
+        MessageDelta {
+            // TODO this should be a delta
+            message: AnthropicChatResponse,
+            usage: Option<AnthropicUsageResponse>,
+        },
+        ContentBlockStart {
+            index: usize,
+            content_block: ContentBlock,
+        },
+        ContentBlockDelta {
+            index: usize,
+            delta: ContentBlockDelta,
+        },
+        ContentBlockStop {
+            index: usize,
+        },
+    }
+
+    #[derive(Deserialize, Debug)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum ContentBlock {
+        Text { text: String },
+        ToolUse(AnthropicToolUse),
+    }
+
+    #[derive(Deserialize, Debug)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum ContentBlockDelta {
+        TextDelta { text: String },
+        InputJsonDelta { partial_json: String },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn stream_parsing() {
+        // todo
     }
 }

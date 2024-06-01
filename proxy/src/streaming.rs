@@ -18,7 +18,7 @@ use crate::{
 ///
 /// `map_chunk` can return Ok(None) if the event should be skipped, as with Anthropic's
 /// ping event.
-pub async fn stream_sse_to_channel(
+pub fn stream_sse_to_channel(
     response: reqwest::Response,
     chunk_tx: StreamingResponseSender,
     mut mapper: impl StreamingChunkMapper,

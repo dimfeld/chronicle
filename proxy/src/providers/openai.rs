@@ -131,7 +131,7 @@ pub async fn send_openai_request(
 
     if response_is_sse(&response) {
         let processor = StreamingEventProcessor { start_time };
-        stream_sse_to_channel(response, chunk_tx, processor).await;
+        stream_sse_to_channel(response, chunk_tx, processor);
     } else {
         let result = parse_response_json::<SingleChatResponse>(response, latency).await;
 

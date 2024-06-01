@@ -393,14 +393,20 @@ pub struct FunctionTool {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolCall {
-    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "type")]
-    pub typ: String,
+    pub typ: Option<String>,
     pub function: ToolCallFunction,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolCallFunction {
-    pub name: String,
-    pub arguments: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<String>,
 }
