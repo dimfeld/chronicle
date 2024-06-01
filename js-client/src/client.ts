@@ -1,10 +1,13 @@
 import { Attributes, trace } from '@opentelemetry/api';
 import { proxyUrl, propagateSpan } from './internal.js';
+import { Stream } from './streaming.js';
 import type {
   ChronicleChatRequest,
   ChronicleChatResponse,
   ChronicleRequestMetadata,
   ChronicleRequestOptions,
+  SingleChronicleChatResponse,
+  StreamingChronicleChatResponse,
 } from './types.js';
 
 export interface ChronicleClientOptions {
@@ -21,10 +24,10 @@ export interface ChronicleClientOptions {
 }
 
 export type ChronicleEventFn = (event: ChronicleEvent) => Promise<{ id: string }>;
-export type ChronicleClient = ((
-  chat: ChronicleChatRequest & Partial<ChronicleRequestOptions>,
+export type ChronicleClient = (<STREAMING extends boolean>(
+  chat: ChronicleChatRequest<STREAMING> & Partial<ChronicleRequestOptions>,
   options?: ChronicleRequestOptions
-) => Promise<ChronicleChatResponse>) & { event: ChronicleEventFn };
+) => Promise<ChronicleChatResponse<STREAMING>>) & { event: ChronicleEventFn };
 
 /** Create a Chronicle proxy client. This returns a function which will call the Chronicle proxy */
 export function createChronicleClient(options?: ChronicleClientOptions): ChronicleClient {
@@ -32,8 +35,8 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
   let url = proxyUrl(options?.url);
   let eventUrl = new URL('/event', url);
 
-  const client = async (
-    chat: ChronicleChatRequest & Partial<ChronicleRequestOptions>,
+  const client = async <STREAMING extends boolean>(
+    chat: ChronicleChatRequest<STREAMING> & Partial<ChronicleRequestOptions>,
     options?: ChronicleRequestOptions
   ) => {
     let { signal, ...reqOptions } = options ?? {};
@@ -53,6 +56,9 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
       method: 'POST',
       headers: {
         'content-type': 'application/json; charset=utf-8',
+        accept: body.stream
+          ? 'text/event-stream; charset=utf-8'
+          : 'application/json; charset=utf-8',
       },
       body: JSON.stringify(body),
       signal,
@@ -66,7 +72,11 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
 
     let res = await fetch(req);
     if (res.ok) {
-      return (await res.json()) as ChronicleChatResponse;
+      if (chat.stream) {
+        return Stream.fromSSEResponse<StreamingChronicleChatResponse>(res, options?.signal);
+      } else {
+        return (await res.json()) as SingleChronicleChatResponse;
+      }
     } else {
       throw new Error(await handleError(res));
     }
@@ -85,6 +95,7 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
     return sendEvent(thisEvent);
   };
 
+  // @ts-expect-error
   return client;
 }
 
