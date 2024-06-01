@@ -417,7 +417,7 @@ mod streaming {
     use std::time::Duration;
 
     use error_stack::ResultExt;
-    use serde::{Deserialize, Serialize};
+    use serde::Deserialize;
 
     use super::{AnthropicChatResponse, AnthropicToolUse, AnthropicUsageResponse};
     use crate::{

@@ -152,8 +152,27 @@ impl ChatMessage {
             _ => {}
         }
 
-        if self.tool_calls.is_empty() {
-            self.tool_calls = delta.tool_calls.clone();
+        for tool_call in &delta.tool_calls {
+            let Some(index) = tool_call.index else {
+                // Tool call chunks must always have an index
+                continue;
+            };
+            if self.tool_calls.len() <= index {
+                self.tool_calls.resize(
+                    index + 1,
+                    ToolCall {
+                        index: None,
+                        id: None,
+                        typ: None,
+                        function: ToolCallFunction {
+                            name: None,
+                            arguments: None,
+                        },
+                    },
+                );
+            }
+
+            self.tool_calls[index].merge_delta(tool_call);
         }
     }
 }
@@ -401,6 +420,33 @@ pub struct ToolCall {
     #[serde(rename = "type")]
     pub typ: Option<String>,
     pub function: ToolCallFunction,
+}
+
+impl ToolCall {
+    fn merge_delta(&mut self, delta: &ToolCall) {
+        if self.index.is_none() {
+            self.index = delta.index;
+        }
+        if self.id.is_none() {
+            self.id = delta.id.clone();
+        }
+        if self.typ.is_none() {
+            self.typ = delta.typ.clone();
+        }
+        if self.function.name.is_none() {
+            self.function.name = delta.function.name.clone();
+        }
+
+        if self.function.arguments.is_none() {
+            self.function.arguments = delta.function.arguments.clone();
+        } else if delta.function.arguments.is_some() {
+            self.function
+                .arguments
+                .as_mut()
+                .unwrap()
+                .push_str(&delta.function.arguments.as_ref().unwrap());
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

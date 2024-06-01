@@ -1,0 +1,51 @@
+---
+source: proxy/src/testing.rs
+assertion_line: 231
+expression: response
+---
+{
+  "request_info": {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "provider": "anthropic",
+    "model": "me/a-test-model",
+    "num_retries": 0,
+    "was_rate_limited": false
+  },
+  "response_info": {
+    "meta": null,
+    "model": "claude-3-haiku-20240307"
+  },
+  "was_streaming": true,
+  "num_chunks": 10,
+  "response": {
+    "created": 0,
+    "model": "claude-3-haiku-20240307",
+    "system_fingerprint": null,
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "",
+          "tool_calls": [
+            {
+              "index": 0,
+              "id": "toolu_01HrgV1j1HYwPNSroDY8XZHK",
+              "type": "function",
+              "function": {
+                "name": "get_characteristics",
+                "arguments": "{\"name\": \"Daniel\", \"hair_color\": \"brown\"}"
+              }
+            }
+          ]
+        },
+        "finish_reason": "tool_use"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 459,
+      "completion_tokens": 52,
+      "total_tokens": null
+    }
+  }
+}
