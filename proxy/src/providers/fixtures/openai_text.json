@@ -1,0 +1,9 @@
+{
+  "model": "gpt-3.5-turbo",
+  "max_tokens": 1024,
+  "messages": [
+    { "role": "user", "content": "Who was Lassie the dog?"}
+  ]
+}
+
+
