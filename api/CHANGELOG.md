@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Streaming support for OpenAI-compatible providers
+- Streaming support for Anthropic
 
 ## 0.2.0
 
