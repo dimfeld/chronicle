@@ -55,8 +55,12 @@ impl ChatResponse<ChatChoice> {
             self.system_fingerprint = chunk.system_fingerprint.clone();
         }
 
-        if !chunk.usage.is_none() {
-            self.usage = chunk.usage.clone();
+        if let Some(delta_usage) = chunk.usage.as_ref() {
+            if let Some(usage) = self.usage.as_mut() {
+                usage.merge(delta_usage);
+            } else {
+                self.usage = chunk.usage.clone();
+            }
         }
 
         for choice in chunk.choices.iter() {
@@ -148,8 +152,27 @@ impl ChatMessage {
             _ => {}
         }
 
-        if self.tool_calls.is_empty() {
-            self.tool_calls = delta.tool_calls.clone();
+        for tool_call in &delta.tool_calls {
+            let Some(index) = tool_call.index else {
+                // Tool call chunks must always have an index
+                continue;
+            };
+            if self.tool_calls.len() <= index {
+                self.tool_calls.resize(
+                    index + 1,
+                    ToolCall {
+                        index: None,
+                        id: None,
+                        typ: None,
+                        function: ToolCallFunction {
+                            name: None,
+                            arguments: None,
+                        },
+                    },
+                );
+            }
+
+            self.tool_calls[index].merge_delta(tool_call);
         }
     }
 }
@@ -166,6 +189,22 @@ impl UsageResponse {
         self.prompt_tokens.is_none()
             && self.completion_tokens.is_none()
             && self.total_tokens.is_none()
+    }
+
+    /// Merge another UsageResponse into this one. Any fields present in `other` will overwrite
+    /// the current values.
+    pub fn merge(&mut self, other: &UsageResponse) {
+        if other.prompt_tokens.is_some() {
+            self.prompt_tokens = other.prompt_tokens;
+        }
+
+        if other.completion_tokens.is_some() {
+            self.completion_tokens = other.completion_tokens;
+        }
+
+        if other.total_tokens.is_some() {
+            self.total_tokens = other.total_tokens;
+        }
     }
 }
 
@@ -373,14 +412,47 @@ pub struct FunctionTool {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolCall {
-    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "type")]
-    pub typ: String,
+    pub typ: Option<String>,
     pub function: ToolCallFunction,
+}
+
+impl ToolCall {
+    fn merge_delta(&mut self, delta: &ToolCall) {
+        if self.index.is_none() {
+            self.index = delta.index;
+        }
+        if self.id.is_none() {
+            self.id = delta.id.clone();
+        }
+        if self.typ.is_none() {
+            self.typ = delta.typ.clone();
+        }
+        if self.function.name.is_none() {
+            self.function.name = delta.function.name.clone();
+        }
+
+        if self.function.arguments.is_none() {
+            self.function.arguments = delta.function.arguments.clone();
+        } else if delta.function.arguments.is_some() {
+            self.function
+                .arguments
+                .as_mut()
+                .unwrap()
+                .push_str(&delta.function.arguments.as_ref().unwrap());
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolCallFunction {
-    pub name: String,
-    pub arguments: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<String>,
 }

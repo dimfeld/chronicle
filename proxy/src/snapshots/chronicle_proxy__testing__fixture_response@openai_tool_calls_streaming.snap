@@ -1,0 +1,50 @@
+---
+source: proxy/src/testing.rs
+expression: response
+---
+{
+  "request_info": {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "provider": "openai",
+    "model": "me/a-test-model",
+    "num_retries": 0,
+    "was_rate_limited": false
+  },
+  "response_info": {
+    "meta": null,
+    "model": "gpt-3.5-turbo-0125"
+  },
+  "was_streaming": true,
+  "num_chunks": 13,
+  "response": {
+    "created": 0,
+    "model": "gpt-3.5-turbo-0125",
+    "system_fingerprint": null,
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "index": 0,
+              "id": "call_YoAFuD3iHKfA5C7Gcifn74Nj",
+              "type": "function",
+              "function": {
+                "name": "get_characteristics",
+                "arguments": "{\"name\":\"Daniel\",\"hair_color\":\"brown\"}"
+              }
+            }
+          ]
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 80,
+      "completion_tokens": 10,
+      "total_tokens": 90
+    }
+  }
+}

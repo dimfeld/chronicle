@@ -9,6 +9,7 @@ mod provider_lookup;
 pub mod providers;
 pub mod request;
 mod response;
+mod streaming;
 #[cfg(test)]
 mod testing;
 

@@ -1,0 +1,33 @@
+{
+  "id": "chatcmpl-9VE3hM6XGZvE6YEA82QjEe6rcO84Z",
+  "object": "chat.completion",
+  "created": 1717229237,
+  "model": "gpt-3.5-turbo-0125",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_UedDYyaORb1eAjaUkCeIBSHw",
+            "type": "function",
+            "function": {
+              "name": "get_characteristics",
+              "arguments": "{\"name\":\"Daniel\",\"hair_color\":\"brown\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 80,
+    "completion_tokens": 10,
+    "total_tokens": 90
+  },
+  "system_fingerprint": null
+}

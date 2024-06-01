@@ -181,14 +181,16 @@ impl RecoveredToolCalls {
                         .tool_calls
                         .into_iter()
                         .map(|tc| ToolCall {
-                            id: uuid::Uuid::new_v4().to_string(),
-                            typ: tc.typ,
+                            index: None,
+                            id: Some(uuid::Uuid::new_v4().to_string()),
+                            typ: Some(tc.typ),
                             function: ToolCallFunction {
-                                name: tc.function.name,
-                                arguments: tc
-                                    .parameters
-                                    .and_then(|p| serde_json::to_string(&p).ok())
-                                    .unwrap_or_else(|| "{}".to_string()),
+                                name: Some(tc.function.name),
+                                arguments: Some(
+                                    tc.parameters
+                                        .and_then(|p| serde_json::to_string(&p).ok())
+                                        .unwrap_or_else(|| "{}".to_string()),
+                                ),
                             },
                         })
                         .collect::<Vec<_>>();

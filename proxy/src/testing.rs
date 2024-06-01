@@ -4,10 +4,12 @@ use std::{
 };
 
 use error_stack::Report;
+use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
 
 use crate::{
+    collect_response,
     format::{
-        ChatChoice, ChatMessage, ChatResponse, ResponseInfo, StreamingChatResponse,
+        ChatChoice, ChatMessage, ChatRequest, ChatResponse, ResponseInfo, StreamingChatResponse,
         StreamingResponse, StreamingResponseSender, UsageResponse,
     },
     providers::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions},
@@ -160,4 +162,73 @@ impl ChatModelProvider for TestProvider {
     fn is_default_for_model(&self, _model: &str) -> bool {
         false
     }
+}
+
+pub async fn test_fixture_response(
+    test_name: &str,
+    mock_server: MockServer,
+    path: &str,
+    provider: Arc<dyn ChatModelProvider>,
+    stream: bool,
+    response: &str,
+) {
+    let mut insta_settings = insta::Settings::clone_current();
+    insta_settings.set_snapshot_suffix(test_name);
+    insta_settings
+        .bind_async(async move {
+            let mime = if stream {
+                "text/event-stream"
+            } else {
+                "application/json"
+            };
+
+            let provider_name = provider.name().to_string();
+            Mock::given(matchers::method("POST"))
+                .and(matchers::path(path))
+                .respond_with(ResponseTemplate::new(200).set_body_raw(response, mime))
+                .mount(&mock_server)
+                .await;
+
+            let proxy = super::Proxy::builder()
+                .without_default_providers()
+                .with_provider(provider)
+                .build()
+                .await
+                .expect("Building proxy");
+
+            let chan = proxy
+                .send(
+                    crate::ProxyRequestOptions {
+                        provider: Some(provider_name),
+                        ..Default::default()
+                    },
+                    ChatRequest {
+                        model: Some("me/a-test-model".to_string()),
+                        messages: vec![ChatMessage {
+                            role: Some("user".to_string()),
+                            content: Some("hello".to_string()),
+                            tool_calls: Vec::new(),
+                            name: None,
+                        }],
+                        stream,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .expect("should have succeeded");
+
+            let response = collect_response(chan, 1).await;
+            if let Err(e) = &response {
+                let provider_error = e.frames().find_map(|f| f.downcast_ref::<ProviderError>());
+                println!("{provider_error:?}");
+            }
+
+            let mut response = response.unwrap();
+
+            // ID will be different every time, so zero it for the snapshot
+            response.request_info.id = uuid::Uuid::nil();
+            response.response.created = 0;
+            insta::assert_json_snapshot!(response);
+        })
+        .await;
 }

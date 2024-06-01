@@ -1,0 +1,25 @@
+{
+  "model": "claude-3-haiku-20240307",
+  "max_tokens": 1024,
+  "messages": [
+    { "role": "user", "content": "Given this information: Daniel has brown hair.\nWhat are the characteristics??"}
+  ],
+  "tools": [
+      {
+        "name": "get_characteristics",
+        "description": "Use this tool to extract the physical characteristics of a person.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "hair_color": { "type": "string" }
+          },
+          "required": ["name", "hair", "color"]
+        }
+      }
+  ],
+  "tool_choice": {
+    "type": "tool",
+    "name": "get_characteristics"
+  }
+}
