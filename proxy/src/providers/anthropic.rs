@@ -417,7 +417,7 @@ mod streaming {
     use std::time::Duration;
 
     use error_stack::ResultExt;
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
 
     use super::{AnthropicChatResponse, AnthropicToolUse, AnthropicUsageResponse};
     use crate::{
@@ -463,16 +463,10 @@ mod streaming {
                     self.message.choices.clear();
                     ret
                 }
-                StreamingMessage::MessageDelta { message, usage } => {
-                    let delta = ChatChoiceDelta {
-                        index: 0,
-                        delta: ChatMessage {
-                            content: Some(String::new()),
-                            ..Default::default()
-                        },
-                        finish_reason: message.stop_reason,
-                    };
-
+                StreamingMessage::MessageDelta {
+                    delta: message,
+                    usage,
+                } => {
                     if let Some(usage) = usage {
                         let usage = UsageResponse {
                             prompt_tokens: usage.input_tokens,
@@ -490,10 +484,21 @@ mod streaming {
                         }
                     }
 
-                    let mut message = self.message.clone();
-                    message.choices.push(delta);
+                    let mut output = self.message.clone();
+                    if message.stop_reason.is_some() {
+                        let delta = ChatChoiceDelta {
+                            index: 0,
+                            delta: ChatMessage {
+                                content: Some(String::new()),
+                                ..Default::default()
+                            },
+                            finish_reason: message.stop_reason,
+                        };
 
-                    Ok(Some(message))
+                        output.choices.push(delta);
+                    }
+
+                    Ok(Some(output))
                 }
                 StreamingMessage::ContentBlockStart {
                     index,
@@ -598,8 +603,7 @@ mod streaming {
             message: AnthropicChatResponse,
         },
         MessageDelta {
-            // TODO this should be a delta
-            message: AnthropicChatResponse,
+            delta: MessageDelta,
             usage: Option<AnthropicUsageResponse>,
         },
         ContentBlockStart {
@@ -627,6 +631,12 @@ mod streaming {
     enum ContentBlockDelta {
         TextDelta { text: String },
         InputJsonDelta { partial_json: String },
+    }
+
+    #[derive(Deserialize, Debug)]
+    struct MessageDelta {
+        stop_reason: Option<String>,
+        stop_sequence: Option<String>,
     }
 }
 

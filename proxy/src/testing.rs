@@ -217,7 +217,13 @@ pub async fn test_fixture_response(
                 .await
                 .expect("should have succeeded");
 
-            let mut response = collect_response(chan, 1).await.unwrap();
+            let response = collect_response(chan, 1).await;
+            if let Err(e) = &response {
+                let provider_error = e.frames().find_map(|f| f.downcast_ref::<ProviderError>());
+                println!("{provider_error:?}");
+            }
+
+            let mut response = response.unwrap();
 
             // ID will be different every time, so zero it for the snapshot
             response.request_info.id = uuid::Uuid::nil();
