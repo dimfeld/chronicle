@@ -251,3 +251,70 @@ pub fn handle_rate_limit_headers(res: &Response) -> Option<Duration> {
     until_reset_time
     */
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use wiremock::MockServer;
+
+    use super::*;
+    use crate::testing::test_fixture_response;
+
+    async fn run_fixture_test(test_name: &str, stream: bool, response: &str) {
+        let server = MockServer::start().await;
+        let mut provider = super::OpenAi::new(reqwest::Client::new(), Some("token".to_string()));
+        provider.url = format!("{}/v1/chat_completions", server.uri());
+
+        let provider = Arc::new(provider) as Arc<dyn ChatModelProvider>;
+        test_fixture_response(
+            test_name,
+            server,
+            "/v1/chat_completions",
+            provider,
+            stream,
+            response,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn text_streaming() {
+        run_fixture_test(
+            "openai_text_streaming",
+            true,
+            include_str!("./fixtures/openai_text_response_streaming.txt"),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn text_nonstreaming() {
+        run_fixture_test(
+            "openai_text_nonstreaming",
+            false,
+            include_str!("./fixtures/openai_text_response_nonstreaming.json"),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn tool_calls_streaming() {
+        run_fixture_test(
+            "openai_tool_calls_streaming",
+            true,
+            include_str!("./fixtures/openai_tools_response_streaming.txt"),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn tool_calls_nonstreaming() {
+        run_fixture_test(
+            "openai_tool_calls_nonstreaming",
+            false,
+            include_str!("./fixtures/openai_tools_response_nonstreaming.json"),
+        )
+        .await
+    }
+}

@@ -20,6 +20,7 @@ use crate::{
 #[derive(Debug)]
 pub struct Anthropic {
     client: reqwest::Client,
+    pub(crate) url: String,
     token: Option<String>,
 }
 
@@ -27,6 +28,7 @@ impl Anthropic {
     pub fn new(client: reqwest::Client, token: Option<String>) -> Self {
         Self {
             client,
+            url: "https://api.anthropic.com/v1/messages".to_string(),
             token: token.or_else(|| std::env::var("ANTHROPIC_API_KEY").ok()),
         }
     }
@@ -85,7 +87,7 @@ impl ChatModelProvider for Anthropic {
             timeout,
             || {
                 self.client
-                    .post("https://api.anthropic.com/v1/messages")
+                    .post(self.url.as_str())
                     .header("x-api-key", api_token)
                     .header("anthropic-version", "2023-06-01")
                     .header(CONTENT_TYPE, "application/json; charset=utf8")
@@ -630,10 +632,67 @@ mod streaming {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use wiremock::MockServer;
+
     use super::*;
+    use crate::testing::test_fixture_response;
+
+    async fn run_fixture_test(test_name: &str, stream: bool, response: &str) {
+        let server = MockServer::start().await;
+        let mut provider = super::Anthropic::new(reqwest::Client::new(), Some("token".to_string()));
+        provider.url = format!("{}/v1/messages", server.uri());
+
+        let provider = Arc::new(provider) as Arc<dyn ChatModelProvider>;
+        test_fixture_response(
+            test_name,
+            server,
+            "/v1/messages",
+            provider,
+            stream,
+            response,
+        )
+        .await
+    }
 
     #[tokio::test]
-    async fn stream_parsing() {
-        // todo
+    async fn text_streaming() {
+        run_fixture_test(
+            "anthropic_text_streaming",
+            true,
+            include_str!("./fixtures/anthropic_text_response_streaming.txt"),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn text_nonstreaming() {
+        run_fixture_test(
+            "anthropic_text_nonstreaming",
+            false,
+            include_str!("./fixtures/anthropic_text_response_nonstreaming.json"),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn tool_calls_streaming() {
+        run_fixture_test(
+            "anthropic_tool_calls_streaming",
+            true,
+            include_str!("./fixtures/anthropic_tools_response_streaming.txt"),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn tool_calls_nonstreaming() {
+        run_fixture_test(
+            "anthropic_tool_calls_nonstreaming",
+            false,
+            include_str!("./fixtures/anthropic_tools_response_nonstreaming.json"),
+        )
+        .await
     }
 }

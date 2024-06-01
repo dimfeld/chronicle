@@ -1,0 +1,39 @@
+---
+source: proxy/src/testing.rs
+expression: response
+---
+{
+  "request_info": {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "provider": "openai",
+    "model": "me/a-test-model",
+    "num_retries": 0,
+    "was_rate_limited": false
+  },
+  "response_info": {
+    "meta": null,
+    "model": "gpt-3.5-turbo-0125"
+  },
+  "was_streaming": false,
+  "num_chunks": 1,
+  "response": {
+    "created": 0,
+    "model": "gpt-3.5-turbo-0125",
+    "system_fingerprint": null,
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "Lassie was a fictional character, a Rough Collie dog, who was featured in a long-running series of movies, TV shows, and books. The character first appeared in a short story by Eric Knight in 1938 and became popular through the classic television series \"Lassie\" which aired from 1954 to 1973. Lassie is known for her loyalty, bravery, and intelligence, and is considered one of the most iconic dogs in popular culture."
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 15,
+      "completion_tokens": 97,
+      "total_tokens": 112
+    }
+  }
+}

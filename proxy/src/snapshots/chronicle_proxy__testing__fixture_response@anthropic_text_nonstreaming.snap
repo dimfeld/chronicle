@@ -1,0 +1,39 @@
+---
+source: proxy/src/testing.rs
+expression: response
+---
+{
+  "request_info": {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "provider": "anthropic",
+    "model": "me/a-test-model",
+    "num_retries": 0,
+    "was_rate_limited": false
+  },
+  "response_info": {
+    "meta": null,
+    "model": "claude-3-haiku-20240307"
+  },
+  "was_streaming": false,
+  "num_chunks": 1,
+  "response": {
+    "created": 0,
+    "model": "claude-3-haiku-20240307",
+    "system_fingerprint": null,
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "Lassie was a fictional dog character that appeared in a series of Hollywood films, television shows, and books starting in the 1940s.\n\nThe original Lassie was a female Rough Collie owned by a trainer named Rudd Weatherwax. Lassie first appeared in the 1943 film Lassie Come Home, starring Roddy McDowall. \n\nOver the years, the role of Lassie was played by several different Rough Collies, but they were all trained to portray the iconic character. Lassie was known for her intelligence, loyalty, and heroic deeds in rescuing and helping her human companions, particularly young boys like Timmy.\n\nThe Lassie character became hugely popular, starring in multiple feature films as well as a long-running TV series that aired from 1954 to 1973. Lassie is considered one of the most famous and beloved dog characters in entertainment history."
+        },
+        "finish_reason": "end_turn"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 16,
+      "completion_tokens": 217,
+      "total_tokens": null
+    }
+  }
+}
