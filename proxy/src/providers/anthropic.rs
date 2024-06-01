@@ -416,8 +416,9 @@ struct AnthropicUsageResponse {
 mod streaming {
     use std::time::Duration;
 
-    use error_stack::ResultExt;
-    use serde::Deserialize;
+    use error_stack::{Report, ResultExt};
+    use http::StatusCode;
+    use serde::{Deserialize, Serialize};
 
     use super::{AnthropicChatResponse, AnthropicToolUse, AnthropicUsageResponse};
     use crate::{
@@ -562,6 +563,21 @@ mod streaming {
                     Ok(Some(message))
                 }
                 StreamingMessage::ContentBlockStop { .. } => Ok(None),
+                StreamingMessage::Error { error } => {
+                    let status_code = match error.typ.as_str() {
+                        "invalid_request_error" => Some(StatusCode::BAD_REQUEST),
+                        "api_error" => Some(StatusCode::INTERNAL_SERVER_ERROR),
+                        "overloaded_error" => Some(StatusCode::from_u16(529).unwrap()),
+                        _ => None,
+                    };
+
+                    Err(Report::new(ProviderError {
+                        kind: crate::providers::ProviderErrorKind::Server,
+                        body: serde_json::to_value(error).ok(),
+                        status_code,
+                        latency: Duration::ZERO,
+                    }))
+                }
             }
         }
     }
@@ -579,7 +595,8 @@ mod streaming {
                 | "message_delta"
                 | "content_block_start"
                 | "content_block_delta"
-                | "content_block_stop" => {
+                | "content_block_stop"
+                | "error" => {
                     let data = serde_json::from_str::<StreamingMessage>(&event.data)
                         .change_context_lazy(|| ProviderError {
                             kind: crate::providers::ProviderErrorKind::ParsingResponse,
@@ -590,7 +607,6 @@ mod streaming {
                     self.handle_data(data)
                 }
                 "message_stop" => Ok(None),
-                "error" => Err(todo!()),
                 _ => Ok(None),
             }
         }
@@ -617,6 +633,9 @@ mod streaming {
         ContentBlockStop {
             index: usize,
         },
+        Error {
+            error: StreamingError,
+        },
     }
 
     #[derive(Deserialize, Debug)]
@@ -637,6 +656,13 @@ mod streaming {
     struct MessageDelta {
         stop_reason: Option<String>,
         stop_sequence: Option<String>,
+    }
+
+    #[derive(Serialize, Deserialize, Debug)]
+    struct StreamingError {
+        #[serde(rename = "type")]
+        typ: String,
+        message: String,
     }
 }
 

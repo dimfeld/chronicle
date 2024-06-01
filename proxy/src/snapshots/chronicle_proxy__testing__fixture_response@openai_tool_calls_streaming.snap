@@ -1,6 +1,5 @@
 ---
 source: proxy/src/testing.rs
-assertion_line: 231
 expression: response
 ---
 {
