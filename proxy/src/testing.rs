@@ -200,6 +200,7 @@ pub async fn test_fixture_response(
                 .send(
                     crate::ProxyRequestOptions {
                         provider: Some(provider_name),
+                        override_url: Some(format!("{}/{}", mock_server.uri(), path)),
                         ..Default::default()
                     },
                     ChatRequest {

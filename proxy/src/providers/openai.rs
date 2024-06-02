@@ -22,7 +22,6 @@ use crate::{
 pub struct OpenAi {
     client: reqwest::Client,
     token: Option<String>,
-    url: String,
 }
 
 impl OpenAi {
@@ -31,7 +30,6 @@ impl OpenAi {
         Self {
             client,
             token: token.or_else(|| std::env::var("OPENAI_API_KEY").ok()),
-            url: "https://api.openai.com/v1/chat/completions".into(),
         }
     }
 }
@@ -54,7 +52,7 @@ impl ChatModelProvider for OpenAi {
     ) -> Result<(), Report<ProviderError>> {
         send_openai_request(
             &self.client,
-            &self.url,
+            "https://api.openai.com/v1/chat/completions",
             None,
             self.token.as_deref(),
             chunk_tx,
@@ -263,14 +261,13 @@ mod tests {
 
     async fn run_fixture_test(test_name: &str, stream: bool, response: &str) {
         let server = MockServer::start().await;
-        let mut provider = super::OpenAi::new(reqwest::Client::new(), Some("token".to_string()));
-        provider.url = format!("{}/v1/chat_completions", server.uri());
+        let provider = super::OpenAi::new(reqwest::Client::new(), Some("token".to_string()));
 
         let provider = Arc::new(provider) as Arc<dyn ChatModelProvider>;
         test_fixture_response(
             test_name,
             server,
-            "/v1/chat_completions",
+            "v1/chat/completions",
             provider,
             stream,
             response,

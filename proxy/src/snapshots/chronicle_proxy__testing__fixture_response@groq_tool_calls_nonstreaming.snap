@@ -1,0 +1,49 @@
+---
+source: proxy/src/testing.rs
+expression: response
+---
+{
+  "request_info": {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "provider": "groq",
+    "model": "me/a-test-model",
+    "num_retries": 0,
+    "was_rate_limited": false
+  },
+  "response_info": {
+    "meta": null,
+    "model": "llama3-8b-8192"
+  },
+  "was_streaming": false,
+  "num_chunks": 1,
+  "response": {
+    "created": 0,
+    "model": "llama3-8b-8192",
+    "system_fingerprint": "fp_dadc9d6142",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": null,
+          "tool_calls": [
+            {
+              "id": "call_2tj9",
+              "type": "function",
+              "function": {
+                "name": "get_characteristics",
+                "arguments": "{\"hair_color\":\"brown\",\"name\":\"Daniel\"}"
+              }
+            }
+          ]
+        },
+        "finish_reason": "tool_calls"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 828,
+      "completion_tokens": 81,
+      "total_tokens": 909
+    }
+  }
+}

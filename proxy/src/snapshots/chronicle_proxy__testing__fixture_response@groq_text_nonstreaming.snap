@@ -1,0 +1,39 @@
+---
+source: proxy/src/testing.rs
+expression: response
+---
+{
+  "request_info": {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "provider": "groq",
+    "model": "me/a-test-model",
+    "num_retries": 0,
+    "was_rate_limited": false
+  },
+  "response_info": {
+    "meta": null,
+    "model": "llama3-8b-8192"
+  },
+  "was_streaming": false,
+  "num_chunks": 1,
+  "response": {
+    "created": 0,
+    "model": "llama3-8b-8192",
+    "system_fingerprint": "fp_33d61fdfc3",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "Lassie is a legendary canine character who has been a beloved global icon since the 1940s. She is a Rough Collie, a breed of dog known for its intelligence, loyalty, and protective nature.\n\nIn the beginning, Lassie was a real-life Rough Collie named Pal, played by a male dog named Rudd Weatherwax, who starred in the 1943 film \"Lassie Come-Home.\" The story was written by Eric Knight and tells the tale of a young boy who buys a smooth collie puppy from a street vendor and later loses him. The novel was a huge success and was adapted into several films, television shows, and even a theme park attraction.\n\nOver time, Lassie has become a symbol of loyalty, courage, and faithfulness. She is often depicted as a female dog, although the original Pal, who played Lassie in the films, was a male. The character has been portrayed by several dogs over the years, with the most well-known being Pal, Sue, and Baby.\n\nLassie has appeared in numerous films, television shows, and books throughout the years. The character has also been featured in various media, such as comic books, video games, and even a stage show."
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 18,
+      "completion_tokens": 255,
+      "total_tokens": 273
+    }
+  }
+}

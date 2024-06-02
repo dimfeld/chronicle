@@ -1,0 +1,32 @@
+{
+  "model": "llama3-8b-8192",
+  "max_tokens": 1024,
+  "messages": [
+    { "role": "user", "content": "Given this information: Daniel has brown hair.\nWhat are the characteristics??"}
+  ],
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_characteristics",
+        "description": "Use this tool to extract the physical characteristics of a person.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "hair_color": { "type": "string" }
+          }
+        },
+        "required": ["name", "hair", "color"]
+      }
+    }
+  ],
+  "tool_choice": {
+    "type": "function",
+    "function": {
+      "name": "get_characteristics"
+    }
+  }
+}
+
+

@@ -220,3 +220,70 @@ struct InternalToolCall {
 struct InternalToolCallFunction {
     name: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use wiremock::MockServer;
+
+    use super::*;
+    use crate::testing::test_fixture_response;
+
+    async fn run_fixture_test(test_name: &str, stream: bool, response: &str) {
+        let server = MockServer::start().await;
+        let provider = super::Groq::new(reqwest::Client::new(), Some("token".to_string()));
+        let provider = Arc::new(provider) as Arc<dyn ChatModelProvider>;
+        test_fixture_response(
+            test_name,
+            server,
+            "openai/v1/chat_completions",
+            provider,
+            stream,
+            response,
+        )
+        .await
+    }
+
+    #[tokio::test]
+    #[ignore = "streaming not implemented yet"]
+    async fn text_streaming() {
+        run_fixture_test(
+            "groq_text_streaming",
+            true,
+            include_str!("./fixtures/groq_text_response_streaming.txt"),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn text_nonstreaming() {
+        run_fixture_test(
+            "groq_text_nonstreaming",
+            false,
+            include_str!("./fixtures/groq_text_response_nonstreaming.json"),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    #[ignore = "streaming not implemented yet"]
+    async fn tool_calls_streaming() {
+        run_fixture_test(
+            "groq_tool_calls_streaming",
+            true,
+            include_str!("./fixtures/groq_tools_response_streaming.txt"),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn tool_calls_nonstreaming() {
+        run_fixture_test(
+            "groq_tool_calls_nonstreaming",
+            false,
+            include_str!("./fixtures/groq_tools_response_nonstreaming.json"),
+        )
+        .await
+    }
+}
