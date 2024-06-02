@@ -4,6 +4,7 @@
 
 - Streaming support for OpenAI-compatible providers
 - Streaming support for Anthropic
+- Streaming support for Groq
 
 ## 0.2.0
 

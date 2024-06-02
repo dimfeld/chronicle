@@ -1,6 +1,7 @@
 use bytes::Bytes;
 use chrono::Utc;
 use error_stack::{Report, ResultExt};
+use eventsource_stream::Event;
 use reqwest::header::CONTENT_TYPE;
 use serde::Deserialize;
 
@@ -11,10 +12,11 @@ use super::{
 use crate::{
     format::{
         ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, ResponseInfo,
-        SingleChatResponse, StreamingResponse, StreamingResponseSender, ToolCall, ToolCallFunction,
-        UsageResponse,
+        SingleChatResponse, StreamingChatResponse, StreamingResponse, StreamingResponseSender,
+        ToolCall, ToolCallFunction, UsageResponse,
     },
-    request::{parse_response_json, send_standard_request},
+    request::{parse_response_json, response_is_sse, send_standard_request},
+    streaming::{stream_sse_to_channel, StreamingChunkMapper},
 };
 
 #[derive(Debug)]
@@ -63,8 +65,6 @@ impl ChatModelProvider for Groq {
         body.logit_bias = None;
         body.top_logprobs = None;
         body.n = None;
-        // TODO enable streaming
-        body.stream = false;
 
         let bytes = serde_json::to_vec(&body).change_context_lazy(|| {
             ProviderError::from_kind(ProviderErrorKind::TransformingRequest)
@@ -76,6 +76,7 @@ impl ChatModelProvider for Groq {
             .or(self.token.as_deref())
             .ok_or(ProviderError::from_kind(ProviderErrorKind::AuthMissing))?;
 
+        let start_time = tokio::time::Instant::now();
         let response = send_standard_request(
             timeout,
             || {
@@ -133,6 +134,12 @@ impl ChatModelProvider for Groq {
             }
             Err(e) => Err(e),
             Ok((response, latency)) => {
+                if response_is_sse(&response) {
+                    let processor = GroqStreamingEventProcessor { start_time };
+                    stream_sse_to_channel(response, chunk_tx, processor);
+                    return Ok(());
+                }
+
                 let result = parse_response_json::<SingleChatResponse>(response, latency).await?;
 
                 Ok(result)
@@ -141,7 +148,6 @@ impl ChatModelProvider for Groq {
 
         let result = response?;
 
-        // TODO Actually support streaming
         let info = StreamingResponse::ResponseInfo(ResponseInfo {
             model: result.model.clone().unwrap_or_default(),
             meta: None,
@@ -158,6 +164,63 @@ impl ChatModelProvider for Groq {
     fn is_default_for_model(&self, model: &str) -> bool {
         model.starts_with("groq/")
     }
+}
+
+pub struct GroqStreamingEventProcessor {
+    pub start_time: tokio::time::Instant,
+}
+
+impl StreamingChunkMapper for GroqStreamingEventProcessor {
+    fn process_chunk(
+        &mut self,
+        event: &Event,
+    ) -> Result<Option<StreamingChatResponse>, Report<ProviderError>> {
+        if event.data == "[DONE]" {
+            return Ok(None);
+        }
+
+        if event.event == "error" {
+            Err(Report::new(ProviderError {
+                kind: ProviderErrorKind::Generic,
+                status_code: None,
+                body: serde_json::from_str(&event.data).ok(),
+                latency: self.start_time.elapsed(),
+            }))
+        } else {
+            let response = serde_json::from_str::<GroqStreamingChatResponse>(&event.data)
+                .change_context_lazy(|| ProviderError {
+                    kind: ProviderErrorKind::ParsingResponse,
+                    status_code: None,
+                    body: serde_json::from_str(&event.data).ok(),
+                    latency: self.start_time.elapsed(),
+                })?;
+
+            let GroqStreamingChatResponse {
+                mut response,
+                x_groq,
+            } = response;
+            if let Some(usage) = x_groq.and_then(|x| x.usage) {
+                response.usage = Some(usage);
+            }
+
+            Ok(Some(response))
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct GroqStreamingChatResponse {
+    #[serde(flatten)]
+    response: StreamingChatResponse,
+    x_groq: Option<StreamingXGroq>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StreamingXGroq {
+    // id: String
+    // TODO this contains a few other metrics as well that split out the latency, not sure if those
+    // are useful but we may want some way to return them.
+    usage: Option<UsageResponse>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -246,7 +309,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "streaming not implemented yet"]
     async fn text_streaming() {
         run_fixture_test(
             "groq_text_streaming",
@@ -267,7 +329,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "streaming not implemented yet"]
     async fn tool_calls_streaming() {
         run_fixture_test(
             "groq_tool_calls_streaming",

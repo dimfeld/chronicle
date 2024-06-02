@@ -128,7 +128,7 @@ pub async fn send_openai_request(
     .await?;
 
     if response_is_sse(&response) {
-        let processor = StreamingEventProcessor { start_time };
+        let processor = OpenAiStreamingEventProcessor { start_time };
         stream_sse_to_channel(response, chunk_tx, processor);
     } else {
         let result = parse_response_json::<SingleChatResponse>(response, latency).await;
@@ -150,11 +150,11 @@ pub async fn send_openai_request(
     Ok(())
 }
 
-struct StreamingEventProcessor {
-    start_time: tokio::time::Instant,
+pub struct OpenAiStreamingEventProcessor {
+    pub start_time: tokio::time::Instant,
 }
 
-impl StreamingChunkMapper for StreamingEventProcessor {
+impl StreamingChunkMapper for OpenAiStreamingEventProcessor {
     fn process_chunk(
         &mut self,
         event: &Event,

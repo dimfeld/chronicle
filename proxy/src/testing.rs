@@ -4,6 +4,7 @@ use std::{
 };
 
 use error_stack::Report;
+use filigree::tracing_config;
 use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
 
 use crate::{
@@ -172,6 +173,7 @@ pub async fn test_fixture_response(
     stream: bool,
     response: &str,
 ) {
+    filigree::tracing_config::test::init();
     let mut insta_settings = insta::Settings::clone_current();
     insta_settings.set_snapshot_suffix(test_name);
     insta_settings

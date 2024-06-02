@@ -1,0 +1,39 @@
+---
+source: proxy/src/testing.rs
+expression: response
+---
+{
+  "request_info": {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "provider": "groq",
+    "model": "me/a-test-model",
+    "num_retries": 0,
+    "was_rate_limited": false
+  },
+  "response_info": {
+    "meta": null,
+    "model": "llama3-8b-8192"
+  },
+  "was_streaming": true,
+  "num_chunks": 351,
+  "response": {
+    "created": 0,
+    "model": "llama3-8b-8192",
+    "system_fingerprint": "fp_af05557ca2",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "Lassie is a legendary Rough Collie dog that was the star of a series of classic movies, television shows, and books. The character was created by Eric Knight, an American writer, in his 1940 novel \"Lassie Come-Home.\"\n\nIn the novel and subsequent film adaptations, Lassie is a charming and intelligent Collie who is separated from her young owner, Joe Carraclough, when he is forced to give her up due to financial difficulties. The novel and films follow Lassie's journey as she travels back to England to find Joe and be reunited with him.\n\nThe most famous Lassie was Pal, a male Rough Collie who played the title role in the 1943 film \"Lassie Come-Home\" and its sequels. Pal went on to become an iconic Hollywood star, earning $250,000 per year (approximately $4.5 million today) and receiving the American Humane Association's \"Pets in Film Award.\"\n\nThe Lassie franchise expanded to television in the 1950s, with the popular television series \"Lassie\" (1954-1974) starring a female Rough Collie named Pal's son, Lassie Jr., and his descendants. Over the years, several dogs played the role of Lassie on television, including three generations of the same family of Collins dogs.\n\nLassie became an international symbol of loyalty, courage, and devotion, inspiring numerous adaptations, parodies, and references in popular culture. Despite the death of Pal in 1958, the legend of Lassie continues to endure, with new generations of dogs playing the role and the character remaining a beloved and iconic figure in popular culture."
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 18,
+      "completion_tokens": 349,
+      "total_tokens": 367
+    }
+  }
+}
