@@ -3,11 +3,14 @@ import { proxyUrl, propagateSpan } from './internal.js';
 import { Stream } from './streaming.js';
 import type {
   ChronicleChatRequest,
+  ChronicleChatRequestNonStreaming,
+  ChronicleChatRequestStreaming,
   ChronicleChatResponse,
+  ChronicleChatResponseStream,
   ChronicleRequestMetadata,
   ChronicleRequestOptions,
-  SingleChronicleChatResponse,
-  StreamingChronicleChatResponse,
+  ChronicleChatResponseNonStreaming,
+  ChronicleChatResponseStreaming,
 } from './types.js';
 
 export interface ChronicleClientOptions {
@@ -23,11 +26,18 @@ export interface ChronicleClientOptions {
   defaults?: Partial<ChronicleRequestOptions>;
 }
 
-export type ChronicleEventFn = (event: ChronicleEvent) => Promise<{ id: string }>;
-export type ChronicleClient = (<STREAMING extends boolean>(
-  chat: ChronicleChatRequest<STREAMING> & Partial<ChronicleRequestOptions>,
+export type NonStreamingClientFn = (
+  chat: ChronicleChatRequestNonStreaming & Partial<ChronicleRequestOptions>,
   options?: ChronicleRequestOptions
-) => Promise<ChronicleChatResponse<STREAMING>>) & { event: ChronicleEventFn };
+) => Promise<ChronicleChatResponseNonStreaming>;
+export type StreamingClientFn = (
+  chat: ChronicleChatRequestStreaming & Partial<ChronicleRequestOptions>,
+  options?: ChronicleRequestOptions
+) => Promise<ChronicleChatResponseStream>;
+
+export type ChronicleEventFn = (event: ChronicleEvent) => Promise<{ id: string }>;
+export type ChronicleClient = NonStreamingClientFn &
+  StreamingClientFn & { event: ChronicleEventFn };
 
 /** Create a Chronicle proxy client. This returns a function which will call the Chronicle proxy */
 export function createChronicleClient(options?: ChronicleClientOptions): ChronicleClient {
@@ -35,8 +45,8 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
   let url = proxyUrl(options?.url);
   let eventUrl = new URL('/event', url);
 
-  const client = async <STREAMING extends boolean>(
-    chat: ChronicleChatRequest<STREAMING> & Partial<ChronicleRequestOptions>,
+  const client = async (
+    chat: ChronicleChatRequest & Partial<ChronicleRequestOptions>,
     options?: ChronicleRequestOptions
   ) => {
     let { signal, ...reqOptions } = options ?? {};
@@ -73,9 +83,9 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
     let res = await fetch(req);
     if (res.ok) {
       if (chat.stream) {
-        return Stream.fromSSEResponse<StreamingChronicleChatResponse>(res, options?.signal);
+        return Stream.fromSSEResponse<ChronicleChatResponseStreaming>(res, options?.signal);
       } else {
-        return (await res.json()) as SingleChronicleChatResponse;
+        return (await res.json()) as ChronicleChatResponseNonStreaming;
       }
     } else {
       throw new Error(await handleError(res));
@@ -185,7 +195,6 @@ async function handleError(res: Response) {
     message = err;
   }
 
-  console.error(err);
   // TODO The api returns a bunch of other error details, so integrate them here.
   return message || 'An error occurred';
 }

@@ -1,11 +1,12 @@
 import type * as openai from 'openai';
 
 /** A chat request. This is the same as the arguments to OpenAI's chat.completions.create function. */
-export type ChronicleChatRequest<STREAMING extends boolean> = (STREAMING extends true
-  ? openai.OpenAI.Chat.ChatCompletionCreateParamsStreaming
-  : openai.OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) & {
-  max_tokens: number;
-};
+export type ChronicleChatRequestStreaming =
+  openai.OpenAI.Chat.ChatCompletionCreateParamsStreaming & { max_tokens: number };
+export type ChronicleChatRequestNonStreaming =
+  openai.OpenAI.Chat.ChatCompletionCreateParamsNonStreaming & { max_tokens: number };
+
+export type ChronicleChatRequest = ChronicleChatRequestStreaming | ChronicleChatRequestNonStreaming;
 
 export interface ChronicleModelAndProvider {
   /** The model to use */
@@ -145,15 +146,16 @@ export interface ChronicleResponseMeta {
   was_rate_limited: boolean;
 }
 
-export interface SingleChronicleChatResponse extends openai.OpenAI.Chat.ChatCompletion {
+export interface ChronicleChatResponseNonStreaming extends openai.OpenAI.Chat.ChatCompletion {
   meta: ChronicleResponseMeta;
 }
 
-// TODO this isn't quite right, need to account for delta types
-export type StreamingChronicleChatResponse = SingleChronicleChatResponse;
+export interface ChronicleChatResponseStreaming extends openai.OpenAI.Chat.ChatCompletionChunk {
+  meta?: ChronicleResponseMeta;
+}
 
-export type ChronicleChatResponseStream = AsyncIterable<SingleChronicleChatResponse>;
+export type ChronicleChatResponseStream = AsyncIterable<ChronicleChatResponseStreaming>;
 
 export type ChronicleChatResponse<STREAMING extends boolean> = STREAMING extends true
   ? ChronicleChatResponseStream
-  : SingleChronicleChatResponse;
+  : ChronicleChatResponseNonStreaming;

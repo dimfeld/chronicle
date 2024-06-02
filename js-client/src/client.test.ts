@@ -1,6 +1,6 @@
 import { test, describe, expect, afterAll, beforeAll } from 'bun:test';
 import { createChronicleClient } from './client.js';
-import { ChronicleChatRequest } from './types.js';
+import { ChronicleChatRequest, ChronicleChatResponseStreaming } from './types.js';
 import { HoneycombSDK } from '@honeycombio/opentelemetry-node';
 import { trace } from '@opentelemetry/api';
 
@@ -63,6 +63,48 @@ test('with defaults', async () => {
   expect(result.meta.provider).toBe('groq');
 });
 
+test('streaming', async () => {
+  let client = createChronicleClient();
+
+  let result = await client({
+    model: 'groq/llama3-8b-8192',
+    metadata: {
+      application: 'chronicle-test',
+      environment: 'test',
+      workflow_id: 'basic client',
+    },
+    max_tokens: 128,
+    stream: true,
+    messages: [
+      {
+        role: 'user',
+        content: 'Hello',
+      },
+    ],
+  });
+
+  let chunks: ChronicleChatResponseStreaming[] = [];
+  for await (const chunk of result) {
+    chunks.push(chunk);
+  }
+
+  expect(chunks.length).toBeGreaterThan(1);
+
+  let first = chunks[0];
+  expect(first.choices[0].delta).toBeTruthy();
+  expect(first.model).toBe('llama3-8b-8192');
+  expect(first.meta?.provider).toBe('groq');
+
+  const text = chunks
+    .map((chunk) => chunk.choices[0].delta.content)
+    .join('')
+    .trim();
+  console.log(text);
+
+  expect(text).toBeTruthy();
+  expect(text.length).toBeGreaterThan(chunks[0].choices[0].delta.content?.length ?? 0);
+});
+
 describe('tools', () => {
   const request: ChronicleChatRequest = {
     model: '',
@@ -97,7 +139,7 @@ describe('tools', () => {
     const testRequest = {
       ...request,
       // model: 'gpt-3.5-turbo',
-      model: 'groq/llama3-70b-8192',
+      model: 'groq/llama3-8b-8192',
     };
 
     const client = createChronicleClient();
@@ -107,7 +149,7 @@ describe('tools', () => {
 
     console.dir(result, { depth: null });
 
-    const toolCall = result.choices[0].message.tool_calls?.[0];
+    const toolCall = result.choices[0].message.tool_calls?.[0]!;
     expect(toolCall).toBeTruthy();
     expect(toolCall?.function?.name).toBe('get_characteristics');
     expect(JSON.parse(toolCall?.function.arguments)).toEqual({
@@ -129,7 +171,7 @@ describe('tools', () => {
     expect(result.model).toBe('claude-3-haiku-20240307');
     expect(result.meta.provider).toBe('anthropic');
 
-    const toolCall = result.choices[0].message.tool_calls?.[0];
+    const toolCall = result.choices[0].message.tool_calls?.[0]!;
     expect(toolCall).toBeTruthy();
     expect(toolCall?.function?.name).toBe('get_characteristics');
     expect(JSON.parse(toolCall?.function.arguments)).toEqual({
