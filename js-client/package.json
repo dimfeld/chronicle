@@ -1,7 +1,7 @@
 {
   "name": "@dimfeld/chronicle",
   "description": "Client SDK for the Chronicle LLM Proxy",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "module": "dist/index.js",
   "license": "Apache-2.0",
   "type": "module",
@@ -12,6 +12,7 @@
     }
   },
   "scripts": {
+    "prepare": "npm run build",
     "build": "rm -rf dist && tsc && publint",
     "dev": "tsc --watch"
   },
