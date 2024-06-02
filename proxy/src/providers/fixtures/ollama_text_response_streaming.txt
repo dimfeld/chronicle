@@ -1,0 +1,278 @@
+{"model":"llama3","created_at":"2024-06-02T06:58:55.524368Z","message":{"role":"assistant","content":"A"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.541134Z","message":{"role":"assistant","content":" classic"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.557785Z","message":{"role":"assistant","content":"!\n\n"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.574522Z","message":{"role":"assistant","content":"L"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.591256Z","message":{"role":"assistant","content":"ass"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.608022Z","message":{"role":"assistant","content":"ie"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.62471Z","message":{"role":"assistant","content":" is"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.641359Z","message":{"role":"assistant","content":" a"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.658135Z","message":{"role":"assistant","content":" fictional"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.674695Z","message":{"role":"assistant","content":" Rough"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.691277Z","message":{"role":"assistant","content":" Coll"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.708008Z","message":{"role":"assistant","content":"ie"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.724638Z","message":{"role":"assistant","content":" dog"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.741215Z","message":{"role":"assistant","content":" character"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.757836Z","message":{"role":"assistant","content":" created"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.774687Z","message":{"role":"assistant","content":" by"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.791373Z","message":{"role":"assistant","content":" Eric"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.808038Z","message":{"role":"assistant","content":" Knight"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.824743Z","message":{"role":"assistant","content":" in"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.841502Z","message":{"role":"assistant","content":" his"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.858339Z","message":{"role":"assistant","content":" "},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.875723Z","message":{"role":"assistant","content":"194"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.892453Z","message":{"role":"assistant","content":"0"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.909149Z","message":{"role":"assistant","content":" novel"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.925832Z","message":{"role":"assistant","content":" \""},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.942479Z","message":{"role":"assistant","content":"L"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.959239Z","message":{"role":"assistant","content":"ass"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.975879Z","message":{"role":"assistant","content":"ie"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:55.992501Z","message":{"role":"assistant","content":" Come"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.009164Z","message":{"role":"assistant","content":"-"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.025843Z","message":{"role":"assistant","content":"Home"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.042522Z","message":{"role":"assistant","content":"\"."},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.05924Z","message":{"role":"assistant","content":" The"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.075667Z","message":{"role":"assistant","content":" story"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.092469Z","message":{"role":"assistant","content":" follows"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.109131Z","message":{"role":"assistant","content":" a"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.12587Z","message":{"role":"assistant","content":" coll"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.142744Z","message":{"role":"assistant","content":"ie"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.159406Z","message":{"role":"assistant","content":" dog"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.176208Z","message":{"role":"assistant","content":" named"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.192974Z","message":{"role":"assistant","content":" L"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.209716Z","message":{"role":"assistant","content":"ass"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.226538Z","message":{"role":"assistant","content":"ie"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.243284Z","message":{"role":"assistant","content":","},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.260082Z","message":{"role":"assistant","content":" who"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.27672Z","message":{"role":"assistant","content":" is"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.293431Z","message":{"role":"assistant","content":" a"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.310301Z","message":{"role":"assistant","content":" loyal"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.327148Z","message":{"role":"assistant","content":" companion"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.343902Z","message":{"role":"assistant","content":" to"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.360913Z","message":{"role":"assistant","content":" a"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.377129Z","message":{"role":"assistant","content":" young"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.39483Z","message":{"role":"assistant","content":" girl"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.411743Z","message":{"role":"assistant","content":" named"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.428559Z","message":{"role":"assistant","content":" Ruth"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.44528Z","message":{"role":"assistant","content":" Field"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.462061Z","message":{"role":"assistant","content":"ing"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.478812Z","message":{"role":"assistant","content":"."},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.495585Z","message":{"role":"assistant","content":" The"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.512605Z","message":{"role":"assistant","content":" book"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.529404Z","message":{"role":"assistant","content":" was"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.54615Z","message":{"role":"assistant","content":" a"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.562901Z","message":{"role":"assistant","content":" huge"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.581415Z","message":{"role":"assistant","content":" success"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.598134Z","message":{"role":"assistant","content":","},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.614995Z","message":{"role":"assistant","content":" and"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.631763Z","message":{"role":"assistant","content":" the"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.648552Z","message":{"role":"assistant","content":" character"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.665333Z","message":{"role":"assistant","content":" of"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.682114Z","message":{"role":"assistant","content":" L"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.698834Z","message":{"role":"assistant","content":"ass"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.715601Z","message":{"role":"assistant","content":"ie"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.732352Z","message":{"role":"assistant","content":" has"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.749095Z","message":{"role":"assistant","content":" since"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.766019Z","message":{"role":"assistant","content":" become"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.782845Z","message":{"role":"assistant","content":" an"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.799617Z","message":{"role":"assistant","content":" iconic"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.816308Z","message":{"role":"assistant","content":" symbol"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.833058Z","message":{"role":"assistant","content":" of"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.849899Z","message":{"role":"assistant","content":" courage"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.867256Z","message":{"role":"assistant","content":","},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.884074Z","message":{"role":"assistant","content":" loyalty"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.900871Z","message":{"role":"assistant","content":","},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.917694Z","message":{"role":"assistant","content":" and"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.934438Z","message":{"role":"assistant","content":" friendship"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.951215Z","message":{"role":"assistant","content":".\n\n"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.968011Z","message":{"role":"assistant","content":"The"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:56.984945Z","message":{"role":"assistant","content":" first"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.001668Z","message":{"role":"assistant","content":" television"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.018425Z","message":{"role":"assistant","content":" show"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.035204Z","message":{"role":"assistant","content":" featuring"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.052018Z","message":{"role":"assistant","content":" L"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.068825Z","message":{"role":"assistant","content":"ass"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.085559Z","message":{"role":"assistant","content":"ie"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.102358Z","message":{"role":"assistant","content":" premiered"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.121105Z","message":{"role":"assistant","content":" in"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.138013Z","message":{"role":"assistant","content":" "},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.154833Z","message":{"role":"assistant","content":"195"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.171683Z","message":{"role":"assistant","content":"4"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.188479Z","message":{"role":"assistant","content":" and"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.205265Z","message":{"role":"assistant","content":" ran"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.222042Z","message":{"role":"assistant","content":" for"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.238814Z","message":{"role":"assistant","content":" "},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.25573Z","message":{"role":"assistant","content":"17"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.272663Z","message":{"role":"assistant","content":" seasons"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.289475Z","message":{"role":"assistant","content":" until"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.30633Z","message":{"role":"assistant","content":" "},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.323168Z","message":{"role":"assistant","content":"197"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.340049Z","message":{"role":"assistant","content":"4"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.357116Z","message":{"role":"assistant","content":"."},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.373963Z","message":{"role":"assistant","content":" The"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.391057Z","message":{"role":"assistant","content":" series"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.407925Z","message":{"role":"assistant","content":" followed"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.424741Z","message":{"role":"assistant","content":" the"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.441563Z","message":{"role":"assistant","content":" adventures"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.458502Z","message":{"role":"assistant","content":" of"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.47543Z","message":{"role":"assistant","content":" a"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.492298Z","message":{"role":"assistant","content":" heroic"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.509257Z","message":{"role":"assistant","content":" coll"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.526239Z","message":{"role":"assistant","content":"ie"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.5432Z","message":{"role":"assistant","content":" dog"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.560141Z","message":{"role":"assistant","content":" named"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.577052Z","message":{"role":"assistant","content":" L"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.594002Z","message":{"role":"assistant","content":"ass"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.610971Z","message":{"role":"assistant","content":"ie"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.627831Z","message":{"role":"assistant","content":","},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.644701Z","message":{"role":"assistant","content":" who"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.66173Z","message":{"role":"assistant","content":" lives"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.680329Z","message":{"role":"assistant","content":" on"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.697214Z","message":{"role":"assistant","content":" a"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.714102Z","message":{"role":"assistant","content":" ranch"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.734002Z","message":{"role":"assistant","content":" with"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.750835Z","message":{"role":"assistant","content":" her"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.767775Z","message":{"role":"assistant","content":" best"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.784711Z","message":{"role":"assistant","content":" friend"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.803422Z","message":{"role":"assistant","content":" Tim"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.820324Z","message":{"role":"assistant","content":"my"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.83724Z","message":{"role":"assistant","content":" Martin"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.854161Z","message":{"role":"assistant","content":" ("},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.871952Z","message":{"role":"assistant","content":"played"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.890687Z","message":{"role":"assistant","content":" by"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.907861Z","message":{"role":"assistant","content":" Jon"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.925168Z","message":{"role":"assistant","content":" Prov"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.942246Z","message":{"role":"assistant","content":"ost"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.959429Z","message":{"role":"assistant","content":")"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.976413Z","message":{"role":"assistant","content":" and"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:57.993325Z","message":{"role":"assistant","content":" his"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.010289Z","message":{"role":"assistant","content":" family"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.027349Z","message":{"role":"assistant","content":"."},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.044417Z","message":{"role":"assistant","content":" L"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.061395Z","message":{"role":"assistant","content":"ass"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.078371Z","message":{"role":"assistant","content":"ie"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.095332Z","message":{"role":"assistant","content":" was"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.112302Z","message":{"role":"assistant","content":" known"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.129253Z","message":{"role":"assistant","content":" for"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.146153Z","message":{"role":"assistant","content":" her"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.163119Z","message":{"role":"assistant","content":" incredible"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.180095Z","message":{"role":"assistant","content":" intelligence"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.197038Z","message":{"role":"assistant","content":","},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.214024Z","message":{"role":"assistant","content":" bravery"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.230997Z","message":{"role":"assistant","content":","},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.247654Z","message":{"role":"assistant","content":" and"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.264339Z","message":{"role":"assistant","content":" ability"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.283042Z","message":{"role":"assistant","content":" to"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.299889Z","message":{"role":"assistant","content":" help"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.316919Z","message":{"role":"assistant","content":" those"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.333874Z","message":{"role":"assistant","content":" in"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.35086Z","message":{"role":"assistant","content":" need"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.367745Z","message":{"role":"assistant","content":".\n\n"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.384784Z","message":{"role":"assistant","content":"Over"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.401698Z","message":{"role":"assistant","content":" the"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.418616Z","message":{"role":"assistant","content":" years"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.43552Z","message":{"role":"assistant","content":","},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.4524Z","message":{"role":"assistant","content":" there"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.471117Z","message":{"role":"assistant","content":" have"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.488257Z","message":{"role":"assistant","content":" been"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.505235Z","message":{"role":"assistant","content":" several"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.522555Z","message":{"role":"assistant","content":" re"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.539557Z","message":{"role":"assistant","content":"bo"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.556756Z","message":{"role":"assistant","content":"ots"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.573765Z","message":{"role":"assistant","content":" and"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.590866Z","message":{"role":"assistant","content":" spin"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.611753Z","message":{"role":"assistant","content":"-offs"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.629111Z","message":{"role":"assistant","content":" of"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.6461Z","message":{"role":"assistant","content":" the"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.663083Z","message":{"role":"assistant","content":" original"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.680179Z","message":{"role":"assistant","content":" TV"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.697194Z","message":{"role":"assistant","content":" series"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.714158Z","message":{"role":"assistant","content":","},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.73123Z","message":{"role":"assistant","content":" including"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.748154Z","message":{"role":"assistant","content":" a"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.765244Z","message":{"role":"assistant","content":" "},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.782295Z","message":{"role":"assistant","content":"199"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.799565Z","message":{"role":"assistant","content":"7"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.81657Z","message":{"role":"assistant","content":"-"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.833612Z","message":{"role":"assistant","content":"200"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.850653Z","message":{"role":"assistant","content":"1"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.868202Z","message":{"role":"assistant","content":" revival"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.885562Z","message":{"role":"assistant","content":" starring"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.902863Z","message":{"role":"assistant","content":" Christopher"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.920022Z","message":{"role":"assistant","content":" Knight"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.936933Z","message":{"role":"assistant","content":" as"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.953958Z","message":{"role":"assistant","content":" Jonathan"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.9714Z","message":{"role":"assistant","content":" \""},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:58.988425Z","message":{"role":"assistant","content":"J"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.005369Z","message":{"role":"assistant","content":"esse"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.022804Z","message":{"role":"assistant","content":"\""},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.039916Z","message":{"role":"assistant","content":" Harper"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.057366Z","message":{"role":"assistant","content":","},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.074668Z","message":{"role":"assistant","content":" Tim"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.09185Z","message":{"role":"assistant","content":"my"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.108925Z","message":{"role":"assistant","content":"'s"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.126031Z","message":{"role":"assistant","content":" older"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.143436Z","message":{"role":"assistant","content":" brother"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.160738Z","message":{"role":"assistant","content":"."},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.177839Z","message":{"role":"assistant","content":" More"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.195237Z","message":{"role":"assistant","content":" recently"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.212499Z","message":{"role":"assistant","content":","},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.229614Z","message":{"role":"assistant","content":" a"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.246752Z","message":{"role":"assistant","content":" new"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.267198Z","message":{"role":"assistant","content":" L"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.284357Z","message":{"role":"assistant","content":"ass"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.301311Z","message":{"role":"assistant","content":"ie"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.318389Z","message":{"role":"assistant","content":" TV"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.335568Z","message":{"role":"assistant","content":" series"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.352646Z","message":{"role":"assistant","content":" premiered"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.369817Z","message":{"role":"assistant","content":" on"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.386973Z","message":{"role":"assistant","content":" The"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.404078Z","message":{"role":"assistant","content":" Hall"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.421177Z","message":{"role":"assistant","content":"mark"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.439648Z","message":{"role":"assistant","content":" Channel"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.457021Z","message":{"role":"assistant","content":" in"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.474153Z","message":{"role":"assistant","content":" "},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.491191Z","message":{"role":"assistant","content":"201"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.508452Z","message":{"role":"assistant","content":"9"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.525545Z","message":{"role":"assistant","content":".\n\n"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.542628Z","message":{"role":"assistant","content":"L"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.559736Z","message":{"role":"assistant","content":"ass"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.576809Z","message":{"role":"assistant","content":"ie"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.594055Z","message":{"role":"assistant","content":" has"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.611182Z","message":{"role":"assistant","content":" become"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.62831Z","message":{"role":"assistant","content":" an"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.645444Z","message":{"role":"assistant","content":" enduring"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.662526Z","message":{"role":"assistant","content":" cultural"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.679709Z","message":{"role":"assistant","content":" phenomenon"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.698576Z","message":{"role":"assistant","content":","},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.7158Z","message":{"role":"assistant","content":" with"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.732971Z","message":{"role":"assistant","content":" numerous"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.750167Z","message":{"role":"assistant","content":" films"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.76746Z","message":{"role":"assistant","content":","},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.784605Z","message":{"role":"assistant","content":" TV"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.801661Z","message":{"role":"assistant","content":" shows"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.81886Z","message":{"role":"assistant","content":","},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.836012Z","message":{"role":"assistant","content":" books"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.853241Z","message":{"role":"assistant","content":","},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.870972Z","message":{"role":"assistant","content":" and"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.888165Z","message":{"role":"assistant","content":" merchandise"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.905304Z","message":{"role":"assistant","content":" featuring"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.922497Z","message":{"role":"assistant","content":" the"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.939639Z","message":{"role":"assistant","content":" beloved"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.956847Z","message":{"role":"assistant","content":" character"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.973932Z","message":{"role":"assistant","content":"."},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:58:59.991258Z","message":{"role":"assistant","content":" She"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:59:00.008475Z","message":{"role":"assistant","content":" remains"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:59:00.027314Z","message":{"role":"assistant","content":" one"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:59:00.044402Z","message":{"role":"assistant","content":" of"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:59:00.0615Z","message":{"role":"assistant","content":" the"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:59:00.078639Z","message":{"role":"assistant","content":" most"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:59:00.09588Z","message":{"role":"assistant","content":" iconic"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:59:00.11302Z","message":{"role":"assistant","content":" and"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:59:00.130164Z","message":{"role":"assistant","content":" beloved"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:59:00.147357Z","message":{"role":"assistant","content":" dogs"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:59:00.164521Z","message":{"role":"assistant","content":" in"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:59:00.181682Z","message":{"role":"assistant","content":" American"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:59:00.198898Z","message":{"role":"assistant","content":" pop"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:59:00.21638Z","message":{"role":"assistant","content":" culture"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:59:00.233562Z","message":{"role":"assistant","content":"!"},"done":false}
+{"model":"llama3","created_at":"2024-06-02T06:59:00.25088Z","message":{"role":"assistant","content":""},"done_reason":"stop","done":true,"total_duration":4745623542,"load_duration":743750,"prompt_eval_duration":17083000,"eval_count":278,"eval_duration":4726492000}

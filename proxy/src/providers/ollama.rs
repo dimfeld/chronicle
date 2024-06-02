@@ -116,8 +116,8 @@ impl ChatModelProvider for Ollama {
                 message: result.message,
             }],
             usage: Some(UsageResponse {
-                prompt_tokens: Some(result.prompt_eval_count as usize),
-                completion_tokens: Some(result.eval_count as usize),
+                prompt_tokens: result.prompt_eval_count.map(|c| c as usize),
+                completion_tokens: result.eval_count.map(|c| c as usize),
                 total_tokens: None,
             }),
         };
@@ -175,9 +175,48 @@ struct OllamaResponse {
     model: String,
     message: ChatMessage,
     // total_duration: u64,
-    load_duration: u64,
-    prompt_eval_count: u64,
-    prompt_eval_duration: u64,
-    eval_count: u64,
-    eval_duration: u64,
+    load_duration: Option<u64>,
+    prompt_eval_count: Option<u64>,
+    prompt_eval_duration: Option<u64>,
+    eval_count: Option<u64>,
+    eval_duration: Option<u64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use wiremock::MockServer;
+
+    use super::*;
+    use crate::testing::test_fixture_response;
+
+    async fn run_fixture_test(test_name: &str, stream: bool, response: &str) {
+        let server = MockServer::start().await;
+        let provider = super::Ollama::new(reqwest::Client::new(), None);
+
+        let provider = Arc::new(provider) as Arc<dyn ChatModelProvider>;
+        test_fixture_response(test_name, server, "api/chat", provider, stream, response).await
+    }
+
+    #[tokio::test]
+    #[ignore = "streaming not implemented"]
+    async fn text_streaming() {
+        run_fixture_test(
+            "ollama_text_streaming",
+            true,
+            include_str!("./fixtures/ollama_text_response_streaming.txt"),
+        )
+        .await
+    }
+
+    #[tokio::test]
+    async fn text_nonstreaming() {
+        run_fixture_test(
+            "ollama_text_nonstreaming",
+            false,
+            include_str!("./fixtures/ollama_text_response_nonstreaming.json"),
+        )
+        .await
+    }
 }
