@@ -1,0 +1,43 @@
+---
+source: proxy/src/testing.rs
+expression: response
+---
+{
+  "request_info": {
+    "id": "00000000-0000-0000-0000-000000000000",
+    "provider": "ollama",
+    "model": "me/a-test-model",
+    "num_retries": 0,
+    "was_rate_limited": false
+  },
+  "response_info": {
+    "meta": {
+      "eval_duration": 4726492000,
+      "load_duration": 743750,
+      "prompt_eval_duration": 17083000
+    },
+    "model": "llama3"
+  },
+  "was_streaming": true,
+  "num_chunks": 278,
+  "response": {
+    "created": 0,
+    "model": "llama3",
+    "system_fingerprint": null,
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "A classic!\n\nLassie is a fictional Rough Collie dog character created by Eric Knight in his 1940 novel \"Lassie Come-Home\". The story follows a collie dog named Lassie, who is a loyal companion to a young girl named Ruth Fielding. The book was a huge success, and the character of Lassie has since become an iconic symbol of courage, loyalty, and friendship.\n\nThe first television show featuring Lassie premiered in 1954 and ran for 17 seasons until 1974. The series followed the adventures of a heroic collie dog named Lassie, who lives on a ranch with her best friend Timmy Martin (played by Jon Provost) and his family. Lassie was known for her incredible intelligence, bravery, and ability to help those in need.\n\nOver the years, there have been several reboots and spin-offs of the original TV series, including a 1997-2001 revival starring Christopher Knight as Jonathan \"Jesse\" Harper, Timmy's older brother. More recently, a new Lassie TV series premiered on The Hallmark Channel in 2019.\n\nLassie has become an enduring cultural phenomenon, with numerous films, TV shows, books, and merchandise featuring the beloved character. She remains one of the most iconic and beloved dogs in American pop culture!"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": null,
+      "completion_tokens": 278,
+      "total_tokens": null
+    }
+  }
+}

@@ -1,17 +1,20 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, time::Duration};
 
 use bytes::Bytes;
 use chrono::Utc;
 use error_stack::{Report, ResultExt};
+use futures::TryStreamExt;
 use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use tokio::io::AsyncBufReadExt;
 
 use super::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions};
 use crate::{
     format::{
-        ChatChoice, ChatMessage, ChatRequestTransformation, ChatResponse, ResponseInfo,
-        StreamingResponse, StreamingResponseSender, UsageResponse,
+        ChatChoice, ChatChoiceDelta, ChatMessage, ChatRequestTransformation, ChatResponse,
+        ResponseInfo, StreamingChatResponse, StreamingResponse, StreamingResponseSender,
+        UsageResponse,
     },
     request::{parse_response_json, send_standard_request},
 };
@@ -28,6 +31,42 @@ impl Ollama {
         let url = format!("{url}/api/chat");
 
         Self { url, client }
+    }
+
+    fn handle_streaming_line(
+        now: i64,
+        line: Result<String, std::io::Error>,
+    ) -> Result<(StreamingChatResponse, Option<ResponseInfo>), Report<ProviderError>> {
+        let line =
+            line.change_context_lazy(|| ProviderError::from_kind(ProviderErrorKind::Server))?;
+
+        let result: OllamaResponse =
+            serde_json::from_str(&line).change_context_lazy(|| ProviderError {
+                kind: ProviderErrorKind::ParsingResponse,
+                status_code: None,
+                body: serde_json::from_str(&line).ok(),
+                latency: Duration::ZERO,
+            })?;
+
+        let response_info = result.done.filter(|x| *x).map(|_| result.response_info());
+
+        let response = StreamingChatResponse {
+            created: now as u64,
+            model: Some(result.model.clone()),
+            system_fingerprint: None,
+            choices: vec![ChatChoiceDelta {
+                index: 0,
+                finish_reason: result.done_reason,
+                delta: result.message,
+            }],
+            usage: Some(UsageResponse {
+                prompt_tokens: result.prompt_eval_count.map(|c| c as usize),
+                completion_tokens: result.eval_count.map(|c| c as usize),
+                total_tokens: None,
+            }),
+        };
+
+        Ok((response, response_info))
     }
 }
 
@@ -57,6 +96,7 @@ impl ChatModelProvider for Ollama {
             strip_model_prefix: Some(Cow::Borrowed("ollama/")),
         });
 
+        let stream = body.stream;
         let model = body
             .model
             .ok_or_else(|| ProviderError::from_kind(ProviderErrorKind::TransformingRequest))
@@ -74,7 +114,7 @@ impl ChatModelProvider for Ollama {
                 presence_penalty: body.presence_penalty,
                 seed: body.seed,
             },
-            stream: false,
+            stream,
             keep_alive: None,
         };
 
@@ -98,41 +138,59 @@ impl ChatModelProvider for Ollama {
         )
         .await?;
 
-        let result: OllamaResponse = parse_response_json(response, latency).await?;
+        if stream {
+            tokio::task::spawn(async move {
+                let stream = response
+                    .bytes_stream()
+                    .map_err(|e| std::io::Error::other(e));
+                let mut stream = tokio_util::io::StreamReader::new(stream).lines();
+                while let Some(line) = stream.next_line().await.transpose() {
+                    let chunk = Self::handle_streaming_line(now, line);
+                    match chunk {
+                        Ok((chunk, info)) => {
+                            chunk_tx
+                                .send_async(Ok(StreamingResponse::Chunk(chunk)))
+                                .await
+                                .ok();
+                            if let Some(info) = info {
+                                chunk_tx
+                                    .send_async(Ok(StreamingResponse::ResponseInfo(info)))
+                                    .await
+                                    .ok();
+                            }
+                        }
+                        Err(e) => {
+                            chunk_tx.send_async(Err(e)).await.ok();
+                        }
+                    }
+                }
+            });
+        } else {
+            let result: OllamaResponse = parse_response_json(response, latency).await?;
 
-        let meta = json!({
-            "load_duration": result.load_duration,
-            "prompt_eval_duration": result.prompt_eval_duration,
-            "eval_duration": result.eval_duration,
-        });
+            let info = StreamingResponse::ResponseInfo(result.response_info());
+            let response = ChatResponse {
+                created: now as u64,
+                model: Some(result.model),
+                system_fingerprint: None,
+                choices: vec![ChatChoice {
+                    index: 0,
+                    finish_reason: result.done_reason.unwrap_or_else(|| "stop".to_string()),
+                    message: result.message,
+                }],
+                usage: Some(UsageResponse {
+                    prompt_tokens: result.prompt_eval_count.map(|c| c as usize),
+                    completion_tokens: result.eval_count.map(|c| c as usize),
+                    total_tokens: None,
+                }),
+            };
 
-        let response = ChatResponse {
-            created: now as u64,
-            model: Some(result.model.clone()),
-            system_fingerprint: None,
-            choices: vec![ChatChoice {
-                index: 0,
-                finish_reason: "stop".to_string(),
-                message: result.message,
-            }],
-            usage: Some(UsageResponse {
-                prompt_tokens: result.prompt_eval_count.map(|c| c as usize),
-                completion_tokens: result.eval_count.map(|c| c as usize),
-                total_tokens: None,
-            }),
-        };
-
-        // TODO Actually support streaming
-        let info = StreamingResponse::ResponseInfo(ResponseInfo {
-            model: result.model.clone(),
-            meta: Some(meta),
-        });
-
-        chunk_tx
-            .send_async(Ok(StreamingResponse::Single(response)))
-            .await
-            .ok();
-        chunk_tx.send_async(Ok(info)).await.ok();
+            chunk_tx
+                .send_async(Ok(StreamingResponse::Single(response)))
+                .await
+                .ok();
+            chunk_tx.send_async(Ok(info)).await.ok();
+        }
 
         Ok(())
     }
@@ -174,12 +232,28 @@ struct OllamaResponse {
     // created_at: String,
     model: String,
     message: ChatMessage,
+    done_reason: Option<String>,
     // total_duration: u64,
     load_duration: Option<u64>,
     prompt_eval_count: Option<u64>,
     prompt_eval_duration: Option<u64>,
     eval_count: Option<u64>,
     eval_duration: Option<u64>,
+    done: Option<bool>,
+}
+
+impl OllamaResponse {
+    fn response_info(&self) -> ResponseInfo {
+        let meta = json!({
+            "load_duration": self.load_duration,
+            "prompt_eval_duration": self.prompt_eval_duration,
+            "eval_duration": self.eval_duration,
+        });
+        ResponseInfo {
+            meta: Some(meta),
+            model: self.model.clone(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -200,7 +274,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "streaming not implemented"]
     async fn text_streaming() {
         run_fixture_test(
             "ollama_text_streaming",
