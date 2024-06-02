@@ -1,10 +1,8 @@
 # chronicle-api changelog
 
-## Unreleased
+## 0.3.0
 
-- Streaming support for OpenAI-compatible providers
-- Streaming support for Anthropic
-- Streaming support for Groq
+- Streaming support for OpenAI-compatible providers, Anthropic, and Groq
 
 ## 0.2.0
 
