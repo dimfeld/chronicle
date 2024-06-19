@@ -11,7 +11,8 @@ use crate::{
     database::{load_providers_from_database, logging::start_database_logger, Database},
     providers::{
         anthropic::Anthropic, anyscale::Anyscale, deepinfra::DeepInfra, fireworks::Fireworks,
-        groq::Groq, ollama::Ollama, openai::OpenAi, together::Together, ChatModelProvider,
+        groq::Groq, mistral::Mistral, ollama::Ollama, openai::OpenAi, together::Together,
+        ChatModelProvider,
     },
     Error, ProviderLookup, Proxy,
 };
@@ -28,6 +29,7 @@ pub struct ProxyBuilder {
     deepinfra: Option<String>,
     fireworks: Option<String>,
     groq: Option<String>,
+    mistral: Option<String>,
     ollama: Option<String>,
     openai: Option<String>,
     together: Option<String>,
@@ -47,6 +49,7 @@ impl ProxyBuilder {
             deepinfra: Some(String::new()),
             fireworks: Some(String::new()),
             groq: Some(String::new()),
+            mistral: Some(String::new()),
             ollama: Some(String::new()),
             openai: Some(String::new()),
             together: Some(String::new()),
@@ -189,6 +192,12 @@ impl ProxyBuilder {
         self
     }
 
+    /// Enable the Mistral provider, if it was disabled by [without_default_providers]
+    pub fn with_mistral(mut self, token: Option<String>) -> Self {
+        self.mistral = token.or(Some(String::new()));
+        self
+    }
+
     /// Enable the Together provider, if it was disabled by [without_default_providers]
     pub fn with_together(mut self, token: Option<String>) -> Self {
         self.together = token.or(Some(String::new()));
@@ -208,6 +217,7 @@ impl ProxyBuilder {
         self.deepinfra = None;
         self.fireworks = None;
         self.groq = None;
+        self.mistral = None;
         self.openai = None;
         self.ollama = None;
         self.together = None;
@@ -320,6 +330,11 @@ impl ProxyBuilder {
 
         if let Some(token) = self.groq {
             providers.push(Arc::new(Groq::new(client.clone(), empty_to_none(token)))
+                as Arc<dyn ChatModelProvider>);
+        }
+
+        if let Some(token) = self.mistral {
+            providers.push(Arc::new(Mistral::new(client.clone(), empty_to_none(token)))
                 as Arc<dyn ChatModelProvider>);
         }
 

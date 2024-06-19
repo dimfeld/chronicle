@@ -4,6 +4,7 @@ pub mod custom;
 pub mod deepinfra;
 pub mod fireworks;
 pub mod groq;
+pub mod mistral;
 pub mod ollama;
 pub mod openai;
 pub mod together;
