@@ -70,7 +70,7 @@ pub(crate) async fn run(cmd: Cli) -> Result<(), Report<Error>> {
     // service name.
     if !cmd.no_dotenv {
         let mut loaded_env = false;
-        for (dir, config) in configs.cwd.iter().rev().chain(configs.cwd.iter().rev()) {
+        for (dir, config) in configs.cwd.iter().rev().chain(configs.global.iter().rev()) {
             if config.server_config.dotenv.unwrap_or(true) {
                 dotenvy::from_path(dir.join(".env")).ok();
                 loaded_env = true;
