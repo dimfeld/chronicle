@@ -1,5 +1,12 @@
 # chronicle-api changelog
 
+## Unreleased
+
+- Fix reading `.env` files associated with global configs.
+- Provide a `max_token` value to Anthropic when the request omits it.
+- Add Mistral provider
+- Handle the `/` route. This just returns `{ status: 'ok' }` without doing anything.
+
 ## 0.3.0
 
 - Streaming support for OpenAI-compatible providers, Anthropic, and Groq

@@ -1,5 +1,10 @@
 # chronicle-proxy changelog
 
+## Unreleased
+
+- Provide a `max_token` value to Anthropic when the request omits it.
+- Add Mistral provider
+
 ## 0.3.0
 
 - Streaming support for OpenAI-compatible providers, Anthropic, and Groq
