@@ -228,6 +228,10 @@ async fn record_event(
 
 pub fn create_routes() -> axum::Router<Arc<ServerState>> {
     axum::Router::new()
+        .route(
+            "/",
+            axum::routing::get(|| async { axum::Json(serde_json::json!({ "status": "ok" })) }),
+        )
         .route("/event", axum::routing::post(record_event))
         .route("/v1/event", axum::routing::post(record_event))
         .route("/chat", axum::routing::post(proxy_request))
