@@ -1,6 +1,6 @@
 # chronicle-proxy changelog
 
-## Unreleased
+## 0.3.1
 
 - Provide a `max_token` value to Anthropic when the request omits it.
 - Add Mistral provider

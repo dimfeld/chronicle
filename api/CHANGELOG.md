@@ -1,6 +1,6 @@
 # chronicle-api changelog
 
-## Unreleased
+## 0.3.1
 
 - Fix reading `.env` files associated with global configs.
 - Provide a `max_token` value to Anthropic when the request omits it.
