@@ -1,5 +1,9 @@
 # chronicle-proxy changelog
 
+## 0.3.2
+
+- Anthropic provider was omitting the system message
+
 ## 0.3.1
 
 - Provide a `max_token` value to Anthropic when the request omits it.

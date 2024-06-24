@@ -63,6 +63,7 @@ impl ChatModelProvider for Anthropic {
         let body = AnthropicChatRequest {
             model: body.model.unwrap_or_default(),
             max_tokens: body.max_tokens.unwrap_or(4096),
+            system: body.system,
             metadata: AnthropicMetadata { user_id: body.user },
             messages: body.messages,
             stop: body.stop,
@@ -194,6 +195,8 @@ struct AnthropicChatRequest {
     messages: Vec<ChatMessage>,
     metadata: AnthropicMetadata,
     max_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    system: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     stop: Vec<String>,
     stream: bool,

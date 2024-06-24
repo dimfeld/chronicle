@@ -1,5 +1,9 @@
 # chronicle-api changelog
 
+## 0.3.2
+
+- Anthropic provider was omitting the system message
+
 ## 0.3.1
 
 - Fix reading `.env` files associated with global configs.
