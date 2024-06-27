@@ -26,8 +26,8 @@ pub enum Error {
     ReadingConfig,
     #[error("Failed to load from the database")]
     LoadingDatabase,
-    #[error("Failed to parse header value {0}")]
-    ReadingHeader(String),
+    #[error("Failed to parse header value {0}: Expected a {1}")]
+    ReadingHeader(String, &'static str),
     #[error("Did not see {0} in response stream")]
     MissingStreamInformation(&'static str),
 }

@@ -38,3 +38,15 @@ CREATE TABLE chronicle_steps (
 CREATE INDEX ON chronicle_steps (run_id);
 
 CREATE INDEX ON chronicle_steps USING gin (tags);
+
+ALTER TABLE chronicle_events
+  ALTER COLUMN run_id TYPE uuid
+  USING run_id::uuid;
+
+ALTER TABLE chronicle_events
+  ALTER COLUMN step TYPE uuid
+  USING step::uuid;
+
+CREATE INDEX chronicle_events_run_id_created_at_idx ON chronicle_events (run_id, created_at DESC);
+
+DROP INDEX chronicle_events_run_id_idx;

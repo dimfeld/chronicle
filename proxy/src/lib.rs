@@ -194,8 +194,8 @@ impl Proxy {
             llm.meta.user_id = options.metadata.user_id,
             llm.meta.workflow_id = options.metadata.workflow_id,
             llm.meta.workflow_name = options.metadata.workflow_name,
-            llm.meta.run_id = options.metadata.run_id,
-            llm.meta.step = options.metadata.step,
+            llm.meta.run_id = options.metadata.run_id.map(|u| u.to_string()),
+            llm.meta.step = options.metadata.step.map(|u| u.to_string()),
             llm.meta.step_index = options.metadata.step_index,
             llm.meta.prompt_id = options.metadata.prompt_id,
             llm.meta.prompt_version = options.metadata.prompt_version,
@@ -468,7 +468,12 @@ impl ProxyRequestOptions {
             .get("x-chronicle-models")
             .map(|s| serde_json::from_slice::<Vec<ModelAndProvider>>(s.as_bytes()))
             .transpose()
-            .change_context_lazy(|| Error::ReadingHeader("x-chronicle-models".to_string()))?;
+            .change_context_lazy(|| {
+                Error::ReadingHeader(
+                    "x-chronicle-models".to_string(),
+                    "Array of ModelAndProvider",
+                )
+            })?;
         if let Some(models_header) = models_header {
             self.models = models_header;
         }
@@ -477,6 +482,7 @@ impl ProxyRequestOptions {
             &mut self.random_choice,
             headers,
             "x-chronicle-random-choice",
+            "boolean",
         )?;
         get_header_json(&mut self.retry, headers, "x-chronicle-retry")?;
 
@@ -485,7 +491,9 @@ impl ProxyRequestOptions {
             .and_then(|s| s.to_str().ok())
             .map(|s| s.parse::<u64>())
             .transpose()
-            .change_context_lazy(|| Error::ReadingHeader("x-chronicle-timeout".to_string()))?
+            .change_context_lazy(|| {
+                Error::ReadingHeader("x-chronicle-timeout".to_string(), "integer")
+            })?
             .map(|s| std::time::Duration::from_millis(s));
         if timeout.is_some() {
             self.timeout = timeout;
@@ -537,10 +545,10 @@ pub struct ProxyRequestMetadata {
     pub workflow_name: Option<String>,
     /// The id of of the specific run that this request belongs to. This can also be set by
     /// passing the x-chronicle-run-id HTTP header.
-    pub run_id: Option<String>,
+    pub run_id: Option<Uuid>,
     /// The name of the workflow step. This can also be set by passing the
     /// x-chronicle-step HTTP header.
-    pub step: Option<String>,
+    pub step: Option<Uuid>,
     /// The index of the step within the workflow. This can also be set by passing the
     /// x-chronicle-step-index HTTP header.
     pub step_index: Option<u32>,
@@ -575,14 +583,20 @@ impl ProxyRequestMetadata {
             headers,
             "x-chronicle-workflow-name",
         );
-        get_header_str(&mut self.run_id, headers, "x-chronicle-run-id");
-        get_header_str(&mut self.step, headers, "x-chronicle-step");
-        get_header_t(&mut self.step_index, headers, "x-chronicle-step-index")?;
+        get_header_t(&mut self.run_id, headers, "x-chronicle-run-id", "UUID")?;
+        get_header_t(&mut self.step, headers, "x-chronicle-step", "UUID")?;
+        get_header_t(
+            &mut self.step_index,
+            headers,
+            "x-chronicle-step-index",
+            "integer",
+        )?;
         get_header_str(&mut self.prompt_id, headers, "x-chronicle-prompt-id");
         get_header_t(
             &mut self.prompt_version,
             headers,
             "x-chronicle-prompt-version",
+            "integer",
         )?;
         get_header_json(&mut self.extra, headers, "x-chronicle-extra-meta")?;
         Ok(())
@@ -608,6 +622,7 @@ fn get_header_t<T>(
     body_value: &mut Option<T>,
     headers: &HeaderMap,
     key: &str,
+    expected_format: &'static str,
 ) -> Result<(), Report<Error>>
 where
     T: FromStr,
@@ -622,7 +637,7 @@ where
         .and_then(|s| s.to_str().ok())
         .map(|s| s.parse::<T>())
         .transpose()
-        .change_context_lazy(|| Error::ReadingHeader(key.to_string()))?;
+        .change_context_lazy(|| Error::ReadingHeader(key.to_string(), expected_format))?;
 
     if value.is_some() {
         *body_value = value;
@@ -645,7 +660,7 @@ fn get_header_json<T: DeserializeOwned>(
         .and_then(|s| s.to_str().ok())
         .map(|s| serde_json::from_str(s))
         .transpose()
-        .change_context_lazy(|| Error::ReadingHeader(key.to_string()))?;
+        .change_context_lazy(|| Error::ReadingHeader(key.to_string(), "JSON value"))?;
 
     if value.is_some() {
         *body_value = value;
@@ -659,6 +674,7 @@ mod test {
     use std::collections::BTreeMap;
 
     use serde_json::json;
+    use uuid::Uuid;
     use wiremock::{
         matchers::{method, path},
         Mock, ResponseTemplate,
@@ -678,10 +694,11 @@ mod test {
     #[test]
     /// Make sure extra flattening works as expected
     fn deserialize_meta() {
+        let step = Uuid::now_v7();
         let test_value = json!({
             "application": "abc",
             "another": "value",
-            "step": "email",
+            "step": step,
             "third": "fourth",
         });
 
@@ -690,7 +707,7 @@ mod test {
 
         println!("{value:#?}");
         assert_eq!(value.application, Some("abc".to_string()));
-        assert_eq!(value.step, Some("email".to_string()));
+        assert_eq!(value.step, Some(step));
         assert_eq!(
             value.extra.as_ref().unwrap().get("another").unwrap(),
             &json!("value")
