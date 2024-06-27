@@ -15,9 +15,9 @@ mod testing;
 mod workflow_events;
 
 use builder::ProxyBuilder;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use config::{AliasConfig, ApiKeyConfig};
-use database::logging::ProxyLogEntry;
+use database::logging::{ProxyLogEntry, ProxyLogEvent};
 pub use error::Error;
 use error_stack::{Report, ResultExt};
 use flume::Sender;
@@ -35,6 +35,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
 use tracing::{instrument, Span};
 use uuid::Uuid;
+use workflow_events::{RunEndEvent, RunStartEvent, StepEvent};
 
 use crate::request::try_model_choices;
 
@@ -67,6 +68,7 @@ pub struct EventPayload {
     pub error: Option<serde_json::Value>,
     #[serde(default)]
     pub metadata: ProxyRequestMetadata,
+    pub time: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug)]
@@ -109,10 +111,10 @@ impl Proxy {
             };
         }
 
-        let log_entry = ProxyLogEntry {
+        let log_entry = ProxyLogEntry::Event(ProxyLogEvent {
             id,
             event_type: Cow::Owned(body.typ),
-            timestamp: Utc::now(),
+            timestamp: body.time.unwrap_or_else(|| Utc::now()),
             request: None,
             response: None,
             total_latency: None,
@@ -125,20 +127,39 @@ impl Proxy {
                 internal_metadata,
                 ..Default::default()
             },
-        };
+        });
 
         log_tx.send_async(log_entry).await.ok();
 
         id
     }
 
-    // pub async fn record_step_event(
-    //     &self,
-    //     internal_metadata: ProxyRequestInternalMetadata,
-    //     event: StepEvent,
-    // ) -> Uuid {
-    //     todo!();
-    // }
+    pub async fn record_step_event(&self, event: StepEvent) {
+        let Some(log_tx) = &self.log_tx else {
+            return;
+        };
+
+        log_tx
+            .send_async(ProxyLogEntry::StepEvent(event))
+            .await
+            .ok();
+    }
+
+    pub async fn start_run(&self, event: RunStartEvent) {
+        let Some(log_tx) = &self.log_tx else {
+            return;
+        };
+
+        log_tx.send_async(ProxyLogEntry::RunStart(event)).await.ok();
+    }
+
+    pub async fn end_run(&self, event: RunEndEvent) {
+        let Some(log_tx) = &self.log_tx else {
+            return;
+        };
+
+        log_tx.send_async(ProxyLogEntry::RunEnd(event)).await.ok();
+    }
 
     pub async fn send(
         &self,
@@ -312,7 +333,7 @@ impl Proxy {
         let n = body.n.unwrap_or(1) as usize;
 
         // Fill in what we can now, the rest will be filled in once the response is done.
-        let log_entry = ProxyLogEntry {
+        let log_entry = ProxyLogEntry::Event(ProxyLogEvent {
             id,
             event_type: Cow::Borrowed("chronicle_llm_request"),
             timestamp,
@@ -324,7 +345,7 @@ impl Proxy {
             was_rate_limited: None,
             error: None,
             options,
-        };
+        });
 
         match response {
             Ok(res) => {

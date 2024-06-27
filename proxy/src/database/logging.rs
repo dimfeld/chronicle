@@ -89,7 +89,7 @@ async fn database_logger_task(
     }
 }
 
-pub(super) const EVENT_INSERT_PREFIX: &str = 
+pub(super) const EVENT_INSERT_PREFIX: &str =
         "INSERT INTO chronicle_events
         (id, event_type, organization_id, project_id, user_id, chat_request, chat_response,
          error, provider, model, application, environment, request_organization_id, request_project_id,
