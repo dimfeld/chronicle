@@ -9,15 +9,13 @@ CREATE TABLE chronicle_runs (
   status text NOT NULL,
   trace_id blob,
   span_id blob,
-  tags text[],
+  tags text,
   info text,
   updated_at int NOT NULL,
   created_at int NOT NULL
 );
 
 CREATE INDEX ON chronicle_runs (name);
-
-CREATE INDEX ON chronicle_runs USING gin (tags);
 
 CREATE TABLE chronicle_steps (
   id text PRIMARY KEY,
@@ -28,7 +26,6 @@ CREATE TABLE chronicle_steps (
   input textb NOT NULL,
   output textb,
   status text NOT NULL,
-  tags text[],
   info text,
   span_id blob,
   start_time int NOT NULL,
@@ -37,4 +34,14 @@ CREATE TABLE chronicle_steps (
 
 CREATE INDEX ON chronicle_steps (run_id);
 
-CREATE INDEX ON chronicle_steps USING gin (tags);
+CREATE TABLE chronicle_step_tags (
+  step_id text NOT NULL REFERENCES chronicle_steps (id) ON DELETE CASCADE,
+  tag text NOT NULL,
+  PRIMARY KEY (step_id, tag)
+);
+
+CREATE TABLE chronicle_run_tags (
+  run_id text NOT NULL REFERENCES chronicle_runs (id) ON DELETE CASCADE,
+  tag text NOT NULL,
+  PRIMARY KEY (run_id, tag)
+);
