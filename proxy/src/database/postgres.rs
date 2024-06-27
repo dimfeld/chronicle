@@ -1,11 +1,14 @@
 use std::sync::Arc;
 
+use chrono::{DateTime, Utc};
 use error_stack::{Report, ResultExt};
-use sqlx::PgPool;
+use sqlx::{PgExecutor, PgPool};
+use uuid::Uuid;
 
 use super::{logging::ProxyLogEntry, DbProvider, ProxyDatabase};
 use crate::{
     config::{AliasConfig, ApiKeyConfig},
+    workflow_events::{RunEndEvent, RunStartEvent, StepEvent, StepEventData, StepStartData},
     Error,
 };
 
@@ -23,6 +26,188 @@ pub struct PostgresDatabase {
 impl PostgresDatabase {
     pub fn new(pool: PgPool) -> Arc<dyn ProxyDatabase> {
         Arc::new(Self { pool })
+    }
+
+    async fn write_step_start(
+        &self,
+        tx: impl PgExecutor<'_>,
+        step_id: Uuid,
+        run_id: Uuid,
+        name: Option<String>,
+        data: StepStartData,
+        timestamp: Option<DateTime<Utc>>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r##"
+            INSERT INTO chronicle_steps (
+                id, run_id, type, parent_step, name, input, status, tags, info, span_id, start_time
+            )
+            VALUES (
+                $1, $2, $3, $4, $5, $6, 'started', $7, $8, $9, $10
+            )
+            ON CONFLICT DO NOTHING;
+            "##,
+        )
+        .bind(step_id)
+        .bind(run_id)
+        .bind(data.step_type)
+        .bind(data.parent_step)
+        .bind(name)
+        .bind(data.input)
+        .bind(data.tags)
+        .bind(data.info)
+        .bind(data.span_id)
+        .bind(timestamp.unwrap_or_else(|| Utc::now()))
+        .execute(tx)
+        .await?;
+        Ok(())
+    }
+
+    async fn write_step_end(
+        &self,
+        tx: impl PgExecutor<'_>,
+        step_id: Uuid,
+        run_id: Uuid,
+        status: &str,
+        output: serde_json::Value,
+        info: Option<serde_json::Value>,
+        timestamp: Option<DateTime<Utc>>,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r##"
+            UPDATE chronicle_steps
+            SET status = $1,
+                output = $2,
+                info = CASE
+                    WHEN NULLIF(info, 'null'::jsonb) IS NULL THEN $3
+                    WHEN NULLIF($3, 'null'::jsonb) IS NULL THEN info
+                    ELSE info || $3
+                    END,
+                updated_at = $4
+            WHERE run_id = $5 AND id = $6
+        "##,
+        )
+        .bind(status)
+        .bind(output)
+        .bind(info)
+        .bind(timestamp.unwrap_or_else(|| chrono::Utc::now()))
+        .bind(run_id)
+        .bind(step_id)
+        .execute(tx)
+        .await?;
+        Ok(())
+    }
+
+    async fn write_step_event(
+        &self,
+        tx: impl PgExecutor<'_>,
+        entry: StepEvent,
+    ) -> Result<(), sqlx::Error> {
+        match entry.data {
+            StepEventData::Start(data) => {
+                self.write_step_start(
+                    tx,
+                    entry.step_id,
+                    entry.run_id,
+                    entry.source_node,
+                    data,
+                    entry.time,
+                )
+                .await?;
+            }
+            StepEventData::End(data) => {
+                self.write_step_end(
+                    tx,
+                    entry.step_id,
+                    entry.run_id,
+                    "finished",
+                    data.output,
+                    data.info,
+                    entry.time,
+                )
+                .await?;
+            }
+            StepEventData::Error(data) => {
+                self.write_step_end(
+                    tx,
+                    entry.step_id,
+                    entry.run_id,
+                    "error",
+                    data.error,
+                    None,
+                    entry.time,
+                )
+                .await?;
+            }
+            StepEventData::State(data) => {
+                sqlx::query(
+                    "UPDATE chronicle_steps
+                    SET status=$1
+                    WHERE run_id=$2 AND id=$3",
+                )
+                .bind(data.state)
+                .bind(entry.run_id)
+                .bind(entry.step_id)
+                .execute(tx)
+                .await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn write_run_start(
+        &self,
+        tx: impl PgExecutor<'_>,
+        event: RunStartEvent,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            r##"
+            INSERT INTO chronicle_runs (
+                id, name, description, application, environment, input, status,
+                    trace_id, span_id, tags, info, updated_at, created_at
+            )
+            VALUES (
+                $1, $2, $3, $4, $5, $6, 'started', $7, $8, $9, $10, $11, $11
+            )
+            ON CONFLICT DO NOTHING;
+            "##,
+        )
+        .bind(event.id)
+        .bind(event.name)
+        .bind(event.description)
+        .bind(event.application)
+        .bind(event.environment)
+        .bind(event.input)
+        .bind(event.trace_id)
+        .bind(event.span_id)
+        .bind(event.tags.join("|"))
+        .bind(event.info)
+        .bind(event.time.unwrap_or_else(|| Utc::now()))
+        .execute(tx)
+        .await?;
+        Ok(())
+    }
+
+    async fn write_run_end(
+        &self,
+        tx: impl PgExecutor<'_>,
+        event: RunEndEvent,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE chronicle_runs
+            SET status = $1,
+                output = $2,
+                updated_at = $3
+            WHERE id = $4",
+        )
+        .bind(event.status.as_deref().unwrap_or("finished"))
+        .bind(event.output)
+        .bind(event.time.unwrap_or_else(|| Utc::now()))
+        .bind(event.id)
+        .execute(tx)
+        .await?;
+        Ok(())
     }
 }
 
@@ -103,59 +288,86 @@ impl ProxyDatabase for PostgresDatabase {
         Ok(rows)
     }
 
-    async fn write_log_batch(&self, items: Vec<ProxyLogEntry>) -> Result<(), sqlx::Error> {
-        let mut query = sqlx::query(&query);
+    async fn write_log_batch(&self, entries: Vec<ProxyLogEntry>) -> Result<(), sqlx::Error> {
+        let mut event_builder = sqlx::QueryBuilder::new(super::logging::EVENT_INSERT_PREFIX);
+        let mut tx = self.pool.begin().await?;
+        let mut first_event = true;
 
-        for item in items.into_iter() {
-            let (rmodel, rprovider, rbody, rmeta) = match item
-                .response
-                .map(|r| (r.body.model.clone(), r.provider, r.body, r.info.meta))
-            {
-                Some((rmodel, rprovider, rbody, rmeta)) => {
-                    (rmodel, Some(rprovider), Some(rbody), rmeta)
+        for entry in entries.into_iter() {
+            match entry {
+                ProxyLogEntry::Event(item) => {
+                    let (rmodel, rprovider, rbody, rmeta) = match item
+                        .response
+                        .map(|r| (r.body.model.clone(), r.provider, r.body, r.info.meta))
+                    {
+                        Some((rmodel, rprovider, rbody, rmeta)) => {
+                            (rmodel, Some(rprovider), Some(rbody), rmeta)
+                        }
+                        None => (None, None, None, None),
+                    };
+
+                    let model = rmodel
+                        .or_else(|| item.request.as_ref().and_then(|r| r.model.clone()))
+                        .unwrap_or_default();
+
+                    let extra = item.options.metadata.extra.filter(|m| !m.is_empty());
+
+                    if first_event {
+                        first_event = false;
+                    } else {
+                        event_builder.push(",");
+                    }
+
+                    let mut tuple = event_builder.separated(",");
+                    tuple
+                        .push_unseparated("(")
+                        .push_bind(item.id)
+                        .push_bind(item.event_type)
+                        .push_bind(item.options.internal_metadata.organization_id)
+                        .push_bind(item.options.internal_metadata.project_id)
+                        .push_bind(item.options.internal_metadata.user_id)
+                        .push_bind(sqlx::types::Json(item.request))
+                        .push_bind(sqlx::types::Json(rbody))
+                        .push_bind(sqlx::types::Json(item.error))
+                        .push_bind(rprovider)
+                        .push_bind(model)
+                        .push_bind(item.options.metadata.application)
+                        .push_bind(item.options.metadata.environment)
+                        .push_bind(item.options.metadata.organization_id)
+                        .push_bind(item.options.metadata.project_id)
+                        .push_bind(item.options.metadata.user_id)
+                        .push_bind(item.options.metadata.workflow_id)
+                        .push_bind(item.options.metadata.workflow_name)
+                        .push_bind(item.options.metadata.run_id)
+                        .push_bind(item.options.metadata.step)
+                        .push_bind(item.options.metadata.step_index.map(|i| i as i32))
+                        .push_bind(item.options.metadata.prompt_id)
+                        .push_bind(item.options.metadata.prompt_version.map(|i| i as i32))
+                        .push_bind(sqlx::types::Json(extra))
+                        .push_bind(rmeta)
+                        .push_bind(item.num_retries.map(|n| n as i32))
+                        .push_bind(item.was_rate_limited)
+                        .push_bind(item.latency.map(|d| d.as_millis() as i64))
+                        .push_bind(item.total_latency.map(|d| d.as_millis() as i64))
+                        .push_bind(item.timestamp)
+                        .push_unseparated(")");
                 }
-                None => (None, None, None, None),
-            };
-
-            let model = rmodel
-                .or_else(|| item.request.as_ref().and_then(|r| r.model.clone()))
-                .unwrap_or_default();
-
-            let extra = item.options.metadata.extra.filter(|m| !m.is_empty());
-
-            query = query
-                .bind(item.id)
-                .bind(item.event_type)
-                .bind(item.options.internal_metadata.organization_id)
-                .bind(item.options.internal_metadata.project_id)
-                .bind(item.options.internal_metadata.user_id)
-                .bind(sqlx::types::Json(item.request))
-                .bind(sqlx::types::Json(rbody))
-                .bind(sqlx::types::Json(item.error))
-                .bind(rprovider)
-                .bind(model)
-                .bind(item.options.metadata.application)
-                .bind(item.options.metadata.environment)
-                .bind(item.options.metadata.organization_id)
-                .bind(item.options.metadata.project_id)
-                .bind(item.options.metadata.user_id)
-                .bind(item.options.metadata.workflow_id)
-                .bind(item.options.metadata.workflow_name)
-                .bind(item.options.metadata.run_id)
-                .bind(item.options.metadata.step)
-                .bind(item.options.metadata.step_index.map(|i| i as i32))
-                .bind(item.options.metadata.prompt_id)
-                .bind(item.options.metadata.prompt_version.map(|i| i as i32))
-                .bind(sqlx::types::Json(extra))
-                .bind(rmeta)
-                .bind(item.num_retries.map(|n| n as i32))
-                .bind(item.was_rate_limited)
-                .bind(item.latency.map(|d| d.as_millis() as i64))
-                .bind(item.total_latency.map(|d| d.as_millis() as i64))
-                .bind(item.timestamp);
+                ProxyLogEntry::StepEvent(event) => {
+                    self.write_step_event(&mut *tx, event).await?;
+                }
+                ProxyLogEntry::RunStart(event) => {
+                    self.write_run_start(&mut *tx, event).await?;
+                }
+                ProxyLogEntry::RunEnd(event) => {
+                    self.write_run_end(&mut *tx, event).await?;
+                }
+            }
         }
 
-        query.execute(&self.pool).await?;
+        let query = event_builder.build();
+        query.execute(&mut *tx).await?;
+
+        tx.commit().await?;
         Ok(())
     }
 }

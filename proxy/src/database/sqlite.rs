@@ -82,9 +82,9 @@ impl SqliteDatabase {
             SET status = $1,
                 output = $2,
                 info = CASE
-                    WHEN NULLIF(info, 'null'::jsonb) IS NULL THEN $3
-                    WHEN NULLIF($3, 'null'::jsonb) IS NULL THEN info
-                    ELSE info || $3
+                    WHEN NULLIF(info, 'null') IS NULL THEN $3
+                    WHEN NULLIF($3, 'null') IS NULL THEN info
+                    ELSE json_patch(info, $3)
                     END,
                 updated_at = $4
             WHERE run_id = $5 AND id = $6
@@ -175,7 +175,7 @@ impl SqliteDatabase {
             );
             "##,
         )
-        .bind(event.id)
+        .bind(event.id.to_string())
         .bind(event.name)
         .bind(event.description)
         .bind(event.application)
@@ -206,7 +206,7 @@ impl SqliteDatabase {
         .bind(event.status.as_deref().unwrap_or("finished"))
         .bind(event.output)
         .bind(event.time.unwrap_or_else(|| Utc::now()))
-        .bind(event.id)
+        .bind(event.id.to_string())
         .execute(tx)
         .await?;
         Ok(())
@@ -374,7 +374,7 @@ impl ProxyDatabase for SqliteDatabase {
                         .push_bind(item.latency.map(|d| d.as_millis() as i64))
                         .push_bind(item.total_latency.map(|d| d.as_millis() as i64))
                         .push_bind(item.timestamp)
-                        .push_bind_unseparated(")");
+                        .push_unseparated(")");
                 }
                 ProxyLogEntry::StepEvent(event) => {
                     self.write_step_event(&mut *tx, event).await?;
