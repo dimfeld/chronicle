@@ -15,9 +15,21 @@ CREATE TABLE chronicle_runs (
   created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
-CREATE INDEX ON chronicle_runs (name);
+CREATE INDEX chronicle_runs_name_created_at_idx ON chronicle_runs (name, created_at DESC);
 
-CREATE INDEX ON chronicle_runs USING gin (tags);
+CREATE INDEX chronicle_runs_name_updated_at_idx ON chronicle_runs (name, updated_at DESC);
+
+CREATE INDEX chronicle_runs_app_env_created_at_idx ON chronicle_runs (application, environment,
+  created_at DESC);
+
+CREATE INDEX chronicle_runs_app_env_updated_at_idx ON chronicle_runs (application, environment,
+  updated_at DESC);
+
+CREATE INDEX chronicle_runs_updated_at_idx ON chronicle_runs (updated_at DESC);
+
+CREATE INDEX chronicle_runs_created_at_idx ON chronicle_runs (created_at DESC);
+
+CREATE INDEX chronicle_runs_tags_idx ON chronicle_runs USING gin (tags);
 
 CREATE TABLE chronicle_steps (
   id uuid PRIMARY KEY,

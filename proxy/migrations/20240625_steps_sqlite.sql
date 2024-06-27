@@ -15,7 +15,19 @@ CREATE TABLE chronicle_runs (
   created_at int NOT NULL
 );
 
-CREATE INDEX ON chronicle_runs (name);
+CREATE INDEX chronicle_runs_name_created_at_idx ON chronicle_runs (name, created_at DESC);
+
+CREATE INDEX chronicle_runs_name_updated_at_idx ON chronicle_runs (name, updated_at DESC);
+
+CREATE INDEX chronicle_runs_env_app_created_at_idx ON chronicle_runs (environment, application,
+  created_at DESC);
+
+CREATE INDEX chronicle_runs_env_app_updated_at_idx ON chronicle_runs (environment, application,
+  updated_at DESC);
+
+CREATE INDEX chronicle_runs_updated_at_idx ON chronicle_runs (updated_at DESC);
+
+CREATE INDEX chronicle_runs_created_at_idx ON chronicle_runs (created_at DESC);
 
 CREATE TABLE chronicle_steps (
   id text PRIMARY KEY,
@@ -45,3 +57,7 @@ CREATE TABLE chronicle_run_tags (
   tag text NOT NULL,
   PRIMARY KEY (run_id, tag)
 );
+
+CREATE INDEX chronicle_events_run_id_created_at_idx ON chronicle_events (run_id, created_at DESC);
+
+DROP INDEX chronicle_events_run_id_idx;
