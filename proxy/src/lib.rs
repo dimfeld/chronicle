@@ -12,6 +12,7 @@ mod response;
 mod streaming;
 #[cfg(test)]
 mod testing;
+mod workflow_events;
 
 use builder::ProxyBuilder;
 use chrono::Utc;
@@ -130,6 +131,14 @@ impl Proxy {
 
         id
     }
+
+    // pub async fn record_step_event(
+    //     &self,
+    //     internal_metadata: ProxyRequestInternalMetadata,
+    //     event: StepEvent,
+    // ) -> Uuid {
+    //     todo!();
+    // }
 
     pub async fn send(
         &self,
