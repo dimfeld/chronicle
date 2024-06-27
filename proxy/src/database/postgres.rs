@@ -12,6 +12,7 @@ use crate::{
 const POSTGRESQL_MIGRATIONS: &[&'static str] = &[
     include_str!("../../migrations/20240419_chronicle_proxy_init_postgresql.sql"),
     include_str!("../../migrations/20240424_chronicle_proxy_data_tables_postgresql.sql"),
+    include_str!("../../migrations/20240625_chronicle_proxy_steps_postgresql.sql"),
 ];
 
 #[derive(Debug)]
@@ -102,11 +103,7 @@ impl ProxyDatabase for PostgresDatabase {
         Ok(rows)
     }
 
-    async fn write_log_batch(
-        &self,
-        query: String,
-        items: Vec<ProxyLogEntry>,
-    ) -> Result<(), sqlx::Error> {
+    async fn write_log_batch(&self, items: Vec<ProxyLogEntry>) -> Result<(), sqlx::Error> {
         let mut query = sqlx::query(&query);
 
         for item in items.into_iter() {

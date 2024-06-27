@@ -262,7 +262,7 @@ impl ProxyBuilder {
             let logger = if self.config.log_to_database.unwrap_or(false) {
                 Some(start_database_logger(
                     db.clone(),
-                    500,
+                    100,
                     Duration::from_secs(1),
                 ))
             } else {

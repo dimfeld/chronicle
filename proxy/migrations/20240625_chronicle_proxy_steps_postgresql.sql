@@ -7,8 +7,8 @@ CREATE TABLE chronicle_runs (
   input jsonb NOT NULL,
   output jsonb NOT NULL,
   status text NOT NULL,
-  trace_id bytea,
-  span_id bytea,
+  trace_id text,
+  span_id text,
   tags text[],
   info jsonb,
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
@@ -42,7 +42,7 @@ CREATE TABLE chronicle_steps (
   status text NOT NULL,
   tags text[],
   info jsonb,
-  span_id bytea,
+  span_id text,
   start_time timestamp with time zone NOT NULL DEFAULT now(),
   end_time timestamp with time zone
 );

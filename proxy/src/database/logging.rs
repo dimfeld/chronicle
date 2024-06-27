@@ -8,9 +8,10 @@ use uuid::Uuid;
 use super::{Database, ProxyDatabase};
 use crate::{
     format::{ChatRequest, ResponseInfo, SingleChatResponse},
+    workflow_events::{RunEndEvent, RunStartEvent, StepEvent},
     ProxyRequestOptions,
 };
-pub struct ProxyLogEntry {
+pub struct ProxyLogEvent {
     pub id: Uuid,
     pub event_type: Cow<'static, str>,
     pub timestamp: chrono::DateTime<Utc>,
@@ -29,6 +30,13 @@ pub struct CollectedProxiedResult {
     pub info: ResponseInfo,
     /// The provider which was used for the successful response.
     pub provider: String,
+}
+
+pub enum ProxyLogEntry {
+    Event(ProxyLogEvent),
+    StepEvent(StepEvent),
+    RunStart(RunStartEvent),
+    RunEnd(RunEndEvent),
 }
 
 pub fn start_database_logger(
@@ -81,38 +89,18 @@ async fn database_logger_task(
     }
 }
 
-#[instrument(level = "trace", parent=None, skip(db, items), fields(chronicle.db_batch.num_items = items.len()))]
-async fn write_batch(db: &dyn ProxyDatabase, items: Vec<ProxyLogEntry>) {
-    let mut query = String::with_capacity(items.len() * 1024);
-
-    query.push_str(
+pub(super) const EVENT_INSERT_PREFIX: &str = 
         "INSERT INTO chronicle_events
         (id, event_type, organization_id, project_id, user_id, chat_request, chat_response,
          error, provider, model, application, environment, request_organization_id, request_project_id,
          request_user_id, workflow_id, workflow_name, run_id, step, step_index,
          prompt_id, prompt_version,
          meta, response_meta, retries, rate_limited, request_latency_ms,
-         total_latency_ms, created_at) VALUES\n",
-    );
+         total_latency_ms, created_at) VALUES\n";
 
-    const NUM_PARAMS: usize = 29;
-
-    for i in 0..items.len() {
-        if i > 0 {
-            query.push_str(",\n");
-        }
-
-        let base_param = i * NUM_PARAMS + 1;
-        query.push_str("($");
-        query.push_str(&base_param.to_string());
-        for param in (base_param + 1)..(base_param + NUM_PARAMS) {
-            query.push_str(",$");
-            query.push_str(&param.to_string());
-        }
-        query.push(')');
-    }
-
-    let result = db.write_log_batch(query, items).await;
+#[instrument(level = "trace", parent=None, skip(db, items), fields(chronicle.db_batch.num_items = items.len()))]
+async fn write_batch(db: &dyn ProxyDatabase, items: Vec<ProxyLogEntry>) {
+    let result = db.write_log_batch(items).await;
 
     if let Err(e) = result {
         tracing::error!(error = ?e, "Failed to write logs to database");

@@ -14,6 +14,7 @@ pub mod logging;
 pub mod postgres;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
+mod workflow_event_queries;
 
 #[async_trait::async_trait]
 pub trait ProxyDatabase: std::fmt::Debug + Send + Sync {
@@ -33,11 +34,7 @@ pub trait ProxyDatabase: std::fmt::Debug + Send + Sync {
         table: &str,
     ) -> Result<Vec<ApiKeyConfig>, Report<Error>>;
 
-    async fn write_log_batch(
-        &self,
-        query: String,
-        items: Vec<ProxyLogEntry>,
-    ) -> Result<(), sqlx::Error>;
+    async fn write_log_batch(&self, items: Vec<ProxyLogEntry>) -> Result<(), sqlx::Error>;
 }
 
 pub type Database = Arc<dyn ProxyDatabase>;
