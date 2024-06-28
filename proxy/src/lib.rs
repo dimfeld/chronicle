@@ -429,7 +429,7 @@ impl Proxy {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelAndProvider {
     pub model: String,
     pub provider: String,
@@ -528,6 +528,36 @@ impl ProxyRequestOptions {
 
         Ok(())
     }
+
+    /// Merge values from `other`, when the values in the current object are not set.
+    pub fn merge_from(&mut self, other: &Self) {
+        if self.model.is_none() {
+            self.model = other.model.clone();
+        }
+        if self.provider.is_none() {
+            self.provider = other.provider.clone();
+        }
+        if self.override_url.is_none() {
+            self.override_url = other.override_url.clone();
+        }
+        if self.api_key.is_none() {
+            self.api_key = other.api_key.clone();
+        }
+        if self.models.is_empty() {
+            self.models = other.models.clone();
+        }
+        if self.random_choice.is_none() {
+            self.random_choice = other.random_choice;
+        }
+        if self.timeout.is_none() {
+            self.timeout = other.timeout;
+        }
+        if self.retry.is_none() {
+            self.retry = other.retry.clone();
+        }
+        self.metadata.merge_from(&other.metadata);
+        self.internal_metadata.merge_from(&other.internal_metadata);
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -540,6 +570,20 @@ pub struct ProxyRequestInternalMetadata {
     pub project_id: Option<String>,
     /// The internal user ID that the request belongs to
     pub user_id: Option<String>,
+}
+
+impl ProxyRequestInternalMetadata {
+    pub fn merge_from(&mut self, other: &Self) {
+        if self.organization_id.is_none() {
+            self.organization_id = other.organization_id.clone();
+        }
+        if self.project_id.is_none() {
+            self.project_id = other.project_id.clone();
+        }
+        if self.user_id.is_none() {
+            self.user_id = other.user_id.clone();
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -625,6 +669,49 @@ impl ProxyRequestMetadata {
         )?;
         get_header_json(&mut self.extra, headers, "x-chronicle-extra-meta")?;
         Ok(())
+    }
+
+    /// Merge values from `other`, when the values in the current object are not set.
+    pub fn merge_from(&mut self, other: &Self) {
+        if self.application.is_none() {
+            self.application = other.application.clone();
+        }
+        if self.environment.is_none() {
+            self.environment = other.environment.clone();
+        }
+        if self.organization_id.is_none() {
+            self.organization_id = other.organization_id.clone();
+        }
+        if self.project_id.is_none() {
+            self.project_id = other.project_id.clone();
+        }
+        if self.user_id.is_none() {
+            self.user_id = other.user_id.clone();
+        }
+        if self.workflow_id.is_none() {
+            self.workflow_id = other.workflow_id.clone();
+        }
+        if self.workflow_name.is_none() {
+            self.workflow_name = other.workflow_name.clone();
+        }
+        if self.run_id.is_none() {
+            self.run_id = other.run_id;
+        }
+        if self.step.is_none() {
+            self.step = other.step;
+        }
+        if self.step_index.is_none() {
+            self.step_index = other.step_index;
+        }
+        if self.prompt_id.is_none() {
+            self.prompt_id = other.prompt_id.clone();
+        }
+        if self.prompt_version.is_none() {
+            self.prompt_version = other.prompt_version;
+        }
+        if self.extra.is_none() {
+            self.extra = other.extra.clone();
+        }
     }
 }
 

@@ -5,6 +5,7 @@ use std::{borrow::Cow, collections::BTreeMap};
 
 use error_stack::Report;
 use serde::{Deserialize, Serialize};
+use serde_with::{formats::PreferMany, serde_as, OneOrMany};
 use uuid::Uuid;
 
 use crate::providers::ProviderError;
@@ -305,6 +306,7 @@ impl<'a> Default for ChatRequestTransformation<'a> {
 
 /// The request that can be submitted to the proxy, for transformation and submission to a
 /// provider.
+#[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct ChatRequest {
     /// The messages in the chat so far.
@@ -346,7 +348,7 @@ pub struct ChatRequest {
     pub seed: Option<i64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     /// Tell the model to stop when it encounters these token sequences
-    // todo this should be a string or a vec
+    #[serde_as(as = "OneOrMany<_, PreferMany>")]
     pub stop: Vec<String>,
     /// Temperature to use when generating the response
     #[serde(skip_serializing_if = "Option::is_none")]

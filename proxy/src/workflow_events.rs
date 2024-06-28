@@ -49,12 +49,16 @@ pub struct StepEvent {
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum StepEventData {
     /// Event data for the start of a step.
+    #[serde(alias = "step:start")]
     Start(StepStartData),
     /// Event data for the end of a step.
+    #[serde(alias = "step:end")]
     End(StepEndData),
     /// Event data for a step error.
+    #[serde(alias = "step:error")]
     Error(ErrorData),
     /// Event data for a DAG node state change.
+    #[serde(alias = "step:state")]
     State(StepStateData),
 }
 
