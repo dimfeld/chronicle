@@ -36,8 +36,8 @@ CREATE TABLE chronicle_steps (
   run_id uuid NOT NULL REFERENCES chronicle_runs (id) ON DELETE CASCADE,
   type text NOT NULL,
   parent_step uuid,
-  name text NOT NULL,
-  input jsonb NOT NULL,
+  name text,
+  input jsonb,
   output jsonb,
   status text NOT NULL,
   tags text[],
@@ -47,9 +47,9 @@ CREATE TABLE chronicle_steps (
   end_time timestamp with time zone
 );
 
-CREATE INDEX ON chronicle_steps (run_id);
+CREATE INDEX chronicle_steps_run_id_idx ON chronicle_steps (run_id);
 
-CREATE INDEX ON chronicle_steps USING gin (tags);
+CREATE INDEX chronicle_steps_tags_idx ON chronicle_steps USING gin (tags);
 
 ALTER TABLE chronicle_events
   ALTER COLUMN run_id TYPE uuid

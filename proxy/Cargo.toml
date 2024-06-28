@@ -16,7 +16,7 @@ keywords.workspace = true
 async-trait = "0.1.80"
 backon = "0.4.4"
 bytes = "1.6.0"
-chrono = "0.4.38"
+chrono = { version = "0.4.38", features = ["serde"] }
 error-stack = "0.4.1"
 eventsource-stream = "0.2.3"
 filigree = { workspace = true, optional = true }

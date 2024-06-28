@@ -4,8 +4,8 @@ CREATE TABLE chronicle_runs (
   description text,
   application text NOT NULL,
   environment text NOT NULL,
-  input textb NOT NULL,
-  output textb NOT NULL,
+  input text,
+  output text,
   status text NOT NULL,
   trace_id text,
   span_id text,
@@ -34,9 +34,9 @@ CREATE TABLE chronicle_steps (
   run_id text NOT NULL REFERENCES chronicle_runs (id) ON DELETE CASCADE,
   type text NOT NULL,
   parent_step text,
-  name text NOT NULL,
-  input textb NOT NULL,
-  output textb,
+  name text,
+  input text,
+  output text,
   status text NOT NULL,
   span_id text,
   tags text,
@@ -45,7 +45,7 @@ CREATE TABLE chronicle_steps (
   end_time int
 );
 
-CREATE INDEX ON chronicle_steps (run_id);
+CREATE INDEX chronicle_steps_run_id_idx ON chronicle_steps (run_id);
 
 CREATE INDEX chronicle_events_run_id_created_at_idx ON chronicle_events (run_id, created_at DESC);
 

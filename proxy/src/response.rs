@@ -3,7 +3,7 @@ use serde::Serialize;
 use tracing::Span;
 
 use crate::{
-    database::logging::{CollectedProxiedResult, ProxyLogEntry},
+    database::logging::{CollectedProxiedResult, ProxyLogEntry, ProxyLogEvent},
     format::{
         RequestInfo, ResponseInfo, SingleChatResponse, StreamingResponse,
         StreamingResponseReceiver, StreamingResponseSender,
@@ -14,7 +14,7 @@ use crate::{
 
 pub async fn handle_response(
     current_span: Span,
-    log_entry: ProxyLogEntry,
+    log_entry: ProxyLogEvent,
     global_start: tokio::time::Instant,
     request_n: usize,
     meta: TryModelChoicesResult,
@@ -86,21 +86,24 @@ pub async fn handle_response(
             provider: meta.provider,
         });
 
-        log_tx.send_async(log_entry).await.ok();
+        log_tx
+            .send_async(ProxyLogEntry::Event(log_entry))
+            .await
+            .ok();
     }
 }
 
 /// Internal stream collection that saves the information for logging.
 async fn collect_stream(
     current_span: Span,
-    log_entry: ProxyLogEntry,
+    log_entry: ProxyLogEvent,
     global_start: tokio::time::Instant,
     request_n: usize,
     meta: &TryModelChoicesResult,
     chunk_rx: StreamingResponseReceiver,
     output_tx: StreamingResponseSender,
     log_tx: Option<&flume::Sender<ProxyLogEntry>>,
-) -> Result<(SingleChatResponse, ResponseInfo, ProxyLogEntry), ()> {
+) -> Result<(SingleChatResponse, ResponseInfo, ProxyLogEvent), ()> {
     let mut response = SingleChatResponse::new_for_collection(request_n);
 
     let mut res_stats = ResponseInfo {
@@ -149,7 +152,7 @@ async fn collect_stream(
 }
 
 pub async fn record_error<E: std::fmt::Debug + std::fmt::Display>(
-    mut log_entry: ProxyLogEntry,
+    mut log_entry: ProxyLogEvent,
     error: E,
     send_start: tokio::time::Instant,
     num_retries: u32,
@@ -168,7 +171,10 @@ pub async fn record_error<E: std::fmt::Debug + std::fmt::Display>(
         log_entry.num_retries = Some(num_retries);
         log_entry.was_rate_limited = Some(was_rate_limited);
         log_entry.error = Some(format!("{:?}", error));
-        log_tx.send_async(log_entry).await.ok();
+        log_tx
+            .send_async(ProxyLogEntry::Event(log_entry))
+            .await
+            .ok();
     }
 }
 

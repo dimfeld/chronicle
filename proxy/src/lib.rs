@@ -333,7 +333,7 @@ impl Proxy {
         let n = body.n.unwrap_or(1) as usize;
 
         // Fill in what we can now, the rest will be filled in once the response is done.
-        let log_entry = ProxyLogEntry::Event(ProxyLogEvent {
+        let log_entry = ProxyLogEvent {
             id,
             event_type: Cow::Borrowed("chronicle_llm_request"),
             timestamp,
@@ -345,7 +345,7 @@ impl Proxy {
             was_rate_limited: None,
             error: None,
             options,
-        });
+        };
 
         match response {
             Ok(res) => {

@@ -34,7 +34,6 @@ impl SqliteDatabase {
         tx: impl SqliteExecutor<'_>,
         step_id: Uuid,
         run_id: Uuid,
-        name: Option<String>,
         data: StepStartData,
         timestamp: Option<DateTime<Utc>>,
     ) -> Result<(), sqlx::Error> {
@@ -51,9 +50,9 @@ impl SqliteDatabase {
         )
         .bind(step_id.to_string())
         .bind(run_id.to_string())
-        .bind(data.step_type)
+        .bind(data.typ)
         .bind(data.parent_step.map(|s| s.to_string()))
-        .bind(name)
+        .bind(data.name)
         .bind(data.input)
         .bind(data.tags.join("|"))
         .bind(data.info)
@@ -86,7 +85,7 @@ impl SqliteDatabase {
                     WHEN NULLIF($3, 'null') IS NULL THEN info
                     ELSE json_patch(info, $3)
                     END,
-                updated_at = $4
+                end_time = $4
             WHERE run_id = $5 AND id = $6
         "##,
         )
@@ -108,15 +107,8 @@ impl SqliteDatabase {
     ) -> Result<(), sqlx::Error> {
         match entry.data {
             StepEventData::Start(data) => {
-                self.write_step_start(
-                    tx,
-                    entry.step_id,
-                    entry.run_id,
-                    entry.source_node,
-                    data,
-                    entry.time,
-                )
-                .await?;
+                self.write_step_start(tx, entry.step_id, entry.run_id, data, entry.time)
+                    .await?;
             }
             StepEventData::End(data) => {
                 self.write_step_end(
@@ -388,8 +380,10 @@ impl ProxyDatabase for SqliteDatabase {
             }
         }
 
-        let query = event_builder.build();
-        query.execute(&mut *tx).await?;
+        if !first_event {
+            let query = event_builder.build();
+            query.execute(&mut *tx).await?;
+        }
 
         tx.commit().await?;
 
@@ -435,4 +429,23 @@ pub async fn run_default_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error
 
     tx.commit().await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use crate::database::{sqlite::run_default_migrations, testing::test_events};
+
+    #[sqlx::test(migrations = false)]
+    async fn test_database_writes(pool: sqlx::SqlitePool) {
+        filigree::tracing_config::test::init();
+        run_default_migrations(&pool).await.unwrap();
+
+        let db = super::SqliteDatabase::new(pool);
+
+        db.write_log_batch(test_events())
+            .await
+            .expect("Writing events");
+
+        // TODO read them back
+    }
 }

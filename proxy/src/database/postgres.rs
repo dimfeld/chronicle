@@ -33,7 +33,6 @@ impl PostgresDatabase {
         tx: impl PgExecutor<'_>,
         step_id: Uuid,
         run_id: Uuid,
-        name: Option<String>,
         data: StepStartData,
         timestamp: Option<DateTime<Utc>>,
     ) -> Result<(), sqlx::Error> {
@@ -50,9 +49,9 @@ impl PostgresDatabase {
         )
         .bind(step_id)
         .bind(run_id)
-        .bind(data.step_type)
+        .bind(data.typ)
         .bind(data.parent_step)
-        .bind(name)
+        .bind(data.name)
         .bind(data.input)
         .bind(data.tags)
         .bind(data.info)
@@ -105,15 +104,8 @@ impl PostgresDatabase {
     ) -> Result<(), sqlx::Error> {
         match entry.data {
             StepEventData::Start(data) => {
-                self.write_step_start(
-                    tx,
-                    entry.step_id,
-                    entry.run_id,
-                    entry.source_node,
-                    data,
-                    entry.time,
-                )
-                .await?;
+                self.write_step_start(tx, entry.step_id, entry.run_id, data, entry.time)
+                    .await?;
             }
             StepEventData::End(data) => {
                 self.write_step_end(
@@ -364,8 +356,10 @@ impl ProxyDatabase for PostgresDatabase {
             }
         }
 
-        let query = event_builder.build();
-        query.execute(&mut *tx).await?;
+        if !first_event {
+            let query = event_builder.build();
+            query.execute(&mut *tx).await?;
+        }
 
         tx.commit().await?;
         Ok(())

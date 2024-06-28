@@ -14,7 +14,8 @@ pub mod logging;
 pub mod postgres;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
-mod workflow_event_queries;
+#[cfg(test)]
+mod testing;
 
 #[async_trait::async_trait]
 pub trait ProxyDatabase: std::fmt::Debug + Send + Sync {

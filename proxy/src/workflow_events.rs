@@ -2,8 +2,6 @@ use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::ProxyRequestMetadata;
-
 pub struct RunStartEvent {
     pub id: Uuid,
     pub name: String,
@@ -36,11 +34,6 @@ pub struct StepEvent {
     /// The event's type and data
     #[serde(flatten)]
     pub data: StepEventData,
-    /// The DAG or state machine that this event belongs to
-    pub source: Option<String>,
-    /// The node within the workflow that this event belongs to
-    pub source_node: Option<String>,
-    pub meta: Option<ProxyRequestMetadata>,
     pub time: Option<DateTime<chrono::Utc>>,
 }
 
@@ -51,20 +44,20 @@ pub enum StepEventData {
     /// Event data for the start of a step.
     Start(StepStartData),
     /// Event data for the end of a step.
-    #[serde(rename = "step:end")]
     End(StepEndData),
     /// Event data for a step error.
-    #[serde(rename = "step:error")]
     Error(ErrorData),
     /// Event data for a DAG node state change.
-    #[serde(rename = "step:state")]
     State(StepStateData),
 }
 
 /// Data structure for the start of a step.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StepStartData {
-    pub step_type: String,
+    #[serde(rename = "type")]
+    pub typ: String,
+    /// A human-readable name for this step
+    pub name: Option<String>,
     /// UUID of the parent step, if any.
     pub parent_step: Option<Uuid>,
     /// Span ID for tracing purposes.
@@ -118,62 +111,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_workflow_event_state_machine_transition_deserialization() {
-        let json_data = json!({
-            "type": "state_machine:transition",
-            "data": {
-                "event": {
-                    "type": "user_input",
-                    "data": {"user_choice": "option_a"}
-                },
-                "input": {"state": "initial"},
-                "output": {"result": "processed"},
-                "from": "state_a",
-                "to": "state_b",
-                "final_state": false
-            },
-            "run_id": "01234567-89ab-cdef-0123-456789abcdef",
-            "source": "main_state_machine",
-            "source_node": "transition_node",
-            "step": "fedcba98-7654-3210-fedc-ba9876543210",
-            "meta": null,
-            "start_time": null,
-            "end_time": null
-        });
-
-        let event: StepEvent = serde_json::from_value(json_data).unwrap();
-
-        assert_eq!(
-            event.run_id.to_string(),
-            "01234567-89ab-cdef-0123-456789abcdef"
-        );
-        assert_eq!(event.source.unwrap(), "main_state_machine");
-        assert_eq!(event.source_node.unwrap(), "transition_node");
-        assert_eq!(
-            event.step_id.to_string(),
-            "fedcba98-7654-3210-fedc-ba9876543210"
-        );
-        assert!(event.meta.is_none());
-        assert!(event.time.is_none());
-    }
-
-    #[test]
     fn test_workflow_event_step_start_deserialization() {
         let json_data = json!({
-            "type": "step:start",
+            "type": "start",
             "data": {
                 "parent_step": "01234567-89ab-cdef-0123-456789abcdef",
+                "type": "a_step",
                 "span_id": "span-456",
                 "tags": ["dag", "node"],
                 "info": {"node_type": "task"},
                 "input": {"task_param": "value"},
+                "name": "main_workflow",
                 "context": {"dag_context": "some_context"}
             },
             "run_id": "01234567-89ab-cdef-0123-456789abcdef",
-            "source": "main_workflow",
-            "source_node": "end_step",
-            "step": "fedcba98-7654-3210-fedc-ba9876543210",
-            "meta": null,
+            "step_id": "fedcba98-7654-3210-fedc-ba9876543210",
             "time": "2023-06-27T12:34:56Z"
         });
 
@@ -183,13 +135,10 @@ mod tests {
             event.run_id.to_string(),
             "01234567-89ab-cdef-0123-456789abcdef"
         );
-        assert_eq!(event.source.unwrap(), "main_workflow");
-        assert_eq!(event.source_node.unwrap(), "end_step");
         assert_eq!(
             event.step_id.to_string(),
             "fedcba98-7654-3210-fedc-ba9876543210"
         );
-        assert!(event.meta.is_none());
         assert_eq!(
             event.time.unwrap().to_rfc3339(),
             "2023-06-27T12:34:56+00:00"
@@ -200,6 +149,8 @@ mod tests {
                 data.parent_step.unwrap().to_string(),
                 "01234567-89ab-cdef-0123-456789abcdef"
             );
+            assert_eq!(data.typ, "a_step");
+            assert_eq!(data.name.unwrap(), "main_workflow");
             assert_eq!(data.span_id.unwrap(), "span-456");
             assert_eq!(data.tags, vec!["dag", "node"]);
             assert_eq!(data.info.unwrap(), json!({"node_type": "task"}));
@@ -212,16 +163,13 @@ mod tests {
     #[test]
     fn test_workflow_event_step_end_deserialization() {
         let json_data = json!({
-            "type": "step:end",
+            "type": "end",
             "data": {
                 "output": {"result": "success"},
                 "info": {"duration": 1000}
             },
             "run_id": "01234567-89ab-cdef-0123-456789abcdef",
-            "source": "main_workflow",
-            "source_node": "end_step",
-            "step": "fedcba98-7654-3210-fedc-ba9876543210",
-            "meta": null,
+            "step_id": "fedcba98-7654-3210-fedc-ba9876543210",
             "time": "2023-06-27T12:34:56Z"
         });
 
@@ -231,13 +179,10 @@ mod tests {
             event.run_id.to_string(),
             "01234567-89ab-cdef-0123-456789abcdef"
         );
-        assert_eq!(event.source.unwrap(), "main_workflow");
-        assert_eq!(event.source_node.unwrap(), "end_step");
         assert_eq!(
             event.step_id.to_string(),
             "fedcba98-7654-3210-fedc-ba9876543210"
         );
-        assert!(event.meta.is_none());
         assert_eq!(
             event.time.unwrap().to_rfc3339(),
             "2023-06-27T12:34:56+00:00"
@@ -254,15 +199,12 @@ mod tests {
     #[test]
     fn test_workflow_event_step_error_deserialization() {
         let json_data = json!({
-            "type": "step:error",
+            "type": "error",
             "data": {
                 "error": "Step execution failed"
             },
             "run_id": "12345678-90ab-cdef-1234-567890abcdef",
-            "source": "main_workflow",
-            "source_node": "error_step",
-            "step": "abcdef01-2345-6789-abcd-ef0123456789",
-            "meta": null,
+            "step_id": "abcdef01-2345-6789-abcd-ef0123456789",
             "time": "2023-06-27T17:00:00Z"
         });
 
@@ -272,13 +214,10 @@ mod tests {
             event.run_id.to_string(),
             "12345678-90ab-cdef-1234-567890abcdef"
         );
-        assert_eq!(event.source.unwrap(), "main_workflow");
-        assert_eq!(event.source_node.unwrap(), "error_step");
         assert_eq!(
             event.step_id.to_string(),
             "abcdef01-2345-6789-abcd-ef0123456789"
         );
-        assert!(event.meta.is_none());
         assert_eq!(
             event.time.unwrap().to_rfc3339(),
             "2023-06-27T17:00:00+00:00"
