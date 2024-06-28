@@ -1,3 +1,7 @@
+//! Chronicle LLM Proxy and Observability tool.
+//! This is the implementation of the proxy which can be embedded into a Rust application.
+//! For other uses you may want to try the full-fledged API application in the chronicle-api crate.
+
 use std::{borrow::Cow, fmt::Debug, str::FromStr, sync::Arc, time::Duration};
 
 pub mod builder;
@@ -71,6 +75,7 @@ pub struct EventPayload {
     pub time: Option<DateTime<Utc>>,
 }
 
+/// The Chronicle proxy object
 #[derive(Debug)]
 pub struct Proxy {
     log_tx: Option<LogSender>,
@@ -80,6 +85,7 @@ pub struct Proxy {
 }
 
 impl Proxy {
+    /// Create a builder for the proxy
     pub fn builder() -> ProxyBuilder {
         ProxyBuilder::new()
     }

@@ -1,3 +1,4 @@
+//! SQLite database logging support
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
@@ -19,12 +20,14 @@ const SQLITE_MIGRATIONS: &[&'static str] = &[
     include_str!("../../migrations/20240625_chronicle_proxy_steps_sqlite.sql"),
 ];
 
+/// Log events to an SQLite database
 #[derive(Debug)]
 pub struct SqliteDatabase {
-    pub pool: SqlitePool,
+    pool: SqlitePool,
 }
 
 impl SqliteDatabase {
+    /// Create a new [SqliteDatabase]
     pub fn new(pool: SqlitePool) -> Arc<dyn ProxyDatabase> {
         Arc::new(Self { pool })
     }

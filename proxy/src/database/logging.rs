@@ -13,21 +13,34 @@ use crate::{
     EventPayload, ProxyRequestInternalMetadata, ProxyRequestOptions,
 };
 
+/// An event from the proxy.
 pub struct ProxyLogEvent {
+    /// A unique ID for this event
     pub id: Uuid,
+    /// The type of event
     pub event_type: Cow<'static, str>,
+    /// The timestamp of the event
     pub timestamp: chrono::DateTime<Utc>,
+    /// The request that was proxied
     pub request: Option<ChatRequest>,
+    /// The response from the model provider
     pub response: Option<CollectedProxiedResult>,
+    /// The latency of the request that succeeded
     pub latency: Option<Duration>,
+    /// The total latency of the request, including retries.
     pub total_latency: Option<Duration>,
+    /// Whether the request was rate limited
     pub was_rate_limited: Option<bool>,
+    /// The number of retries
     pub num_retries: Option<u32>,
+    /// The error that occurred, if any.
     pub error: Option<String>,
+    /// The options that were used for the request
     pub options: ProxyRequestOptions,
 }
 
 impl ProxyLogEvent {
+    /// Create a new event from a submitted payload
     pub fn from_payload(
         id: Uuid,
         internal_metadata: ProxyRequestInternalMetadata,
@@ -67,22 +80,32 @@ impl ProxyLogEvent {
     }
 }
 
+/// A response from the model provider, collected into a single body if it was streamed
 pub struct CollectedProxiedResult {
+    /// The response itself
     pub body: SingleChatResponse,
+    /// Other information about the response
     pub info: ResponseInfo,
     /// The provider which was used for the successful response.
     pub provider: String,
 }
 
+/// An event to be logged
 pub enum ProxyLogEntry {
+    /// An generic event, whether from a proxied request or submitted externally.
     Event(ProxyLogEvent),
+    /// An update to a step
     StepEvent(StepEvent),
+    /// Start a new run
     RunStart(RunStartEvent),
+    /// Update an existing run
     RunUpdate(RunUpdateEvent),
 }
 
+/// A channel on which log events can be sent.
 pub type LogSender = flume::Sender<SmallVec<[ProxyLogEntry; 1]>>;
 
+/// Start the database logger task
 pub fn start_database_logger(
     db: Database,
     batch_size: usize,

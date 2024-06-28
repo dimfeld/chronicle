@@ -1,3 +1,4 @@
+//! PostgreSQL database logging
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
@@ -18,12 +19,14 @@ const POSTGRESQL_MIGRATIONS: &[&'static str] = &[
     include_str!("../../migrations/20240625_chronicle_proxy_steps_postgresql.sql"),
 ];
 
+/// PostgreSQL database support for logging
 #[derive(Debug)]
 pub struct PostgresDatabase {
-    pub pool: PgPool,
+    pool: PgPool,
 }
 
 impl PostgresDatabase {
+    /// Create a new [PostgresDatabase]
     pub fn new(pool: PgPool) -> Arc<dyn ProxyDatabase> {
         Arc::new(Self { pool })
     }

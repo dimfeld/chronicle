@@ -30,6 +30,7 @@ pub struct OpenAiRequestFormatOptions {
 #[cfg_attr(feature = "schemars", derive(schemars::JsonSchema))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ProviderRequestFormat {
+    /// OpenAI format
     OpenAi(OpenAiRequestFormatOptions),
 }
 

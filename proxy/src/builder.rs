@@ -17,6 +17,7 @@ use crate::{
     Error, ProviderLookup, Proxy,
 };
 
+/// A builder for [Proxy]
 pub struct ProxyBuilder {
     database: Option<Database>,
     config: ProxyConfig,
@@ -36,6 +37,7 @@ pub struct ProxyBuilder {
 }
 
 impl ProxyBuilder {
+    /// Create a new builder
     pub fn new() -> Self {
         Self {
             database: None,
@@ -65,14 +67,14 @@ impl ProxyBuilder {
     #[cfg(feature = "sqlite")]
     /// Use this SQLite database
     pub fn with_sqlite_pool(mut self, pool: sqlx::SqlitePool) -> Self {
-        self.database = Some(Arc::new(SqliteDatabase { pool }));
+        self.database = Some(SqliteDatabase::new(pool));
         self
     }
 
     #[cfg(feature = "postgres")]
     /// Use this PostgreSQL database pool
     pub fn with_postgres_pool(mut self, pool: sqlx::PgPool) -> Self {
-        self.database = Some(Arc::new(PostgresDatabase { pool }));
+        self.database = Some(PostgresDatabase::new(pool));
         self
     }
 
