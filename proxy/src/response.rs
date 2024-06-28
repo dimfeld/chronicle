@@ -1,9 +1,10 @@
 use error_stack::{Report, ResultExt};
 use serde::Serialize;
+use smallvec::smallvec;
 use tracing::Span;
 
 use crate::{
-    database::logging::{CollectedProxiedResult, ProxyLogEntry, ProxyLogEvent},
+    database::logging::{CollectedProxiedResult, LogSender, ProxyLogEntry, ProxyLogEvent},
     format::{
         RequestInfo, ResponseInfo, SingleChatResponse, StreamingResponse,
         StreamingResponseReceiver, StreamingResponseSender,
@@ -20,7 +21,7 @@ pub async fn handle_response(
     meta: TryModelChoicesResult,
     chunk_rx: StreamingResponseReceiver,
     output_tx: StreamingResponseSender,
-    log_tx: Option<flume::Sender<ProxyLogEntry>>,
+    log_tx: Option<LogSender>,
 ) {
     let response = collect_stream(
         current_span.clone(),
@@ -87,7 +88,7 @@ pub async fn handle_response(
         });
 
         log_tx
-            .send_async(ProxyLogEntry::Event(log_entry))
+            .send_async(smallvec![ProxyLogEntry::Event(log_entry)])
             .await
             .ok();
     }
@@ -102,7 +103,7 @@ async fn collect_stream(
     meta: &TryModelChoicesResult,
     chunk_rx: StreamingResponseReceiver,
     output_tx: StreamingResponseSender,
-    log_tx: Option<&flume::Sender<ProxyLogEntry>>,
+    log_tx: Option<&LogSender>,
 ) -> Result<(SingleChatResponse, ResponseInfo, ProxyLogEvent), ()> {
     let mut response = SingleChatResponse::new_for_collection(request_n);
 
@@ -158,7 +159,7 @@ pub async fn record_error<E: std::fmt::Debug + std::fmt::Display>(
     num_retries: u32,
     was_rate_limited: bool,
     current_span: Span,
-    log_tx: Option<&flume::Sender<ProxyLogEntry>>,
+    log_tx: Option<&LogSender>,
 ) {
     tracing::error!(error.full=?error, "Request failed");
 
@@ -172,7 +173,7 @@ pub async fn record_error<E: std::fmt::Debug + std::fmt::Display>(
         log_entry.was_rate_limited = Some(was_rate_limited);
         log_entry.error = Some(format!("{:?}", error));
         log_tx
-            .send_async(ProxyLogEntry::Event(log_entry))
+            .send_async(smallvec![ProxyLogEntry::Event(log_entry)])
             .await
             .ok();
     }

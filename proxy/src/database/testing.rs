@@ -1,4 +1,4 @@
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{TimeZone, Utc};
 use serde_json::json;
 use uuid::Uuid;
 

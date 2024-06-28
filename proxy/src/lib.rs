@@ -17,10 +17,9 @@ pub mod workflow_events;
 use builder::ProxyBuilder;
 use chrono::{DateTime, Utc};
 use config::{AliasConfig, ApiKeyConfig};
-use database::logging::{ProxyLogEntry, ProxyLogEvent};
+use database::logging::{LogSender, ProxyLogEntry, ProxyLogEvent};
 pub use error::Error;
 use error_stack::{Report, ResultExt};
-use flume::Sender;
 use format::{
     ChatRequest, RequestInfo, SingleChatResponse, StreamingResponse, StreamingResponseReceiver,
     StreamingResponseSender,
@@ -33,6 +32,7 @@ pub use response::{collect_response, CollectedResponse};
 use response::{handle_response, record_error};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
+use smallvec::smallvec;
 use tracing::{instrument, Span};
 use uuid::Uuid;
 use workflow_events::{RunStartEvent, RunUpdateEvent, StepEvent};
@@ -73,7 +73,7 @@ pub struct EventPayload {
 
 #[derive(Debug)]
 pub struct Proxy {
-    log_tx: Option<flume::Sender<ProxyLogEntry>>,
+    log_tx: Option<LogSender>,
     log_task: Option<tokio::task::JoinHandle<()>>,
     lookup: ProviderLookup,
     default_timeout: Option<Duration>,
@@ -89,7 +89,7 @@ impl Proxy {
     pub async fn record_event(
         &self,
         internal_metadata: ProxyRequestInternalMetadata,
-        mut body: EventPayload,
+        body: EventPayload,
     ) -> Uuid {
         let id = Uuid::now_v7();
 
@@ -97,71 +97,57 @@ impl Proxy {
             return id;
         };
 
-        if body
-            .metadata
-            .extra
-            .as_ref()
-            .map(|m| m.is_empty())
-            .unwrap_or(true)
-        {
-            // The logger gets the `meta` field from here, so just move it over.
-            body.metadata.extra = match body.data {
-                Some(serde_json::Value::Object(m)) => Some(m),
-                _ => None,
-            };
-        }
+        let log_entry =
+            ProxyLogEntry::Event(ProxyLogEvent::from_payload(id, internal_metadata, body));
 
-        let log_entry = ProxyLogEntry::Event(ProxyLogEvent {
-            id,
-            event_type: Cow::Owned(body.typ),
-            timestamp: body.time.unwrap_or_else(|| Utc::now()),
-            request: None,
-            response: None,
-            total_latency: None,
-            latency: None,
-            was_rate_limited: None,
-            num_retries: None,
-            error: body.error.and_then(|e| serde_json::to_string(&e).ok()),
-            options: ProxyRequestOptions {
-                metadata: body.metadata,
-                internal_metadata,
-                ..Default::default()
-            },
-        });
-
-        log_tx.send_async(log_entry).await.ok();
+        log_tx.send_async(smallvec![log_entry]).await.ok();
 
         id
     }
 
+    /// Record a step event to the database
     pub async fn record_step_event(&self, event: StepEvent) {
         let Some(log_tx) = &self.log_tx else {
             return;
         };
 
         log_tx
-            .send_async(ProxyLogEntry::StepEvent(event))
+            .send_async(smallvec![ProxyLogEntry::StepEvent(event)])
             .await
             .ok();
     }
 
+    /// Start a new run in the database
     pub async fn start_run(&self, event: RunStartEvent) {
         let Some(log_tx) = &self.log_tx else {
             return;
         };
 
-        log_tx.send_async(ProxyLogEntry::RunStart(event)).await.ok();
+        log_tx
+            .send_async(smallvec![ProxyLogEntry::RunStart(event)])
+            .await
+            .ok();
     }
 
-    pub async fn end_run(&self, event: RunUpdateEvent) {
+    /// Update a run in the database
+    pub async fn update_run(&self, event: RunUpdateEvent) {
         let Some(log_tx) = &self.log_tx else {
             return;
         };
 
         log_tx
-            .send_async(ProxyLogEntry::RunUpdate(event))
+            .send_async(smallvec![ProxyLogEntry::RunUpdate(event)])
             .await
             .ok();
+    }
+
+    /// Record multiple events, steps, and run updates
+    pub async fn record_event_batch(&self, events: Vec<ProxyLogEntry>) {
+        let Some(log_tx) = &self.log_tx else {
+            return;
+        };
+
+        log_tx.send_async(events.into()).await.ok();
     }
 
     pub async fn send(
@@ -265,7 +251,7 @@ impl Proxy {
         body: ChatRequest,
         default_timeout: Option<Duration>,
         output_tx: StreamingResponseSender,
-        log_tx: Option<Sender<ProxyLogEntry>>,
+        log_tx: Option<LogSender>,
     ) {
         let id = uuid::Uuid::now_v7();
         let current_span = tracing::Span::current();
