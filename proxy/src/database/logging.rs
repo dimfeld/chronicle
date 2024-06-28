@@ -2,6 +2,7 @@
 use std::{borrow::Cow, time::Duration};
 
 use chrono::Utc;
+use serde::Deserialize;
 use smallvec::SmallVec;
 use tracing::instrument;
 use uuid::Uuid;
@@ -91,11 +92,13 @@ pub struct CollectedProxiedResult {
 }
 
 /// An event to be logged
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum ProxyLogEntry {
     /// An generic event, whether from a proxied request or submitted externally.
     Event(ProxyLogEvent),
     /// An update to a step
-    StepEvent(StepEvent),
+    Step(StepEvent),
     /// Start a new run
     RunStart(RunStartEvent),
     /// Update an existing run

@@ -2,6 +2,8 @@ use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::ProxyRequestMetadata;
+
 /// An event that starts a run in a workflow.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RunStartEvent {
@@ -16,6 +18,82 @@ pub struct RunStartEvent {
     pub tags: Vec<String>,
     pub info: Option<serde_json::Value>,
     pub time: Option<DateTime<chrono::Utc>>,
+}
+
+impl RunStartEvent {
+    pub fn merge_metadata(&mut self, other: &ProxyRequestMetadata) {
+        if self.application.is_none() {
+            self.application = other.application.clone();
+        }
+        if self.environment.is_none() {
+            self.environment = other.environment.clone();
+        }
+
+        // Create info if it doesn't exist
+        if self.info.is_none() {
+            self.info = Some(serde_json::Value::Object(serde_json::Map::new()));
+        }
+
+        // Get a mutable reference to the info object
+        let info = self.info.as_mut().unwrap().as_object_mut().unwrap();
+
+        // Add other fields to info
+        if let Some(org_id) = &other.organization_id {
+            info.insert(
+                "organization_id".to_string(),
+                serde_json::Value::String(org_id.clone()),
+            );
+        }
+        if let Some(project_id) = &other.project_id {
+            info.insert(
+                "project_id".to_string(),
+                serde_json::Value::String(project_id.clone()),
+            );
+        }
+        if let Some(user_id) = &other.user_id {
+            info.insert(
+                "user_id".to_string(),
+                serde_json::Value::String(user_id.clone()),
+            );
+        }
+        if let Some(workflow_id) = &other.workflow_id {
+            info.insert(
+                "workflow_id".to_string(),
+                serde_json::Value::String(workflow_id.clone()),
+            );
+        }
+        if let Some(workflow_name) = &other.workflow_name {
+            info.insert(
+                "workflow_name".to_string(),
+                serde_json::Value::String(workflow_name.clone()),
+            );
+        }
+        if let Some(step_index) = &other.step_index {
+            info.insert(
+                "step_index".to_string(),
+                serde_json::Value::Number((*step_index).into()),
+            );
+        }
+        if let Some(prompt_id) = &other.prompt_id {
+            info.insert(
+                "prompt_id".to_string(),
+                serde_json::Value::String(prompt_id.clone()),
+            );
+        }
+        if let Some(prompt_version) = &other.prompt_version {
+            info.insert(
+                "prompt_version".to_string(),
+                serde_json::Value::Number((*prompt_version).into()),
+            );
+        }
+
+        // Merge extra fields
+        if let Some(extra) = &other.extra {
+            for (key, value) in extra {
+                info.insert(key.clone(), value.clone());
+            }
+        }
+    }
 }
 
 /// An event that updates a run in a workflow.
@@ -49,16 +127,12 @@ pub struct StepEvent {
 #[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum StepEventData {
     /// Event data for the start of a step.
-    #[serde(alias = "step:start")]
     Start(StepStartData),
     /// Event data for the end of a step.
-    #[serde(alias = "step:end")]
     End(StepEndData),
     /// Event data for a step error.
-    #[serde(alias = "step:error")]
     Error(ErrorData),
     /// Event data for a DAG node state change.
-    #[serde(alias = "step:state")]
     State(StepStateData),
 }
 

@@ -36,7 +36,7 @@ pub use response::{collect_response, CollectedResponse};
 use response::{handle_response, record_error};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
-use smallvec::smallvec;
+use smallvec::{smallvec, SmallVec};
 use tracing::{instrument, Span};
 use uuid::Uuid;
 use workflow_events::{RunStartEvent, RunUpdateEvent, StepEvent};
@@ -118,7 +118,7 @@ impl Proxy {
         };
 
         log_tx
-            .send_async(smallvec![ProxyLogEntry::StepEvent(event)])
+            .send_async(smallvec![ProxyLogEntry::Step(event)])
             .await
             .ok();
     }
@@ -148,7 +148,7 @@ impl Proxy {
     }
 
     /// Record multiple events, steps, and run updates
-    pub async fn record_event_batch(&self, events: Vec<ProxyLogEntry>) {
+    pub async fn record_event_batch(&self, events: impl Into<SmallVec<[ProxyLogEntry; 1]>>) {
         let Some(log_tx) = &self.log_tx else {
             return;
         };

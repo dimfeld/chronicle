@@ -365,7 +365,7 @@ impl ProxyDatabase for PostgresDatabase {
                         .push_bind(item.timestamp)
                         .push_unseparated(")");
                 }
-                ProxyLogEntry::StepEvent(event) => {
+                ProxyLogEntry::Step(event) => {
                     self.write_step_event(&mut *tx, event).await?;
                 }
                 ProxyLogEntry::RunStart(event) => {

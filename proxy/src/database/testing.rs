@@ -33,7 +33,7 @@ pub fn test_events() -> Vec<ProxyLogEntry> {
             })),
             time: Some(Utc.timestamp_opt(1, 0).unwrap()),
         }),
-        ProxyLogEntry::StepEvent(StepEvent {
+        ProxyLogEntry::Step(StepEvent {
             step_id: TEST_STEP1_ID,
             run_id: TEST_RUN_ID,
             time: Some(Utc.timestamp_opt(2, 0).unwrap()),
@@ -47,7 +47,7 @@ pub fn test_events() -> Vec<ProxyLogEntry> {
                 input: json!({ "task_param": "value" }),
             }),
         }),
-        ProxyLogEntry::StepEvent(StepEvent {
+        ProxyLogEntry::Step(StepEvent {
             step_id: TEST_STEP2_ID,
             run_id: TEST_RUN_ID,
             time: Some(Utc.timestamp_opt(3, 0).unwrap()),
@@ -89,7 +89,7 @@ pub fn test_events() -> Vec<ProxyLogEntry> {
                 ..Default::default()
             },
         }),
-        ProxyLogEntry::StepEvent(StepEvent {
+        ProxyLogEntry::Step(StepEvent {
             step_id: TEST_STEP2_ID,
             run_id: TEST_RUN_ID,
             time: Some(Utc.timestamp_opt(4, 0).unwrap()),
@@ -97,7 +97,7 @@ pub fn test_events() -> Vec<ProxyLogEntry> {
                 error: json!({"message": "an error"}),
             }),
         }),
-        ProxyLogEntry::StepEvent(StepEvent {
+        ProxyLogEntry::Step(StepEvent {
             step_id: TEST_STEP1_ID,
             run_id: TEST_RUN_ID,
             time: Some(Utc.timestamp_opt(5, 0).unwrap()),
