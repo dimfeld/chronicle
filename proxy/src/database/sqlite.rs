@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use error_stack::{Report, ResultExt};
 use itertools::Itertools;
-use sqlx::{SqliteExecutor, SqlitePool};
+use sqlx::{Row, SqliteExecutor, SqlitePool};
 use uuid::Uuid;
 
 use super::{logging::ProxyLogEntry, DbProvider, ProxyDatabase};
@@ -57,7 +57,7 @@ impl SqliteDatabase {
         .bind(data.tags.join("|"))
         .bind(data.info)
         .bind(data.span_id)
-        .bind(timestamp.unwrap_or_else(|| Utc::now()))
+        .bind(timestamp.unwrap_or_else(|| Utc::now()).timestamp())
         .execute(tx)
         .await?;
         Ok(())
@@ -92,7 +92,7 @@ impl SqliteDatabase {
         .bind(status)
         .bind(output)
         .bind(info)
-        .bind(timestamp.unwrap_or_else(|| chrono::Utc::now()))
+        .bind(timestamp.unwrap_or_else(|| chrono::Utc::now()).timestamp())
         .bind(run_id.to_string())
         .bind(step_id.to_string())
         .execute(tx)
@@ -177,7 +177,7 @@ impl SqliteDatabase {
         .bind(event.span_id)
         .bind(event.tags.join("|"))
         .bind(event.info)
-        .bind(event.time.unwrap_or_else(|| Utc::now()))
+        .bind(event.time.unwrap_or_else(|| Utc::now()).timestamp())
         .execute(tx)
         .await?;
         Ok(())
@@ -192,12 +192,18 @@ impl SqliteDatabase {
             "UPDATE chronicle_runs
             SET status = $1,
                 output = $2,
-                updated_at = $3
-            WHERE id = $4",
+                info = CASE
+                    WHEN NULLIF(info, 'null') IS NULL THEN $3
+                    WHEN NULLIF($3, 'null') IS NULL THEN info
+                    ELSE json_patch(info, $3)
+                    END,
+                updated_at = $4
+            WHERE id = $5",
         )
         .bind(event.status.as_deref().unwrap_or("finished"))
         .bind(event.output)
-        .bind(event.time.unwrap_or_else(|| Utc::now()))
+        .bind(event.info)
+        .bind(event.time.unwrap_or_else(|| Utc::now()).timestamp())
         .bind(event.id.to_string())
         .execute(tx)
         .await?;
@@ -365,7 +371,7 @@ impl ProxyDatabase for SqliteDatabase {
                         .push_bind(item.was_rate_limited)
                         .push_bind(item.latency.map(|d| d.as_millis() as i64))
                         .push_bind(item.total_latency.map(|d| d.as_millis() as i64))
-                        .push_bind(item.timestamp)
+                        .push_bind(item.timestamp.timestamp())
                         .push_unseparated(")");
                 }
                 ProxyLogEntry::StepEvent(event) => {
@@ -433,19 +439,170 @@ pub async fn run_default_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error
 
 #[cfg(test)]
 mod test {
-    use crate::database::{sqlite::run_default_migrations, testing::test_events};
+    use serde_json::json;
+    use sqlx::Row;
+
+    use crate::database::{
+        sqlite::run_default_migrations,
+        testing::{test_events, TEST_RUN_ID, TEST_STEP1_ID, TEST_STEP2_ID},
+    };
 
     #[sqlx::test(migrations = false)]
     async fn test_database_writes(pool: sqlx::SqlitePool) {
         filigree::tracing_config::test::init();
         run_default_migrations(&pool).await.unwrap();
 
-        let db = super::SqliteDatabase::new(pool);
+        let db = super::SqliteDatabase::new(pool.clone());
 
         db.write_log_batch(test_events())
             .await
             .expect("Writing events");
 
-        // TODO read them back
+        let runs = sqlx::query(
+            "SELECT id, name, description, application, environment,
+                input, output, status, trace_id, span_id,
+                tags, info, updated_at, created_at
+                FROM chronicle_runs",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("Fetching runs");
+        assert_eq!(runs.len(), 1);
+        let run = &runs[0];
+
+        assert_eq!(run.get::<String, _>(0), TEST_RUN_ID.to_string(), "run id");
+        assert_eq!(run.get::<String, _>(1), "test run", "name");
+        assert_eq!(
+            run.get::<Option<String>, _>(2),
+            Some("test description".to_string()),
+            "description"
+        );
+        assert_eq!(
+            run.get::<Option<String>, _>(3),
+            Some("test application".to_string()),
+            "application"
+        );
+        assert_eq!(
+            run.get::<Option<String>, _>(4),
+            Some("test environment".to_string()),
+            "environment"
+        );
+        assert_eq!(
+            run.get::<Option<serde_json::Value>, _>(5),
+            Some(json!({"query":"abc"})),
+            "input"
+        );
+        assert_eq!(
+            run.get::<Option<serde_json::Value>, _>(6),
+            Some(json!({"result":"success"})),
+            "output"
+        );
+        assert_eq!(run.get::<String, _>(7), "finished", "status");
+        assert_eq!(
+            run.get::<Option<String>, _>(8),
+            Some("0123456789abcdef".to_string()),
+            "trace_id"
+        );
+        assert_eq!(
+            run.get::<Option<String>, _>(9),
+            Some("12345678".to_string()),
+            "span_id"
+        );
+        assert_eq!(
+            run.get::<Option<String>, _>(10),
+            Some("tag1|tag2".to_string()),
+            "tags"
+        );
+        assert_eq!(
+            run.get::<Option<serde_json::Value>, _>(11),
+            Some(json!({"info1":"value1","info2":"new_value", "info3":"value3"})),
+            "info"
+        );
+        assert_eq!(run.get::<i64, _>(12), 5, "updated_at");
+        assert_eq!(run.get::<i64, _>(13), 1, "created_at");
+
+        let steps = sqlx::query(
+            "SELECT id, run_id, type, parent_step, name,
+                input, output, status, span_id, tags, info, start_time, end_time
+                FROM chronicle_steps",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("Fetching steps");
+        assert_eq!(steps.len(), 2);
+
+        let step1 = &steps[0];
+        assert_eq!(step1.get::<String, _>(0), TEST_STEP1_ID.to_string(), "id");
+        assert_eq!(step1.get::<String, _>(1), TEST_RUN_ID.to_string(), "run_id");
+        assert_eq!(step1.get::<String, _>(2), "step_type", "type");
+        assert_eq!(step1.get::<Option<String>, _>(3), None, "parent_step");
+        assert_eq!(step1.get::<String, _>(4), "source_node1", "name");
+        assert_eq!(
+            step1.get::<Option<serde_json::Value>, _>(5),
+            Some(json!({ "task_param": "value"})),
+            "input"
+        );
+        assert_eq!(
+            step1.get::<Option<serde_json::Value>, _>(6),
+            Some(json!({ "result": "success" })),
+            "output"
+        );
+        assert_eq!(step1.get::<String, _>(7), "finished", "status");
+        assert_eq!(
+            step1.get::<Option<String>, _>(8),
+            Some("11111111".to_string()),
+            "span_id"
+        );
+        assert_eq!(
+            step1.get::<Option<String>, _>(9),
+            Some("dag|node".to_string()),
+            "tags"
+        );
+        assert_eq!(
+            step1.get::<Option<serde_json::Value>, _>(10),
+            Some(json!({"model": "a_model", "info3": "value3"})),
+            "info"
+        );
+        assert_eq!(step1.get::<i64, _>(11), 2, "start_time");
+        assert_eq!(step1.get::<i64, _>(12), 5, "end_time");
+
+        let step2 = &steps[1];
+        assert_eq!(step2.get::<String, _>(0), TEST_STEP2_ID.to_string(), "id");
+        assert_eq!(step2.get::<String, _>(1), TEST_RUN_ID.to_string(), "run_id");
+        assert_eq!(step2.get::<String, _>(2), "llm", "type");
+        assert_eq!(
+            step2.get::<Option<String>, _>(3),
+            Some(TEST_STEP1_ID.to_string()),
+            "parent_step"
+        );
+        assert_eq!(step2.get::<String, _>(4), "source_node2", "name");
+        assert_eq!(
+            step2.get::<Option<serde_json::Value>, _>(5),
+            Some(json!({ "task_param2": "value"})),
+            "input"
+        );
+        assert_eq!(
+            step2.get::<Option<serde_json::Value>, _>(6),
+            Some(json!({ "message": "an error" })),
+            "output"
+        );
+        assert_eq!(step2.get::<String, _>(7), "error", "status");
+        assert_eq!(
+            step2.get::<Option<String>, _>(8),
+            Some("22222222".to_string()),
+            "span_id"
+        );
+        assert_eq!(
+            step2.get::<Option<String>, _>(9),
+            Some("".to_string()),
+            "tags"
+        );
+        assert_eq!(
+            step2.get::<Option<serde_json::Value>, _>(10),
+            Some(json!({"model": "a_model"})),
+            "info"
+        );
+        assert_eq!(step2.get::<i64, _>(11), 3, "start_time");
+        assert_eq!(step2.get::<i64, _>(12), 4, "end_time");
     }
 }
