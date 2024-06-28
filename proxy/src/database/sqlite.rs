@@ -3,7 +3,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use error_stack::{Report, ResultExt};
 use itertools::Itertools;
-use sqlx::{Row, SqliteExecutor, SqlitePool};
+use sqlx::{SqliteExecutor, SqlitePool};
 use uuid::Uuid;
 
 use super::{logging::ProxyLogEntry, DbProvider, ProxyDatabase};
@@ -37,6 +37,12 @@ impl SqliteDatabase {
         data: StepStartData,
         timestamp: Option<DateTime<Utc>>,
     ) -> Result<(), sqlx::Error> {
+        let tags = if data.tags.is_empty() {
+            None
+        } else {
+            Some(data.tags.join("|"))
+        };
+
         sqlx::query(
             r##"
             INSERT INTO chronicle_steps (
@@ -54,7 +60,7 @@ impl SqliteDatabase {
         .bind(data.parent_step.map(|s| s.to_string()))
         .bind(data.name)
         .bind(data.input)
-        .bind(data.tags.join("|"))
+        .bind(tags)
         .bind(data.info)
         .bind(data.span_id)
         .bind(timestamp.unwrap_or_else(|| Utc::now()).timestamp())
@@ -156,6 +162,12 @@ impl SqliteDatabase {
         tx: impl SqliteExecutor<'_>,
         event: RunStartEvent,
     ) -> Result<(), sqlx::Error> {
+        let tags = if event.tags.is_empty() {
+            None
+        } else {
+            Some(event.tags.join("|"))
+        };
+
         sqlx::query(
             r##"
             INSERT INTO chronicle_runs (
@@ -175,7 +187,7 @@ impl SqliteDatabase {
         .bind(event.input)
         .bind(event.trace_id)
         .bind(event.span_id)
-        .bind(event.tags.join("|"))
+        .bind(tags)
         .bind(event.info)
         .bind(event.time.unwrap_or_else(|| Utc::now()).timestamp())
         .execute(tx)
@@ -360,8 +372,8 @@ impl ProxyDatabase for SqliteDatabase {
                         .push_bind(item.options.metadata.user_id)
                         .push_bind(item.options.metadata.workflow_id)
                         .push_bind(item.options.metadata.workflow_name)
-                        .push_bind(item.options.metadata.run_id)
-                        .push_bind(item.options.metadata.step)
+                        .push_bind(item.options.metadata.run_id.map(|u| u.to_string()))
+                        .push_bind(item.options.metadata.step.map(|u| u.to_string()))
                         .push_bind(item.options.metadata.step_index.map(|i| i as i32))
                         .push_bind(item.options.metadata.prompt_id)
                         .push_bind(item.options.metadata.prompt_version.map(|i| i as i32))
@@ -444,7 +456,7 @@ mod test {
 
     use crate::database::{
         sqlite::run_default_migrations,
-        testing::{test_events, TEST_RUN_ID, TEST_STEP1_ID, TEST_STEP2_ID},
+        testing::{test_events, TEST_EVENT_ID, TEST_RUN_ID, TEST_STEP1_ID, TEST_STEP2_ID},
     };
 
     #[sqlx::test(migrations = false)]
@@ -592,11 +604,7 @@ mod test {
             Some("22222222".to_string()),
             "span_id"
         );
-        assert_eq!(
-            step2.get::<Option<String>, _>(9),
-            Some("".to_string()),
-            "tags"
-        );
+        assert_eq!(step2.get::<Option<String>, _>(9), None, "tags");
         assert_eq!(
             step2.get::<Option<serde_json::Value>, _>(10),
             Some(json!({"model": "a_model"})),
@@ -604,5 +612,26 @@ mod test {
         );
         assert_eq!(step2.get::<i64, _>(11), 3, "start_time");
         assert_eq!(step2.get::<i64, _>(12), 4, "end_time");
+
+        let events = sqlx::query(
+            "SELECT id, event_type, step, run_id, meta, created_at
+                FROM chronicle_events",
+        )
+        .fetch_all(&pool)
+        .await
+        .expect("Fetching steps");
+        assert_eq!(events.len(), 1);
+
+        let event = &events[0];
+        assert_eq!(event.get::<String, _>(0), TEST_EVENT_ID.to_string(), "id");
+        assert_eq!(event.get::<String, _>(1), "query", "event_type");
+        assert_eq!(event.get::<String, _>(2), TEST_STEP2_ID.to_string(), "step");
+        assert_eq!(event.get::<String, _>(3), TEST_RUN_ID.to_string(), "run_id");
+        assert_eq!(
+            event.get::<Option<serde_json::Value>, _>(4),
+            Some(json!({"some_key": "some_value"})),
+            "meta"
+        );
+        assert_eq!(event.get::<i64, _>(5), 4, "created_at");
     }
 }

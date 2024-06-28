@@ -3,7 +3,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::{
-    database::logging::ProxyLogEntry,
+    database::logging::{ProxyLogEntry, ProxyLogEvent},
     workflow_events::{
         ErrorData, RunEndEvent, RunStartEvent, StepEndData, StepEvent, StepEventData, StepStartData,
     },
@@ -12,6 +12,7 @@ use crate::{
 pub const TEST_STEP1_ID: Uuid = Uuid::from_u128(1);
 pub const TEST_STEP2_ID: Uuid = Uuid::from_u128(2);
 pub const TEST_RUN_ID: Uuid = Uuid::from_u128(100);
+pub const TEST_EVENT_ID: Uuid = Uuid::from_u128(5);
 
 pub fn test_events() -> Vec<ProxyLogEntry> {
     vec![
@@ -58,6 +59,34 @@ pub fn test_events() -> Vec<ProxyLogEntry> {
                 tags: vec![],
                 input: json!({ "task_param2": "value" }),
             }),
+        }),
+        ProxyLogEntry::Event(ProxyLogEvent {
+            id: TEST_EVENT_ID,
+            event_type: std::borrow::Cow::Borrowed("query"),
+            timestamp: Utc.timestamp_opt(4, 0).unwrap(),
+            request: None,
+            response: None,
+            latency: None,
+            total_latency: None,
+            was_rate_limited: Some(false),
+            num_retries: Some(0),
+            error: None,
+            options: crate::ProxyRequestOptions {
+                metadata: crate::ProxyRequestMetadata {
+                    step: Some(TEST_STEP2_ID),
+                    run_id: Some(TEST_RUN_ID),
+                    extra: Some(
+                        json!({
+                            "some_key": "some_value",
+                        })
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                    ),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
         }),
         ProxyLogEntry::StepEvent(StepEvent {
             step_id: TEST_STEP2_ID,
