@@ -12,7 +12,7 @@ mod response;
 mod streaming;
 #[cfg(test)]
 mod testing;
-mod workflow_events;
+pub mod workflow_events;
 
 use builder::ProxyBuilder;
 use chrono::{DateTime, Utc};
@@ -35,7 +35,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
 use tracing::{instrument, Span};
 use uuid::Uuid;
-use workflow_events::{RunEndEvent, RunStartEvent, StepEvent};
+use workflow_events::{RunStartEvent, RunUpdateEvent, StepEvent};
 
 use crate::request::try_model_choices;
 
@@ -153,12 +153,15 @@ impl Proxy {
         log_tx.send_async(ProxyLogEntry::RunStart(event)).await.ok();
     }
 
-    pub async fn end_run(&self, event: RunEndEvent) {
+    pub async fn end_run(&self, event: RunUpdateEvent) {
         let Some(log_tx) = &self.log_tx else {
             return;
         };
 
-        log_tx.send_async(ProxyLogEntry::RunEnd(event)).await.ok();
+        log_tx
+            .send_async(ProxyLogEntry::RunUpdate(event))
+            .await
+            .ok();
     }
 
     pub async fn send(

@@ -8,7 +8,7 @@ use uuid::Uuid;
 use super::{Database, ProxyDatabase};
 use crate::{
     format::{ChatRequest, ResponseInfo, SingleChatResponse},
-    workflow_events::{RunEndEvent, RunStartEvent, StepEvent},
+    workflow_events::{RunStartEvent, RunUpdateEvent, StepEvent},
     ProxyRequestOptions,
 };
 pub struct ProxyLogEvent {
@@ -36,7 +36,7 @@ pub enum ProxyLogEntry {
     Event(ProxyLogEvent),
     StepEvent(StepEvent),
     RunStart(RunStartEvent),
-    RunEnd(RunEndEvent),
+    RunUpdate(RunUpdateEvent),
 }
 
 pub fn start_database_logger(

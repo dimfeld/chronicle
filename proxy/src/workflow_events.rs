@@ -2,6 +2,8 @@ use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// An event that starts a run in a workflow.
+#[derive(Debug, Serialize, Deserialize)]
 pub struct RunStartEvent {
     pub id: Uuid,
     pub name: String,
@@ -16,10 +18,15 @@ pub struct RunStartEvent {
     pub time: Option<DateTime<chrono::Utc>>,
 }
 
-pub struct RunEndEvent {
+/// An event that updates a run in a workflow.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RunUpdateEvent {
+    /// The run ID
     pub id: Uuid,
+    /// The new status value for the run.
     pub status: Option<String>,
     pub output: Option<serde_json::Value>,
+    /// Extra info for the run. This is merged with any existing info.
     pub info: Option<serde_json::Value>,
     pub time: Option<DateTime<chrono::Utc>>,
 }

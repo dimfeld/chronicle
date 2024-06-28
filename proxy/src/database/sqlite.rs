@@ -9,7 +9,7 @@ use uuid::Uuid;
 use super::{logging::ProxyLogEntry, DbProvider, ProxyDatabase};
 use crate::{
     config::{AliasConfig, AliasConfigProvider, ApiKeyConfig},
-    workflow_events::{RunEndEvent, RunStartEvent, StepEvent, StepEventData, StepStartData},
+    workflow_events::{RunStartEvent, RunUpdateEvent, StepEvent, StepEventData, StepStartData},
     Error,
 };
 
@@ -198,7 +198,7 @@ impl SqliteDatabase {
     async fn write_run_end(
         &self,
         tx: impl SqliteExecutor<'_>,
-        event: RunEndEvent,
+        event: RunUpdateEvent,
     ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "UPDATE chronicle_runs
@@ -392,7 +392,7 @@ impl ProxyDatabase for SqliteDatabase {
                 ProxyLogEntry::RunStart(event) => {
                     self.write_run_start(&mut *tx, event).await?;
                 }
-                ProxyLogEntry::RunEnd(event) => {
+                ProxyLogEntry::RunUpdate(event) => {
                     self.write_run_end(&mut *tx, event).await?;
                 }
             }

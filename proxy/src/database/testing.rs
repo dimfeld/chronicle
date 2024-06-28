@@ -5,7 +5,8 @@ use uuid::Uuid;
 use crate::{
     database::logging::{ProxyLogEntry, ProxyLogEvent},
     workflow_events::{
-        ErrorData, RunEndEvent, RunStartEvent, StepEndData, StepEvent, StepEventData, StepStartData,
+        ErrorData, RunStartEvent, RunUpdateEvent, StepEndData, StepEvent, StepEventData,
+        StepStartData,
     },
 };
 
@@ -105,7 +106,7 @@ pub fn test_events() -> Vec<ProxyLogEntry> {
                 info: Some(json!({ "info3": "value3" })),
             }),
         }),
-        ProxyLogEntry::RunEnd(RunEndEvent {
+        ProxyLogEntry::RunUpdate(RunUpdateEvent {
             id: TEST_RUN_ID,
             status: Some("finished".to_string()),
             output: Some(json!({ "result": "success" })),
