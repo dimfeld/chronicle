@@ -36,7 +36,7 @@ export type StreamingClientFn = (
   options?: ChronicleRequestOptions
 ) => Promise<ChronicleChatResponseStream>;
 
-export type ChronicleEventFn = (event: ChronicleEvent) => Promise<{ id: string }>;
+export type ChronicleEventFn = (event: ChronicleEvent | ChronicleEvent[]) => Promise<void>;
 export type ChronicleClient = NonStreamingClientFn &
   StreamingClientFn & { event: ChronicleEventFn };
 
@@ -44,7 +44,7 @@ export type ChronicleClient = NonStreamingClientFn &
 export function createChronicleClient(options?: ChronicleClientOptions): ChronicleClient {
   let { fetch = globalThis.fetch, token, defaults = {} } = options ?? {};
   let url = proxyUrl(options?.url);
-  let eventUrl = new URL('/event', url);
+  let eventUrl = new URL('/events', url);
 
   const client = async (
     chat: ChronicleChatRequest & Partial<ChronicleRequestOptions>,
@@ -106,12 +106,13 @@ export async function sendEvent(
   body: ChronicleEvent | ChronicleEvent[]
 ): Promise<void> {
   const path = Array.isArray(body) ? '/events' : '/event';
+  const payload = Array.isArray(body) ? body : [body];
   let req = new Request(proxyUrl(url, path), {
     method: 'POST',
     headers: {
       'content-type': 'application/json; charset=utf-8',
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ events: payload }),
   });
 
   const span = trace.getActiveSpan();
@@ -136,7 +137,7 @@ export async function sendEvent(
         typeof body.error === 'object' ? JSON.stringify(body.error) : body.error;
     }
 
-    span.addEvent(body.type, eventAttributes);
+    span.addEvent(body.type as string, eventAttributes);
   }
 
   let res = await fetch(req);

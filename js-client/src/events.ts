@@ -109,10 +109,18 @@ type StepErrorEvent = StepEventData<'step:error', ErrorData>;
 /** Represents a step state change event */
 type StepStateEvent = StepEventData<'step:state', StepStateData>;
 
+export type WorkflowEventTypes =
+  | 'run:start'
+  | 'run:update'
+  | 'step:start'
+  | 'step:end'
+  | 'step:error'
+  | 'step:state';
+
 /** Represents a generic event in the system */
 export interface GenericEvent {
   /** The type of the event */
-  type: string;
+  type: Omit<string, WorkflowEventTypes>;
   /** Data associated with the event */
   data?: object;
   /** Optional error information */

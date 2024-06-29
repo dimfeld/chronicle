@@ -3,6 +3,7 @@ import { createChronicleClient } from './client.js';
 import { ChronicleChatRequest, ChronicleChatResponseStreaming } from './types.js';
 import { HoneycombSDK } from '@honeycombio/opentelemetry-node';
 import { trace } from '@opentelemetry/api';
+import { uuidv7 } from 'uuidv7';
 
 test('basic client', async () => {
   let client = createChronicleClient();
@@ -182,28 +183,107 @@ describe('tools', () => {
   });
 });
 
-describe('events', () => {
-  test('normal event', async () => {
-    const client = createChronicleClient();
-    await client.event({
-      type: 'test_event',
-      data: {
-        some_data: true,
-      },
-      // TODO need to use UUIDs here
-      step_id: 'test-step',
-      run_id: 'test-run',
-    });
+test('events', async () => {
+  const client = createChronicleClient();
+  const runId = uuidv7();
+  const step1Id = uuidv7();
+  const step2Id = uuidv7();
+
+  console.log('runId', runId);
+
+  // Start a run
+  await client.event({
+    type: 'run:start',
+    id: runId,
+    name: 'Test Run',
+    application: 'chronicle-test',
+    environment: 'test',
+    tags: ['test', 'example'],
+    info: {
+      startValue: 1,
+      midValue: 2,
+    },
   });
 
-  test('error event', async () => {
-    const client = createChronicleClient();
-    await client.event({
+  // Start a step
+  await client.event({
+    type: 'step:start',
+    step_id: step1Id,
+    run_id: runId,
+    data: {
+      type: 'process-step1',
+      name: 'Test Step',
+      input: { some_input: 'value' },
+    },
+  });
+
+  // Normal event
+  await client.event({
+    type: 'test_event',
+    data: {
+      some_data: true,
+    },
+    step_id: step1Id,
+    run_id: runId,
+  });
+
+  // Array of events
+  await client.event([
+    {
+      type: 'step:state',
+      step_id: step1Id,
+      run_id: runId,
+      data: {
+        state: 'in progress',
+      },
+    },
+    {
+      type: 'step:start',
+      step_id: step2Id,
+      run_id: runId,
+      data: {
+        type: 'process',
+        parent_step: step1Id,
+        name: 'Test Inner Step',
+        input: { some_input: 'value' },
+      },
+    },
+    {
+      type: 'custom_event',
+      step_id: step1Id,
+      run_id: runId,
+      data: {
+        custom_field: 'custom value',
+      },
+    },
+    {
       type: 'step:error',
-      error: { message: 'failed to do the thing' },
-      step_id: 'test-step',
-      run_id: 'test-run',
-    });
+      step_id: step2Id,
+      run_id: runId,
+      data: {
+        error: { message: 'failed to do the thing' },
+      },
+    },
+    {
+      type: 'step:end',
+      step_id: step1Id,
+      run_id: runId,
+      data: {
+        output: { result: 3 },
+      },
+    },
+  ]);
+
+  // Update run
+  await client.event({
+    type: 'run:update',
+    id: runId,
+    status: 'completed',
+    output: { final_result: 'a long message' },
+    info: {
+      midValue: 10,
+      endValue: 3,
+    },
   });
 });
 
