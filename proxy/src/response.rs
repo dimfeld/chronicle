@@ -1,5 +1,6 @@
 use error_stack::{Report, ResultExt};
 use serde::Serialize;
+use serde_json::json;
 use smallvec::smallvec;
 use tracing::Span;
 
@@ -171,7 +172,7 @@ pub async fn record_error<E: std::fmt::Debug + std::fmt::Display>(
         log_entry.total_latency = Some(send_start.elapsed());
         log_entry.num_retries = Some(num_retries);
         log_entry.was_rate_limited = Some(was_rate_limited);
-        log_entry.error = Some(format!("{:?}", error));
+        log_entry.error = Some(json!(format!("{:?}", error)));
         log_tx
             .send_async(smallvec![ProxyLogEntry::Proxied(Box::new(log_entry))])
             .await

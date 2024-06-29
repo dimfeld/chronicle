@@ -624,16 +624,17 @@ mod test {
             "info"
         );
         assert_eq!(step2.get::<i64, _>(11), 3, "start_time");
-        assert_eq!(step2.get::<i64, _>(12), 4, "end_time");
+        assert_eq!(step2.get::<i64, _>(12), 5, "end_time");
 
         let events = sqlx::query(
-            "SELECT id, event_type, step, run_id, meta, created_at
-                FROM chronicle_events",
+            "SELECT id, event_type, step, run_id, meta, error, created_at
+                FROM chronicle_events
+                ORDER BY created_at ASC",
         )
         .fetch_all(&pool)
         .await
         .expect("Fetching steps");
-        assert_eq!(events.len(), 1);
+        assert_eq!(events.len(), 2);
 
         let event = &events[0];
         assert_eq!(event.get::<String, _>(0), TEST_EVENT1_ID.to_string(), "id");
@@ -645,6 +646,35 @@ mod test {
             Some(json!({"some_key": "some_value"})),
             "meta"
         );
-        assert_eq!(event.get::<i64, _>(5), 4, "created_at");
+        assert_eq!(
+            event.get::<Option<serde_json::Value>, _>(5),
+            Some(json!(null)),
+            "error"
+        );
+        assert_eq!(event.get::<i64, _>(6), 4, "created_at");
+
+        let event2 = &events[1];
+        assert_eq!(event2.get::<String, _>(1), "an_event", "event_type");
+        assert_eq!(
+            event2.get::<String, _>(2),
+            TEST_STEP2_ID.to_string(),
+            "step"
+        );
+        assert_eq!(
+            event2.get::<String, _>(3),
+            TEST_RUN_ID.to_string(),
+            "run_id"
+        );
+        assert_eq!(
+            event2.get::<Option<serde_json::Value>, _>(4),
+            Some(json!({"key": "value"})),
+            "meta"
+        );
+        assert_eq!(
+            event2.get::<Option<serde_json::Value>, _>(5),
+            Some(json!({ "message": "something went wrong"})),
+            "error"
+        );
+        assert_eq!(event2.get::<i64, _>(6), 5, "created_at");
     }
 }

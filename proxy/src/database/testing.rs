@@ -95,7 +95,6 @@ pub fn test_events() -> Vec<ProxyLogEntry> {
             typ: "an_event".to_string(),
             data: Some(json!({
                 "key": "value",
-                "key2": "value2",
             })),
             error: Some(json!({
                 "message": "something went wrong"

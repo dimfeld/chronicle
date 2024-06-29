@@ -35,7 +35,7 @@ pub struct ProxyLogEvent {
     /// The number of retries
     pub num_retries: Option<u32>,
     /// The error that occurred, if any.
-    pub error: Option<String>,
+    pub error: Option<serde_json::Value>,
     /// The options that were used for the request
     pub options: ProxyRequestOptions,
 }
@@ -58,7 +58,7 @@ impl ProxyLogEvent {
             latency: None,
             was_rate_limited: None,
             num_retries: None,
-            error: payload.error.and_then(|e| serde_json::to_string(&e).ok()),
+            error: payload.error,
             options: ProxyRequestOptions {
                 metadata: crate::ProxyRequestMetadata {
                     extra,
