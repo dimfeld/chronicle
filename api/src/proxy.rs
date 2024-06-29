@@ -12,13 +12,11 @@ use chronicle_proxy::{
     format::{
         ChatRequest, RequestInfo, SingleChatResponse, StreamingChatResponse, StreamingResponse,
     },
-    EventPayload, Proxy, ProxyRequestInternalMetadata, ProxyRequestOptions,
+    Proxy, ProxyRequestOptions,
 };
 use error_stack::{Report, ResultExt};
 use futures::StreamExt;
-use http::StatusCode;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::{config::Configs, Error};
 

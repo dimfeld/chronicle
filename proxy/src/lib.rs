@@ -39,7 +39,7 @@ use serde_with::{serde_as, DurationMilliSeconds};
 use smallvec::{smallvec, SmallVec};
 use tracing::{instrument, Span};
 use uuid::Uuid;
-use workflow_events::{RunStartEvent, RunUpdateEvent, WorkflowEvent};
+use workflow_events::WorkflowEvent;
 
 use crate::request::try_model_choices;
 

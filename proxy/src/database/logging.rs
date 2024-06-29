@@ -2,7 +2,6 @@
 use std::{borrow::Cow, time::Duration};
 
 use chrono::Utc;
-use serde::Deserialize;
 use smallvec::SmallVec;
 use tracing::instrument;
 use uuid::Uuid;
@@ -10,8 +9,8 @@ use uuid::Uuid;
 use super::{Database, ProxyDatabase};
 use crate::{
     format::{ChatRequest, ResponseInfo, SingleChatResponse},
-    workflow_events::{RunStartEvent, RunUpdateEvent, WorkflowEvent},
-    EventPayload, ProxyRequestInternalMetadata, ProxyRequestOptions,
+    workflow_events::WorkflowEvent,
+    EventPayload, ProxyRequestOptions,
 };
 
 /// An event from the proxy.

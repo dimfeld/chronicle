@@ -15,7 +15,6 @@ pub const TEST_STEP1_ID: Uuid = Uuid::from_u128(1);
 pub const TEST_STEP2_ID: Uuid = Uuid::from_u128(2);
 pub const TEST_RUN_ID: Uuid = Uuid::from_u128(100);
 pub const TEST_EVENT1_ID: Uuid = Uuid::from_u128(5);
-pub const TEST_EVENT2_ID: Uuid = Uuid::from_u128(6);
 
 pub fn test_events() -> Vec<ProxyLogEntry> {
     vec![
