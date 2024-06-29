@@ -260,7 +260,7 @@ mod tests {
     #[test]
     fn test_workflow_event_step_end_deserialization() {
         let json_data = json!({
-            "type": "end",
+            "type": "step:end",
             "data": {
                 "output": {"result": "success"},
                 "info": {"duration": 1000}
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn test_workflow_event_step_error_deserialization() {
         let json_data = json!({
-            "type": "error",
+            "type": "step:error",
             "data": {
                 "error": "Step execution failed"
             },
@@ -325,5 +325,133 @@ mod tests {
         assert_eq!(event.data.error, "Step execution failed");
     }
 
-    // TODO add tests for remaining event types
+    #[test]
+    fn test_workflow_event_run_start_deserialization() {
+        let json_data = json!({
+            "type": "run:start",
+            "id": "01234567-89ab-cdef-0123-456789abcdef",
+            "name": "Test Run",
+            "description": "A test run",
+            "application": "TestApp",
+            "environment": "staging",
+            "input": {"param": "value"},
+            "trace_id": "trace-123",
+            "span_id": "span-456",
+            "tags": ["test", "run"],
+            "info": {"extra": "info"},
+            "time": "2023-06-28T10:00:00Z"
+        });
+
+        let event: WorkflowEvent = serde_json::from_value(json_data).unwrap();
+        let WorkflowEvent::RunStart(event) = event else {
+            panic!("Expected RunStart event");
+        };
+
+        assert_eq!(event.id.to_string(), "01234567-89ab-cdef-0123-456789abcdef");
+        assert_eq!(event.name, "Test Run");
+        assert_eq!(event.description, Some("A test run".to_string()));
+        assert_eq!(event.application, Some("TestApp".to_string()));
+        assert_eq!(event.environment, Some("staging".to_string()));
+        assert_eq!(event.input, Some(json!({"param": "value"})));
+        assert_eq!(event.trace_id, Some("trace-123".to_string()));
+        assert_eq!(event.span_id, Some("span-456".to_string()));
+        assert_eq!(event.tags, vec!["test", "run"]);
+        assert_eq!(event.info, Some(json!({"extra": "info"})));
+        assert_eq!(
+            event.time.unwrap().to_rfc3339(),
+            "2023-06-28T10:00:00+00:00"
+        );
+    }
+
+    #[test]
+    fn test_workflow_event_run_update_deserialization() {
+        let json_data = json!({
+            "type": "run:update",
+            "id": "fedcba98-7654-3210-fedc-ba9876543210",
+            "status": "completed",
+            "output": {"result": "success"},
+            "info": {"duration": 2000},
+            "time": "2023-06-28T11:00:00Z"
+        });
+
+        let event: WorkflowEvent = serde_json::from_value(json_data).unwrap();
+        let WorkflowEvent::RunUpdate(event) = event else {
+            panic!("Expected RunUpdate event");
+        };
+
+        assert_eq!(event.id.to_string(), "fedcba98-7654-3210-fedc-ba9876543210");
+        assert_eq!(event.status, Some("completed".to_string()));
+        assert_eq!(event.output, Some(json!({"result": "success"})));
+        assert_eq!(event.info, Some(json!({"duration": 2000})));
+        assert_eq!(
+            event.time.unwrap().to_rfc3339(),
+            "2023-06-28T11:00:00+00:00"
+        );
+    }
+
+    #[test]
+    fn test_workflow_event_step_state_deserialization() {
+        let json_data = json!({
+            "type": "step:state",
+            "data": {
+                "state": "running"
+            },
+            "run_id": "12345678-90ab-cdef-1234-567890abcdef",
+            "step_id": "abcdef01-2345-6789-abcd-ef0123456789",
+            "time": "2023-06-28T12:00:00Z"
+        });
+
+        let event: WorkflowEvent = serde_json::from_value(json_data).unwrap();
+        let WorkflowEvent::StepState(event) = event else {
+            panic!("Expected StepState event");
+        };
+
+        assert_eq!(
+            event.run_id.to_string(),
+            "12345678-90ab-cdef-1234-567890abcdef"
+        );
+        assert_eq!(
+            event.step_id.to_string(),
+            "abcdef01-2345-6789-abcd-ef0123456789"
+        );
+        assert_eq!(
+            event.time.unwrap().to_rfc3339(),
+            "2023-06-28T12:00:00+00:00"
+        );
+        assert_eq!(event.data.state, "running");
+    }
+
+    #[test]
+    fn test_workflow_event_untagged_deserialization() {
+        let json_data = json!({
+            "type": "custom_event",
+            "data": {
+                "custom_field": "custom_value"
+            },
+
+            "run_id": "12345678-90ab-cdef-1234-567890abcdef",
+            "step_id": "abcdef01-2345-6789-abcd-ef0123456789",
+            "time": "2023-06-28T12:00:00Z"
+        });
+
+        let event: WorkflowEvent = serde_json::from_value(json_data).unwrap();
+        let WorkflowEvent::Event(event) = event else {
+            panic!("Expected untagged Event");
+        };
+
+        assert_eq!(event.typ, "custom_event");
+        assert_eq!(event.data, Some(json!({"custom_field": "custom_value"})));
+        assert_eq!(
+            event.run_id.to_string(),
+            "12345678-90ab-cdef-1234-567890abcdef"
+        );
+        assert_eq!(
+            event.step_id.to_string(),
+            "abcdef01-2345-6789-abcd-ef0123456789"
+        );
+        assert_eq!(
+            event.time.unwrap().to_rfc3339(),
+            "2023-06-28T12:00:00+00:00"
+        );
+    }
 }
