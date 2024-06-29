@@ -1,5 +1,9 @@
 # chronicle-proxy changelog
 
+## 0.4.0
+
+- Add "runs" and "steps", with events to manage them
+
 ## 0.3.2
 
 - Anthropic provider was omitting the system message
