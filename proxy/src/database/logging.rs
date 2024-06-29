@@ -61,7 +61,7 @@ impl ProxyLogEvent {
             options: ProxyRequestOptions {
                 metadata: crate::ProxyRequestMetadata {
                     extra,
-                    step: Some(payload.step_id),
+                    step_id: Some(payload.step_id),
                     run_id: Some(payload.run_id),
                     ..Default::default()
                 },
@@ -148,7 +148,7 @@ pub(super) const EVENT_INSERT_PREFIX: &str =
         "INSERT INTO chronicle_events
         (id, event_type, organization_id, project_id, user_id, chat_request, chat_response,
          error, provider, model, application, environment, request_organization_id, request_project_id,
-         request_user_id, workflow_id, workflow_name, run_id, step, step_index,
+         request_user_id, workflow_id, workflow_name, run_id, step_id, step_index,
          prompt_id, prompt_version,
          meta, response_meta, retries, rate_limited, request_latency_ms,
          total_latency_ms, created_at) VALUES\n";

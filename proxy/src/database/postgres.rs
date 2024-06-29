@@ -231,7 +231,7 @@ impl PostgresDatabase {
             .push_bind(item.options.metadata.workflow_id)
             .push_bind(item.options.metadata.workflow_name)
             .push_bind(item.options.metadata.run_id)
-            .push_bind(item.options.metadata.step)
+            .push_bind(item.options.metadata.step_id)
             .push_bind(item.options.metadata.step_index.map(|i| i as i32))
             .push_bind(item.options.metadata.prompt_id)
             .push_bind(item.options.metadata.prompt_version.map(|i| i as i32))
@@ -607,7 +607,7 @@ mod test {
         );
 
         let events = sqlx::query(
-            "SELECT id, event_type, step, run_id, meta, error, created_at
+            "SELECT id, event_type, step_id, run_id, meta, error, created_at
                 FROM chronicle_events
                 ORDER BY created_at ASC",
         )
@@ -619,7 +619,7 @@ mod test {
         let event = &events[0];
         assert_eq!(event.get::<Uuid, _>(0), TEST_EVENT1_ID, "id");
         assert_eq!(event.get::<String, _>(1), "query", "event_type");
-        assert_eq!(event.get::<Uuid, _>(2), TEST_STEP2_ID, "step");
+        assert_eq!(event.get::<Uuid, _>(2), TEST_STEP2_ID, "step_id");
         assert_eq!(event.get::<Uuid, _>(3), TEST_RUN_ID, "run_id");
         assert_eq!(
             event.get::<Option<serde_json::Value>, _>(4),
@@ -635,7 +635,7 @@ mod test {
 
         let event2 = &events[1];
         assert_eq!(event2.get::<String, _>(1), "an_event", "event_type");
-        assert_eq!(event2.get::<Uuid, _>(2), TEST_STEP2_ID, "step");
+        assert_eq!(event2.get::<Uuid, _>(2), TEST_STEP2_ID, "step_id");
         assert_eq!(event2.get::<Uuid, _>(3), TEST_RUN_ID, "run_id");
         assert_eq!(
             event2.get::<Option<serde_json::Value>, _>(4),

@@ -233,7 +233,7 @@ impl SqliteDatabase {
             .push_bind(item.options.metadata.workflow_id)
             .push_bind(item.options.metadata.workflow_name)
             .push_bind(item.options.metadata.run_id.map(|u| u.to_string()))
-            .push_bind(item.options.metadata.step.map(|u| u.to_string()))
+            .push_bind(item.options.metadata.step_id.map(|u| u.to_string()))
             .push_bind(item.options.metadata.step_index.map(|i| i as i32))
             .push_bind(item.options.metadata.prompt_id)
             .push_bind(item.options.metadata.prompt_version.map(|i| i as i32))
@@ -627,7 +627,7 @@ mod test {
         assert_eq!(step2.get::<i64, _>(12), 5, "end_time");
 
         let events = sqlx::query(
-            "SELECT id, event_type, step, run_id, meta, error, created_at
+            "SELECT id, event_type, step_id, run_id, meta, error, created_at
                 FROM chronicle_events
                 ORDER BY created_at ASC",
         )
@@ -639,7 +639,11 @@ mod test {
         let event = &events[0];
         assert_eq!(event.get::<String, _>(0), TEST_EVENT1_ID.to_string(), "id");
         assert_eq!(event.get::<String, _>(1), "query", "event_type");
-        assert_eq!(event.get::<String, _>(2), TEST_STEP2_ID.to_string(), "step");
+        assert_eq!(
+            event.get::<String, _>(2),
+            TEST_STEP2_ID.to_string(),
+            "step_id"
+        );
         assert_eq!(event.get::<String, _>(3), TEST_RUN_ID.to_string(), "run_id");
         assert_eq!(
             event.get::<Option<serde_json::Value>, _>(4),
@@ -658,7 +662,7 @@ mod test {
         assert_eq!(
             event2.get::<String, _>(2),
             TEST_STEP2_ID.to_string(),
-            "step"
+            "step_id"
         );
         assert_eq!(
             event2.get::<String, _>(3),

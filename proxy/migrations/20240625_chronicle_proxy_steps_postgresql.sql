@@ -59,6 +59,8 @@ ALTER TABLE chronicle_events
   ALTER COLUMN step TYPE uuid
   USING step::uuid;
 
+ALTER TABLE chronicle_events RENAME COLUMN step TO step_id;
+
 CREATE INDEX chronicle_events_run_id_created_at_idx ON chronicle_events (run_id, created_at DESC);
 
 DROP INDEX chronicle_events_run_id_idx;

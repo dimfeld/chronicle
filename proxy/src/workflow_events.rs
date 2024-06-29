@@ -197,16 +197,6 @@ pub struct ErrorData {
     pub error: serde_json::Value,
 }
 
-/// Data structure for the start of a DAG node.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DagNodeStartData {
-    /// Embedded step start data.
-    #[serde(flatten)]
-    pub step_start_data: StepStartData,
-    /// Context information for the DAG node.
-    pub context: serde_json::Value,
-}
-
 /// Data structure for DAG node state information.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StepStateData {

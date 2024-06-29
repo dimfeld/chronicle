@@ -74,7 +74,7 @@ pub fn test_events() -> Vec<ProxyLogEntry> {
             error: None,
             options: crate::ProxyRequestOptions {
                 metadata: crate::ProxyRequestMetadata {
-                    step: Some(TEST_STEP2_ID),
+                    step_id: Some(TEST_STEP2_ID),
                     run_id: Some(TEST_RUN_ID),
                     extra: Some(
                         json!({

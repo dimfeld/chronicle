@@ -185,7 +185,7 @@ impl Proxy {
             llm.meta.workflow_id = options.metadata.workflow_id,
             llm.meta.workflow_name = options.metadata.workflow_name,
             llm.meta.run_id = options.metadata.run_id.map(|u| u.to_string()),
-            llm.meta.step = options.metadata.step.map(|u| u.to_string()),
+            llm.meta.step = options.metadata.step_id.map(|u| u.to_string()),
             llm.meta.step_index = options.metadata.step_index,
             llm.meta.prompt_id = options.metadata.prompt_id,
             llm.meta.prompt_version = options.metadata.prompt_version,
@@ -581,8 +581,8 @@ pub struct ProxyRequestMetadata {
     /// passing the x-chronicle-run-id HTTP header.
     pub run_id: Option<Uuid>,
     /// The name of the workflow step. This can also be set by passing the
-    /// x-chronicle-step HTTP header.
-    pub step: Option<Uuid>,
+    /// x-chronicle-step-id HTTP header.
+    pub step_id: Option<Uuid>,
     /// The index of the step within the workflow. This can also be set by passing the
     /// x-chronicle-step-index HTTP header.
     pub step_index: Option<u32>,
@@ -618,7 +618,7 @@ impl ProxyRequestMetadata {
             "x-chronicle-workflow-name",
         );
         get_header_t(&mut self.run_id, headers, "x-chronicle-run-id", "UUID")?;
-        get_header_t(&mut self.step, headers, "x-chronicle-step", "UUID")?;
+        get_header_t(&mut self.step_id, headers, "x-chronicle-step-id", "UUID")?;
         get_header_t(
             &mut self.step_index,
             headers,
@@ -662,8 +662,8 @@ impl ProxyRequestMetadata {
         if self.run_id.is_none() {
             self.run_id = other.run_id;
         }
-        if self.step.is_none() {
-            self.step = other.step;
+        if self.step_id.is_none() {
+            self.step_id = other.step_id;
         }
         if self.step_index.is_none() {
             self.step_index = other.step_index;
@@ -775,7 +775,7 @@ mod test {
         let test_value = json!({
             "application": "abc",
             "another": "value",
-            "step": step,
+            "step_id": step,
             "third": "fourth",
         });
 
@@ -784,7 +784,7 @@ mod test {
 
         println!("{value:#?}");
         assert_eq!(value.application, Some("abc".to_string()));
-        assert_eq!(value.step, Some(step));
+        assert_eq!(value.step_id, Some(step));
         assert_eq!(
             value.extra.as_ref().unwrap().get("another").unwrap(),
             &json!("value")
