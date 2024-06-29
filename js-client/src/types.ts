@@ -80,8 +80,8 @@ export interface ChronicleRequestMetadata {
      passing the x-chronicle-run-id HTTP header. */
   run_id?: string;
   /** The name of the workflow step. This can also be set by passing the
-     x-chronicle-step HTTP header. */
-  step?: string;
+     x-chronicle-step-id HTTP header. */
+  step_id?: string;
   /** The index of the step within the workflow. This can also be set by passing the
      x-chronicle-step-index HTTP header. */
   step_index?: number;

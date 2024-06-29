@@ -28,7 +28,7 @@ export function fetchChronicle(options?: ChronicleClientOptions) {
     ['x-chronicle-workflow-id', defaults?.metadata?.workflow_id],
     ['x-chronicle-workflow-name', defaults?.metadata?.workflow_name],
     ['x-chronicle-run-id', defaults?.metadata?.run_id],
-    ['x-chronicle-step', defaults?.metadata?.step],
+    ['x-chronicle-step-id', defaults?.metadata?.step_id],
     ['x-chronicle-step-index', defaults?.metadata?.step_index],
     ['x-chronicle-prompt-id', defaults?.metadata?.prompt_id],
     ['x-chronicle-prompt-version', defaults?.metadata?.prompt_version],

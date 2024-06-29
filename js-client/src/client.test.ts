@@ -190,20 +190,19 @@ describe('events', () => {
       data: {
         some_data: true,
       },
-      metadata: {
-        step: 'test-step',
-      },
+      // TODO need to use UUIDs here
+      step_id: 'test-step',
+      run_id: 'test-run',
     });
   });
 
   test('error event', async () => {
     const client = createChronicleClient();
     await client.event({
-      type: 'test_event_error',
-      error: 'failed to do the thing',
-      metadata: {
-        step: 'test-step',
-      },
+      type: 'step:error',
+      error: { message: 'failed to do the thing' },
+      step_id: 'test-step',
+      run_id: 'test-run',
     });
   });
 });
@@ -255,9 +254,8 @@ describe('tracing', () => {
           data: {
             some_data: true,
           },
-          metadata: {
-            step: 'test-step',
-          },
+          step_id: 'test-step',
+          run_id: 'test-run',
         });
       } finally {
         span.end();

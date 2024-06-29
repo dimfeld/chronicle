@@ -12,6 +12,7 @@ import type {
   ChronicleChatResponseNonStreaming,
   ChronicleChatResponseStreaming,
 } from './types.js';
+import { ChronicleEvent, isGenericEvent } from './events.js';
 
 export interface ChronicleClientOptions {
   /** Replace the normal fetch function with this one */
@@ -92,42 +93,20 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
     }
   };
 
-  client.event = (event: ChronicleEvent) => {
-    const thisEvent = {
-      ...event,
-      metadata: {
-        ...defaults.metadata,
-        ...event.metadata,
-      },
-      url: eventUrl,
-    };
-
-    return sendEvent(thisEvent);
+  client.event = (event: ChronicleEvent | ChronicleEvent[]) => {
+    return sendEvent(eventUrl, event);
   };
 
   // @ts-expect-error
   return client;
 }
 
-export interface ChronicleEvent {
-  /** The type of event */
-  type: string;
-  /** Data associated with the event */
-  data?: object;
-  /** Error data for the event, if it represents an error. */
-  error?: any;
-  /** Additional metadata for the event */
-  metadata?: Omit<ChronicleRequestMetadata, 'extra'>;
-}
-
-export interface ChronicleSendEventOptions extends ChronicleEvent {
-  /** The URL to send the event to */
-  url?: string | URL;
-}
-
-export async function sendEvent(event: ChronicleSendEventOptions): Promise<{ id: string }> {
-  const { url, ...body } = event;
-  let req = new Request(proxyUrl(event.url, '/event'), {
+export async function sendEvent(
+  url: string | URL | undefined,
+  body: ChronicleEvent | ChronicleEvent[]
+): Promise<void> {
+  const path = Array.isArray(body) ? '/events' : '/event';
+  let req = new Request(proxyUrl(url, path), {
     method: 'POST',
     headers: {
       'content-type': 'application/json; charset=utf-8',
@@ -136,14 +115,8 @@ export async function sendEvent(event: ChronicleSendEventOptions): Promise<{ id:
   });
 
   const span = trace.getActiveSpan();
-  if (span?.isRecording) {
+  if (span?.isRecording() && !Array.isArray(body) && isGenericEvent(body)) {
     let eventAttributes: Attributes = {};
-
-    if (body.metadata) {
-      for (let k in body.metadata) {
-        eventAttributes[`llm.meta.${k}`] = body.metadata[k as keyof typeof body.metadata];
-      }
-    }
 
     if (body.data) {
       for (let k in body.data) {
@@ -163,16 +136,11 @@ export async function sendEvent(event: ChronicleSendEventOptions): Promise<{ id:
         typeof body.error === 'object' ? JSON.stringify(body.error) : body.error;
     }
 
-    console.log(eventAttributes);
-
     span.addEvent(body.type, eventAttributes);
   }
 
   let res = await fetch(req);
-  if (res.ok) {
-    const result = (await res.json()) as { id: string };
-    return result;
-  } else {
+  if (!res.ok) {
     throw new Error(await handleError(res));
   }
 }
