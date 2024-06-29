@@ -32,6 +32,7 @@ use crate::{
 mod config;
 mod database;
 mod error;
+mod events;
 mod proxy;
 
 use error::Error;
@@ -140,6 +141,7 @@ pub(crate) async fn serve(
     let mut state = Arc::new(ServerState { proxy });
 
     let app = Router::new()
+        .merge(events::create_routes())
         .merge(proxy::create_routes())
         .with_state(state.clone())
         .layer(

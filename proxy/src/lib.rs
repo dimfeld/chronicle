@@ -1,3 +1,7 @@
+//! Chronicle LLM Proxy and Observability tool.
+//! This is the implementation of the proxy which can be embedded into a Rust application.
+//! For other uses you may want to try the full-fledged API application in the chronicle-api crate.
+
 use std::{borrow::Cow, fmt::Debug, str::FromStr, sync::Arc, time::Duration};
 
 pub mod builder;
@@ -12,14 +16,13 @@ mod response;
 mod streaming;
 #[cfg(test)]
 mod testing;
+pub mod workflow_events;
 
 use builder::ProxyBuilder;
-use chrono::Utc;
 use config::{AliasConfig, ApiKeyConfig};
-use database::logging::ProxyLogEntry;
+use database::logging::{LogSender, ProxyLogEntry, ProxyLogEvent};
 pub use error::Error;
 use error_stack::{Report, ResultExt};
-use flume::Sender;
 use format::{
     ChatRequest, RequestInfo, SingleChatResponse, StreamingResponse, StreamingResponseReceiver,
     StreamingResponseSender,
@@ -32,8 +35,10 @@ pub use response::{collect_response, CollectedResponse};
 use response::{handle_response, record_error};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
+use smallvec::{smallvec, SmallVec};
 use tracing::{instrument, Span};
 use uuid::Uuid;
+use workflow_events::{EventPayload, WorkflowEvent};
 
 use crate::request::try_model_choices;
 
@@ -58,77 +63,62 @@ pub struct ProxiedChatResponse {
     pub meta: ProxiedChatResponseMeta,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct EventPayload {
-    #[serde(rename = "type")]
-    pub typ: String,
-    pub data: Option<serde_json::Value>,
-    pub error: Option<serde_json::Value>,
-    #[serde(default)]
-    pub metadata: ProxyRequestMetadata,
-}
-
+/// The Chronicle proxy object
 #[derive(Debug)]
 pub struct Proxy {
-    log_tx: Option<flume::Sender<ProxyLogEntry>>,
+    log_tx: Option<LogSender>,
     log_task: Option<tokio::task::JoinHandle<()>>,
     lookup: ProviderLookup,
     default_timeout: Option<Duration>,
 }
 
 impl Proxy {
+    /// Create a builder for the proxy
     pub fn builder() -> ProxyBuilder {
         ProxyBuilder::new()
     }
 
     /// Record an event to the database. This lets you have your LLM request events and other
     /// events in the same database table.
-    pub async fn record_event(
-        &self,
-        internal_metadata: ProxyRequestInternalMetadata,
-        mut body: EventPayload,
-    ) -> Uuid {
+    pub async fn record_event(&self, body: EventPayload) -> Uuid {
         let id = Uuid::now_v7();
 
         let Some(log_tx) = &self.log_tx else {
             return id;
         };
 
-        if body
-            .metadata
-            .extra
-            .as_ref()
-            .map(|m| m.is_empty())
-            .unwrap_or(true)
-        {
-            // The logger gets the `meta` field from here, so just move it over.
-            body.metadata.extra = match body.data {
-                Some(serde_json::Value::Object(m)) => Some(m),
-                _ => None,
-            };
-        }
+        let log_entry = ProxyLogEntry::Proxied(Box::new(ProxyLogEvent::from_payload(id, body)));
 
-        let log_entry = ProxyLogEntry {
-            id,
-            event_type: Cow::Owned(body.typ),
-            timestamp: Utc::now(),
-            request: None,
-            response: None,
-            total_latency: None,
-            latency: None,
-            was_rate_limited: None,
-            num_retries: None,
-            error: body.error.and_then(|e| serde_json::to_string(&e).ok()),
-            options: ProxyRequestOptions {
-                metadata: body.metadata,
-                internal_metadata,
-                ..Default::default()
-            },
-        };
-
-        log_tx.send_async(log_entry).await.ok();
+        log_tx.send_async(smallvec![log_entry]).await.ok();
 
         id
+    }
+
+    /// Record a step event to the database
+    pub async fn record_workflow_event(&self, event: WorkflowEvent) {
+        let Some(log_tx) = &self.log_tx else {
+            return;
+        };
+
+        log_tx
+            .send_async(smallvec![ProxyLogEntry::Workflow(event)])
+            .await
+            .ok();
+    }
+
+    /// Record multiple events, steps, and run updates
+    pub async fn record_event_batch(&self, events: impl Into<SmallVec<[WorkflowEvent; 1]>>) {
+        let Some(log_tx) = &self.log_tx else {
+            return;
+        };
+
+        let events = events
+            .into()
+            .into_iter()
+            .map(ProxyLogEntry::Workflow)
+            .collect::<_>();
+
+        log_tx.send_async(events).await.ok();
     }
 
     pub async fn send(
@@ -194,8 +184,8 @@ impl Proxy {
             llm.meta.user_id = options.metadata.user_id,
             llm.meta.workflow_id = options.metadata.workflow_id,
             llm.meta.workflow_name = options.metadata.workflow_name,
-            llm.meta.run_id = options.metadata.run_id,
-            llm.meta.step = options.metadata.step,
+            llm.meta.run_id = options.metadata.run_id.map(|u| u.to_string()),
+            llm.meta.step = options.metadata.step_id.map(|u| u.to_string()),
             llm.meta.step_index = options.metadata.step_index,
             llm.meta.prompt_id = options.metadata.prompt_id,
             llm.meta.prompt_version = options.metadata.prompt_version,
@@ -232,7 +222,7 @@ impl Proxy {
         body: ChatRequest,
         default_timeout: Option<Duration>,
         output_tx: StreamingResponseSender,
-        log_tx: Option<Sender<ProxyLogEntry>>,
+        log_tx: Option<LogSender>,
     ) {
         let id = uuid::Uuid::now_v7();
         let current_span = tracing::Span::current();
@@ -303,7 +293,7 @@ impl Proxy {
         let n = body.n.unwrap_or(1) as usize;
 
         // Fill in what we can now, the rest will be filled in once the response is done.
-        let log_entry = ProxyLogEntry {
+        let log_entry = ProxyLogEvent {
             id,
             event_type: Cow::Borrowed("chronicle_llm_request"),
             timestamp,
@@ -404,7 +394,7 @@ impl Proxy {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelAndProvider {
     pub model: String,
     pub provider: String,
@@ -468,7 +458,12 @@ impl ProxyRequestOptions {
             .get("x-chronicle-models")
             .map(|s| serde_json::from_slice::<Vec<ModelAndProvider>>(s.as_bytes()))
             .transpose()
-            .change_context_lazy(|| Error::ReadingHeader("x-chronicle-models".to_string()))?;
+            .change_context_lazy(|| {
+                Error::ReadingHeader(
+                    "x-chronicle-models".to_string(),
+                    "Array of ModelAndProvider",
+                )
+            })?;
         if let Some(models_header) = models_header {
             self.models = models_header;
         }
@@ -477,6 +472,7 @@ impl ProxyRequestOptions {
             &mut self.random_choice,
             headers,
             "x-chronicle-random-choice",
+            "boolean",
         )?;
         get_header_json(&mut self.retry, headers, "x-chronicle-retry")?;
 
@@ -485,7 +481,9 @@ impl ProxyRequestOptions {
             .and_then(|s| s.to_str().ok())
             .map(|s| s.parse::<u64>())
             .transpose()
-            .change_context_lazy(|| Error::ReadingHeader("x-chronicle-timeout".to_string()))?
+            .change_context_lazy(|| {
+                Error::ReadingHeader("x-chronicle-timeout".to_string(), "integer")
+            })?
             .map(|s| std::time::Duration::from_millis(s));
         if timeout.is_some() {
             self.timeout = timeout;
@@ -494,6 +492,36 @@ impl ProxyRequestOptions {
         self.metadata.merge_request_headers(headers)?;
 
         Ok(())
+    }
+
+    /// Merge values from `other`, when the values in the current object are not set.
+    pub fn merge_from(&mut self, other: &Self) {
+        if self.model.is_none() {
+            self.model = other.model.clone();
+        }
+        if self.provider.is_none() {
+            self.provider = other.provider.clone();
+        }
+        if self.override_url.is_none() {
+            self.override_url = other.override_url.clone();
+        }
+        if self.api_key.is_none() {
+            self.api_key = other.api_key.clone();
+        }
+        if self.models.is_empty() {
+            self.models = other.models.clone();
+        }
+        if self.random_choice.is_none() {
+            self.random_choice = other.random_choice;
+        }
+        if self.timeout.is_none() {
+            self.timeout = other.timeout;
+        }
+        if self.retry.is_none() {
+            self.retry = other.retry.clone();
+        }
+        self.metadata.merge_from(&other.metadata);
+        self.internal_metadata.merge_from(&other.internal_metadata);
     }
 }
 
@@ -507,6 +535,20 @@ pub struct ProxyRequestInternalMetadata {
     pub project_id: Option<String>,
     /// The internal user ID that the request belongs to
     pub user_id: Option<String>,
+}
+
+impl ProxyRequestInternalMetadata {
+    pub fn merge_from(&mut self, other: &Self) {
+        if self.organization_id.is_none() {
+            self.organization_id = other.organization_id.clone();
+        }
+        if self.project_id.is_none() {
+            self.project_id = other.project_id.clone();
+        }
+        if self.user_id.is_none() {
+            self.user_id = other.user_id.clone();
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -537,10 +579,10 @@ pub struct ProxyRequestMetadata {
     pub workflow_name: Option<String>,
     /// The id of of the specific run that this request belongs to. This can also be set by
     /// passing the x-chronicle-run-id HTTP header.
-    pub run_id: Option<String>,
+    pub run_id: Option<Uuid>,
     /// The name of the workflow step. This can also be set by passing the
-    /// x-chronicle-step HTTP header.
-    pub step: Option<String>,
+    /// x-chronicle-step-id HTTP header.
+    pub step_id: Option<Uuid>,
     /// The index of the step within the workflow. This can also be set by passing the
     /// x-chronicle-step-index HTTP header.
     pub step_index: Option<u32>,
@@ -575,17 +617,66 @@ impl ProxyRequestMetadata {
             headers,
             "x-chronicle-workflow-name",
         );
-        get_header_str(&mut self.run_id, headers, "x-chronicle-run-id");
-        get_header_str(&mut self.step, headers, "x-chronicle-step");
-        get_header_t(&mut self.step_index, headers, "x-chronicle-step-index")?;
+        get_header_t(&mut self.run_id, headers, "x-chronicle-run-id", "UUID")?;
+        get_header_t(&mut self.step_id, headers, "x-chronicle-step-id", "UUID")?;
+        get_header_t(
+            &mut self.step_index,
+            headers,
+            "x-chronicle-step-index",
+            "integer",
+        )?;
         get_header_str(&mut self.prompt_id, headers, "x-chronicle-prompt-id");
         get_header_t(
             &mut self.prompt_version,
             headers,
             "x-chronicle-prompt-version",
+            "integer",
         )?;
         get_header_json(&mut self.extra, headers, "x-chronicle-extra-meta")?;
         Ok(())
+    }
+
+    /// Merge values from `other`, when the values in the current object are not set.
+    pub fn merge_from(&mut self, other: &Self) {
+        if self.application.is_none() {
+            self.application = other.application.clone();
+        }
+        if self.environment.is_none() {
+            self.environment = other.environment.clone();
+        }
+        if self.organization_id.is_none() {
+            self.organization_id = other.organization_id.clone();
+        }
+        if self.project_id.is_none() {
+            self.project_id = other.project_id.clone();
+        }
+        if self.user_id.is_none() {
+            self.user_id = other.user_id.clone();
+        }
+        if self.workflow_id.is_none() {
+            self.workflow_id = other.workflow_id.clone();
+        }
+        if self.workflow_name.is_none() {
+            self.workflow_name = other.workflow_name.clone();
+        }
+        if self.run_id.is_none() {
+            self.run_id = other.run_id;
+        }
+        if self.step_id.is_none() {
+            self.step_id = other.step_id;
+        }
+        if self.step_index.is_none() {
+            self.step_index = other.step_index;
+        }
+        if self.prompt_id.is_none() {
+            self.prompt_id = other.prompt_id.clone();
+        }
+        if self.prompt_version.is_none() {
+            self.prompt_version = other.prompt_version;
+        }
+        if self.extra.is_none() {
+            self.extra = other.extra.clone();
+        }
     }
 }
 
@@ -608,6 +699,7 @@ fn get_header_t<T>(
     body_value: &mut Option<T>,
     headers: &HeaderMap,
     key: &str,
+    expected_format: &'static str,
 ) -> Result<(), Report<Error>>
 where
     T: FromStr,
@@ -622,7 +714,7 @@ where
         .and_then(|s| s.to_str().ok())
         .map(|s| s.parse::<T>())
         .transpose()
-        .change_context_lazy(|| Error::ReadingHeader(key.to_string()))?;
+        .change_context_lazy(|| Error::ReadingHeader(key.to_string(), expected_format))?;
 
     if value.is_some() {
         *body_value = value;
@@ -645,7 +737,7 @@ fn get_header_json<T: DeserializeOwned>(
         .and_then(|s| s.to_str().ok())
         .map(|s| serde_json::from_str(s))
         .transpose()
-        .change_context_lazy(|| Error::ReadingHeader(key.to_string()))?;
+        .change_context_lazy(|| Error::ReadingHeader(key.to_string(), "JSON value"))?;
 
     if value.is_some() {
         *body_value = value;
@@ -659,6 +751,7 @@ mod test {
     use std::collections::BTreeMap;
 
     use serde_json::json;
+    use uuid::Uuid;
     use wiremock::{
         matchers::{method, path},
         Mock, ResponseTemplate,
@@ -678,10 +771,11 @@ mod test {
     #[test]
     /// Make sure extra flattening works as expected
     fn deserialize_meta() {
+        let step = Uuid::now_v7();
         let test_value = json!({
             "application": "abc",
             "another": "value",
-            "step": "email",
+            "step_id": step,
             "third": "fourth",
         });
 
@@ -690,7 +784,7 @@ mod test {
 
         println!("{value:#?}");
         assert_eq!(value.application, Some("abc".to_string()));
-        assert_eq!(value.step, Some("email".to_string()));
+        assert_eq!(value.step_id, Some(step));
         assert_eq!(
             value.extra.as_ref().unwrap().get("another").unwrap(),
             &json!("value")

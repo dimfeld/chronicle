@@ -14,34 +14,39 @@ pub mod logging;
 pub mod postgres;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
+#[cfg(test)]
+mod testing;
 
+/// A DBMS-agnostic interface to a database
 #[async_trait::async_trait]
 pub trait ProxyDatabase: std::fmt::Debug + Send + Sync {
+    /// Load provider configuration from the database
     async fn load_providers_from_database(
         &self,
         providers_table: &str,
     ) -> Result<Vec<DbProvider>, Report<Error>>;
 
+    /// Load alias configuration from the database
     async fn load_aliases_from_database(
         &self,
         alias_table: &str,
         providers_table: &str,
     ) -> Result<Vec<AliasConfig>, Report<Error>>;
 
+    /// Load API key configuration from the database
     async fn load_api_key_configs_from_database(
         &self,
         table: &str,
     ) -> Result<Vec<ApiKeyConfig>, Report<Error>>;
 
-    async fn write_log_batch(
-        &self,
-        query: String,
-        items: Vec<ProxyLogEntry>,
-    ) -> Result<(), sqlx::Error>;
+    /// Write a batch of log entries to the database
+    async fn write_log_batch(&self, items: Vec<ProxyLogEntry>) -> Result<(), sqlx::Error>;
 }
 
+/// A [ProxyDatabase] wrapped in an [Arc]
 pub type Database = Arc<dyn ProxyDatabase>;
 
+/// A provider configuration loaded from the database
 #[derive(sqlx::FromRow)]
 pub struct DbProvider {
     name: String,

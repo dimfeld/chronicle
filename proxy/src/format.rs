@@ -5,6 +5,7 @@ use std::{borrow::Cow, collections::BTreeMap};
 
 use error_stack::Report;
 use serde::{Deserialize, Serialize};
+use serde_with::{formats::PreferMany, serde_as, OneOrMany};
 use uuid::Uuid;
 
 use crate::providers::ProviderError;
@@ -15,15 +16,22 @@ pub struct ChatResponse<CHOICE> {
     // Omitted certain fields that aren't really useful
     // id: String,
     // object: String,
+    /// Unix timestamp in seconds
     pub created: u64,
+    /// The model that was used
     pub model: Option<String>,
+    /// A fingerprint for the system prompt
     pub system_fingerprint: Option<String>,
+    /// The chat choices
     pub choices: Vec<CHOICE>,
+    /// Token usage information
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<UsageResponse>,
 }
 
+/// A chunk of streaming response
 pub type StreamingChatResponse = ChatResponse<ChatChoiceDelta>;
+/// A non-streaming chat response
 pub type SingleChatResponse = ChatResponse<ChatChoice>;
 
 impl ChatResponse<ChatChoice> {
@@ -42,6 +50,7 @@ impl ChatResponse<ChatChoice> {
         }
     }
 
+    /// Merge a streaming delta into this response.
     pub fn merge_delta(&mut self, chunk: &ChatResponse<ChatChoiceDelta>) {
         if self.created == 0 {
             self.created = chunk.created;
@@ -106,29 +115,40 @@ impl From<SingleChatResponse> for StreamingChatResponse {
     }
 }
 
+/// A single choice in a chat
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct ChatChoice {
+    /// Which choice this is
     pub index: usize,
+    /// The message
     pub message: ChatMessage,
+    /// The reason the chat terminated
     pub finish_reason: String,
 }
 
+/// A delta in a streaming chat choice
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct ChatChoiceDelta {
+    /// Which choice this is
     pub index: usize,
+    /// The message
     pub delta: ChatMessage,
+    /// The reason the chat terminated, if this is the final delta in the choice
     pub finish_reason: Option<String>,
 }
 
 /// A single message in a chat
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct ChatMessage {
+    /// The role of the message, such as "user" or "assistant".
     pub role: Option<String>,
     /// Some providers support this natively. For those that don't, the name
     /// will be prepended to the message using the format "{name}: {content}".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Text content of the message
     pub content: Option<String>,
+    /// A tool call to be invoked
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCall>,
 }
@@ -177,14 +197,19 @@ impl ChatMessage {
     }
 }
 
+/// Counts of prompt, completion, and total tokens
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct UsageResponse {
+    /// The number of input tokens
     pub prompt_tokens: Option<usize>,
+    /// The number of output tokens
     pub completion_tokens: Option<usize>,
+    /// The sum of the input and output tokens
     pub total_tokens: Option<usize>,
 }
 
 impl UsageResponse {
+    /// Return true if there is no usage info recorded in this response
     pub fn is_empty(&self) -> bool {
         self.prompt_tokens.is_none()
             && self.completion_tokens.is_none()
@@ -211,6 +236,7 @@ impl UsageResponse {
 /// Metadata about the request, from the proxy.
 #[derive(Debug, Clone, Serialize)]
 pub struct RequestInfo {
+    /// A UUID assigned by Chronicle to the request, which is linked to the logged information.
     pub id: Uuid,
     /// Which provider was used for the successful request.
     pub provider: String,
@@ -231,6 +257,7 @@ pub struct ResponseInfo {
     pub model: String,
 }
 
+/// Part of a streaming response, returned from the proxy
 #[cfg_attr(test, derive(Serialize))]
 #[derive(Debug, Clone)]
 pub enum StreamingResponse {
@@ -245,7 +272,9 @@ pub enum StreamingResponse {
     ResponseInfo(ResponseInfo),
 }
 
+/// A channel on which streaming responses can be sent
 pub type StreamingResponseSender = flume::Sender<Result<StreamingResponse, Report<ProviderError>>>;
+/// A channel that can receive streaming responses
 pub type StreamingResponseReceiver =
     flume::Receiver<Result<StreamingResponse, Report<ProviderError>>>;
 
@@ -275,8 +304,12 @@ impl<'a> Default for ChatRequestTransformation<'a> {
     }
 }
 
+/// The request that can be submitted to the proxy, for transformation and submission to a
+/// provider.
+#[serde_as]
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct ChatRequest {
+    /// The messages in the chat so far.
     pub messages: Vec<ChatMessage>,
     /// A separate field for system message as an alternative to specifying it in
     /// `messages`.
@@ -285,37 +318,48 @@ pub struct ChatRequest {
     /// The model to use. This can be omitted if the proxy options specify a model.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// How to penalize tokens based on their frequency in the text so far
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frequency_penalty: Option<f32>,
+    /// Specific control of certain token probabilities
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logit_bias: Option<BTreeMap<usize, f32>>,
+    /// Return the logprobs of the generated tokens
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logprobs: Option<bool>,
+    /// If `logprobs` is true, how many logprobs to return per token.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_logprobs: Option<u8>,
     /// max_tokens is optional for some providers but you should include it.
     /// We don't require it here for compatibility when wrapping other libraries that may not be aware they
     /// are using Chronicle.
     pub max_tokens: Option<u32>,
+    /// Generate multiple chat completions concurrently. Not every model provider supports this.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub n: Option<u32>,
+    /// How to penalize tokens based on their existing presence in the text so far
     #[serde(skip_serializing_if = "Option::is_none")]
     pub presence_penalty: Option<f32>,
+    /// Force JSON output
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_format: Option<serde_json::Value>,
+    /// A random seed to use when generating the response.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub seed: Option<i64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    // todo this should be a string or a vec
+    /// Tell the model to stop when it encounters these token sequences
+    #[serde_as(as = "OneOrMany<_, PreferMany>")]
     pub stop: Vec<String>,
-    // stream not supported yet
-    // pub stream: Option<bool>
+    /// Temperature to use when generating the response
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
+    /// Customize the top-P probability of tokens to consider when generating the response
     #[serde(skip_serializing_if = "Option::is_none")]
     pub top_p: Option<f32>,
+    /// Tools available for the model to use
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<Tool>,
+    /// Customize how the model chooses tools
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<serde_json::Value>,
     /// The "user" to send to the provider.
@@ -330,12 +374,16 @@ pub struct ChatRequest {
     pub stream_options: Option<StreamOptions>,
 }
 
+/// Stream options for OpenAI. This is automatically set by the proxy when streaming. You can omit
+/// it in your requests.
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct StreamOptions {
+    /// If true, include token usage in the response.
     pub include_usage: bool,
 }
 
 impl ChatRequest {
+    /// Transform a chat request to fit different variations on the OpenAI format.
     pub fn transform(&mut self, options: &ChatRequestTransformation) {
         let stripped = options
             .strip_model_prefix
@@ -396,33 +444,46 @@ impl ChatRequest {
     }
 }
 
+/// Represents a tool that can be used by the OpenAI model
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Tool {
+    /// The type of the tool, typically "function"
     #[serde(rename = "type")]
     pub typ: String,
+    /// The function details of the tool
     pub function: FunctionTool,
 }
 
+/// Represents the function details of a tool
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FunctionTool {
+    /// The name of the function
     pub name: String,
+    /// An optional description of the function
     pub description: Option<String>,
+    /// Optional parameters for the function, represented as a JSON value
     pub parameters: Option<serde_json::Value>,
 }
 
+/// Represents a call to a tool by the OpenAI model
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolCall {
+    /// The optional index of the tool call
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index: Option<usize>,
+    /// The optional ID of the tool call
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
+    /// The optional type of the tool call, typically "function"
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "type")]
     pub typ: Option<String>,
+    /// The function details of the tool call
     pub function: ToolCallFunction,
 }
 
 impl ToolCall {
+    /// Merges a delta ToolCall into this ToolCall, updating fields if they are None
     fn merge_delta(&mut self, delta: &ToolCall) {
         if self.index.is_none() {
             self.index = delta.index;
@@ -449,10 +510,13 @@ impl ToolCall {
     }
 }
 
+/// Represents the function details of a tool call
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ToolCallFunction {
+    /// The optional name of the function being called
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// The optional arguments passed to the function, as a JSON string
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arguments: Option<String>,
 }

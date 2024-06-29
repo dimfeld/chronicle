@@ -4,7 +4,6 @@ use std::{
 };
 
 use error_stack::Report;
-use filigree::tracing_config;
 use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
 
 use crate::{

@@ -4,30 +4,40 @@ use serde::{Deserialize, Serialize};
 
 use crate::providers::custom::{CustomProvider, ProviderRequestFormat};
 
+/// Configuration for the proxy
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct ProxyConfig {
+    /// Model providers that the proxy should use
     #[serde(default)]
     pub providers: Vec<CustomProviderConfig>,
+    /// Aliases that map to providers and models
     #[serde(default)]
     pub aliases: Vec<AliasConfig>,
+    /// API keys that the proxy should use
     #[serde(default)]
     pub api_keys: Vec<ApiKeyConfig>,
+    /// The default timeout for requests
     pub default_timeout: Option<Duration>,
+    /// Whether to log to the database or not.
     pub log_to_database: Option<bool>,
+    /// The user agent to use when making requests
     pub user_agent: Option<String>,
 }
 
+/// An alias configuration mape a single name to a list of provider-model pairs
 #[derive(Serialize, Deserialize, Debug, Clone, sqlx::FromRow)]
 pub struct AliasConfig {
-    /// A name for this model-provider pair.
+    /// A name for this alias
     pub name: String,
     /// If true, start from a random provider.
     /// If false, always start with the first provider, and only use later providers on retry.
     #[serde(default)]
     pub random_order: bool,
+    /// The providers and models that this alias represents.
     pub models: Vec<AliasConfigProvider>,
 }
 
+/// A provider and model to use in an alias
 #[derive(Serialize, Deserialize, Debug, Clone, sqlx::FromRow)]
 pub struct AliasConfigProvider {
     /// The model to use
@@ -40,6 +50,7 @@ pub struct AliasConfigProvider {
 
 sqlx_transparent_json_decode::sqlx_json_decode!(AliasConfigProvider);
 
+/// An API key, or where to find one
 #[derive(Serialize, Deserialize, Clone, sqlx::FromRow)]
 pub struct ApiKeyConfig {
     /// A name for this key
@@ -68,9 +79,12 @@ impl std::fmt::Debug for ApiKeyConfig {
     }
 }
 
+/// A declarative definition of a model provider
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CustomProviderConfig {
+    /// The name of the provider, as referenced in proxy requests
     pub name: String,
+    /// A human-readable name for the provider
     pub label: Option<String>,
     /// The url to use
     pub url: String,
@@ -81,6 +95,8 @@ pub struct CustomProviderConfig {
     /// If it is empty, then `api_key` is assumed to be the token itself, if provided.
     /// In the future the key sources will be pluggable, to support external secret sources.
     pub api_key_source: Option<String>,
+    /// What kind of request format this provider uses. Defaults to OpenAI-compatible
+    #[serde(default)]
     pub format: ProviderRequestFormat,
     /// Extra headers to pass with the request
     #[serde(default)]
@@ -90,6 +106,7 @@ pub struct CustomProviderConfig {
 }
 
 impl CustomProviderConfig {
+    /// Generate a [CustomProvider] object from the configuration
     pub fn into_provider(mut self, client: reqwest::Client) -> CustomProvider {
         if self.api_key_source.as_deref().unwrap_or_default() == "env" {
             if let Some(token) = self
