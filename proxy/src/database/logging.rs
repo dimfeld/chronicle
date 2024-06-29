@@ -9,8 +9,8 @@ use uuid::Uuid;
 use super::{Database, ProxyDatabase};
 use crate::{
     format::{ChatRequest, ResponseInfo, SingleChatResponse},
-    workflow_events::WorkflowEvent,
-    EventPayload, ProxyRequestOptions,
+    workflow_events::{EventPayload, WorkflowEvent},
+    ProxyRequestOptions,
 };
 
 /// An event from the proxy.

@@ -1,10 +1,10 @@
 use std::fmt::Debug;
 
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{EventPayload, ProxyRequestMetadata};
+use crate::{ProxyRequestInternalMetadata, ProxyRequestMetadata};
 
 /// Type-specific data for an event.
 #[derive(Debug, Deserialize)]
@@ -28,6 +28,19 @@ pub enum WorkflowEvent {
     StepState(StepEventData<StepStateData>),
     #[serde(untagged)]
     Event(EventPayload),
+}
+
+#[derive(Deserialize, Debug)]
+pub struct EventPayload {
+    #[serde(rename = "type")]
+    pub typ: String,
+    pub data: Option<serde_json::Value>,
+    pub error: Option<serde_json::Value>,
+    pub run_id: Uuid,
+    pub step_id: Uuid,
+    pub time: Option<DateTime<Utc>>,
+    #[serde(skip_deserializing)]
+    pub internal_metadata: Option<ProxyRequestInternalMetadata>,
 }
 
 /// An event that starts a run in a workflow.

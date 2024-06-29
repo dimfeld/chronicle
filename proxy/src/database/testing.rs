@@ -5,10 +5,9 @@ use uuid::Uuid;
 use crate::{
     database::logging::{ProxyLogEntry, ProxyLogEvent},
     workflow_events::{
-        ErrorData, RunStartEvent, RunUpdateEvent, StepEndData, StepEventData, StepStartData,
-        WorkflowEvent,
+        ErrorData, EventPayload, RunStartEvent, RunUpdateEvent, StepEndData, StepEventData,
+        StepStartData, WorkflowEvent,
     },
-    EventPayload,
 };
 
 pub const TEST_STEP1_ID: Uuid = Uuid::from_u128(1);

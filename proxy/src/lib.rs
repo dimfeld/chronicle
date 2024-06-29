@@ -19,7 +19,6 @@ mod testing;
 pub mod workflow_events;
 
 use builder::ProxyBuilder;
-use chrono::{DateTime, Utc};
 use config::{AliasConfig, ApiKeyConfig};
 use database::logging::{LogSender, ProxyLogEntry, ProxyLogEvent};
 pub use error::Error;
@@ -39,7 +38,7 @@ use serde_with::{serde_as, DurationMilliSeconds};
 use smallvec::{smallvec, SmallVec};
 use tracing::{instrument, Span};
 use uuid::Uuid;
-use workflow_events::WorkflowEvent;
+use workflow_events::{EventPayload, WorkflowEvent};
 
 use crate::request::try_model_choices;
 
@@ -62,19 +61,6 @@ pub struct ProxiedChatResponse {
     #[serde(flatten)]
     pub response: SingleChatResponse,
     pub meta: ProxiedChatResponseMeta,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct EventPayload {
-    #[serde(rename = "type")]
-    pub typ: String,
-    pub data: Option<serde_json::Value>,
-    pub error: Option<serde_json::Value>,
-    pub run_id: Uuid,
-    pub step_id: Uuid,
-    pub time: Option<DateTime<Utc>>,
-    #[serde(skip_deserializing)]
-    pub internal_metadata: Option<ProxyRequestInternalMetadata>,
 }
 
 /// The Chronicle proxy object
