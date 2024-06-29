@@ -39,7 +39,7 @@ use serde_with::{serde_as, DurationMilliSeconds};
 use smallvec::{smallvec, SmallVec};
 use tracing::{instrument, Span};
 use uuid::Uuid;
-use workflow_events::{RunStartEvent, RunUpdateEvent, StepEvent};
+use workflow_events::{RunStartEvent, RunUpdateEvent, WorkflowEvent};
 
 use crate::request::try_model_choices;
 
@@ -70,9 +70,11 @@ pub struct EventPayload {
     pub typ: String,
     pub data: Option<serde_json::Value>,
     pub error: Option<serde_json::Value>,
-    #[serde(default)]
-    pub metadata: ProxyRequestMetadata,
+    pub run_id: Uuid,
+    pub step_id: Uuid,
     pub time: Option<DateTime<Utc>>,
+    #[serde(skip_deserializing)]
+    pub internal_metadata: Option<ProxyRequestInternalMetadata>,
 }
 
 /// The Chronicle proxy object
@@ -92,19 +94,14 @@ impl Proxy {
 
     /// Record an event to the database. This lets you have your LLM request events and other
     /// events in the same database table.
-    pub async fn record_event(
-        &self,
-        internal_metadata: ProxyRequestInternalMetadata,
-        body: EventPayload,
-    ) -> Uuid {
+    pub async fn record_event(&self, body: EventPayload) -> Uuid {
         let id = Uuid::now_v7();
 
         let Some(log_tx) = &self.log_tx else {
             return id;
         };
 
-        let log_entry =
-            ProxyLogEntry::Event(ProxyLogEvent::from_payload(id, internal_metadata, body));
+        let log_entry = ProxyLogEntry::Proxied(Box::new(ProxyLogEvent::from_payload(id, body)));
 
         log_tx.send_async(smallvec![log_entry]).await.ok();
 
@@ -112,48 +109,30 @@ impl Proxy {
     }
 
     /// Record a step event to the database
-    pub async fn record_step_event(&self, event: StepEvent) {
+    pub async fn record_workflow_event(&self, event: WorkflowEvent) {
         let Some(log_tx) = &self.log_tx else {
             return;
         };
 
         log_tx
-            .send_async(smallvec![ProxyLogEntry::Step(event)])
-            .await
-            .ok();
-    }
-
-    /// Start a new run in the database
-    pub async fn start_run(&self, event: RunStartEvent) {
-        let Some(log_tx) = &self.log_tx else {
-            return;
-        };
-
-        log_tx
-            .send_async(smallvec![ProxyLogEntry::RunStart(event)])
-            .await
-            .ok();
-    }
-
-    /// Update a run in the database
-    pub async fn update_run(&self, event: RunUpdateEvent) {
-        let Some(log_tx) = &self.log_tx else {
-            return;
-        };
-
-        log_tx
-            .send_async(smallvec![ProxyLogEntry::RunUpdate(event)])
+            .send_async(smallvec![ProxyLogEntry::Workflow(event)])
             .await
             .ok();
     }
 
     /// Record multiple events, steps, and run updates
-    pub async fn record_event_batch(&self, events: impl Into<SmallVec<[ProxyLogEntry; 1]>>) {
+    pub async fn record_event_batch(&self, events: impl Into<SmallVec<[WorkflowEvent; 1]>>) {
         let Some(log_tx) = &self.log_tx else {
             return;
         };
 
-        log_tx.send_async(events.into()).await.ok();
+        let events = events
+            .into()
+            .into_iter()
+            .map(ProxyLogEntry::Workflow)
+            .collect::<_>();
+
+        log_tx.send_async(events).await.ok();
     }
 
     pub async fn send(

@@ -88,7 +88,7 @@ pub async fn handle_response(
         });
 
         log_tx
-            .send_async(smallvec![ProxyLogEntry::Event(log_entry)])
+            .send_async(smallvec![ProxyLogEntry::Proxied(Box::new(log_entry))])
             .await
             .ok();
     }
@@ -173,7 +173,7 @@ pub async fn record_error<E: std::fmt::Debug + std::fmt::Display>(
         log_entry.was_rate_limited = Some(was_rate_limited);
         log_entry.error = Some(format!("{:?}", error));
         log_tx
-            .send_async(smallvec![ProxyLogEntry::Event(log_entry)])
+            .send_async(smallvec![ProxyLogEntry::Proxied(Box::new(log_entry))])
             .await
             .ok();
     }

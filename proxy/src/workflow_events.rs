@@ -1,8 +1,34 @@
+use std::fmt::Debug;
+
 use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::ProxyRequestMetadata;
+use crate::{EventPayload, ProxyRequestMetadata};
+
+/// Type-specific data for an event.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum WorkflowEvent {
+    #[serde(rename = "run:start")]
+    RunStart(RunStartEvent),
+    #[serde(rename = "run:update")]
+    RunUpdate(RunUpdateEvent),
+    /// Event data for the start of a step.
+    #[serde(rename = "step:start")]
+    StepStart(StepEventData<StepStartData>),
+    /// Event data for the end of a step.
+    #[serde(rename = "step:end")]
+    StepEnd(StepEventData<StepEndData>),
+    /// Event data for a step error.
+    #[serde(rename = "step:error")]
+    StepError(StepEventData<ErrorData>),
+    /// Event data for a DAG node state change.
+    #[serde(rename = "step:state")]
+    StepState(StepEventData<StepStateData>),
+    #[serde(untagged)]
+    Event(EventPayload),
+}
 
 /// An event that starts a run in a workflow.
 #[derive(Debug, Serialize, Deserialize)]
@@ -21,6 +47,7 @@ pub struct RunStartEvent {
 }
 
 impl RunStartEvent {
+    /// Merge metadata into the event.
     pub fn merge_metadata(&mut self, other: &ProxyRequestMetadata) {
         if self.application.is_none() {
             self.application = other.application.clone();
@@ -111,29 +138,14 @@ pub struct RunUpdateEvent {
 
 /// An event that updates a run or step in a workflow.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct StepEvent {
+pub struct StepEventData<DATA> {
     /// A UUIDv7 identifying the step the event belongs to
     pub step_id: Uuid,
     /// A UUIDv7 for the entire run
     pub run_id: Uuid,
     /// The event's type and data
-    #[serde(flatten)]
-    pub data: StepEventData,
+    pub data: DATA,
     pub time: Option<DateTime<chrono::Utc>>,
-}
-
-/// Type-specific data for an event.
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", content = "data", rename_all = "snake_case")]
-pub enum StepEventData {
-    /// Event data for the start of a step.
-    Start(StepStartData),
-    /// Event data for the end of a step.
-    End(StepEndData),
-    /// Event data for a step error.
-    Error(ErrorData),
-    /// Event data for a DAG node state change.
-    State(StepStateData),
 }
 
 /// Data structure for the start of a step.
@@ -198,7 +210,7 @@ mod tests {
     #[test]
     fn test_workflow_event_step_start_deserialization() {
         let json_data = json!({
-            "type": "start",
+            "type": "step:start",
             "data": {
                 "parent_step": "01234567-89ab-cdef-0123-456789abcdef",
                 "type": "a_step",
@@ -214,7 +226,11 @@ mod tests {
             "time": "2023-06-27T12:34:56Z"
         });
 
-        let event: StepEvent = serde_json::from_value(json_data).unwrap();
+        let event: WorkflowEvent = serde_json::from_value(json_data).unwrap();
+
+        let WorkflowEvent::StepStart(event) = event else {
+            panic!("Expected StepStart event");
+        };
 
         assert_eq!(
             event.run_id.to_string(),
@@ -229,20 +245,16 @@ mod tests {
             "2023-06-27T12:34:56+00:00"
         );
 
-        if let StepEventData::Start(data) = event.data {
-            assert_eq!(
-                data.parent_step.unwrap().to_string(),
-                "01234567-89ab-cdef-0123-456789abcdef"
-            );
-            assert_eq!(data.typ, "a_step");
-            assert_eq!(data.name.unwrap(), "main_workflow");
-            assert_eq!(data.span_id.unwrap(), "span-456");
-            assert_eq!(data.tags, vec!["dag", "node"]);
-            assert_eq!(data.info.unwrap(), json!({"node_type": "task"}));
-            assert_eq!(data.input, json!({"task_param": "value"}));
-        } else {
-            panic!("Expected StepEnd event");
-        }
+        assert_eq!(
+            event.data.parent_step.unwrap().to_string(),
+            "01234567-89ab-cdef-0123-456789abcdef"
+        );
+        assert_eq!(event.data.typ, "a_step");
+        assert_eq!(event.data.name.unwrap(), "main_workflow");
+        assert_eq!(event.data.span_id.unwrap(), "span-456");
+        assert_eq!(event.data.tags, vec!["dag", "node"]);
+        assert_eq!(event.data.info.unwrap(), json!({"node_type": "task"}));
+        assert_eq!(event.data.input, json!({"task_param": "value"}));
     }
 
     #[test]
@@ -258,7 +270,10 @@ mod tests {
             "time": "2023-06-27T12:34:56Z"
         });
 
-        let event: StepEvent = serde_json::from_value(json_data).unwrap();
+        let event: WorkflowEvent = serde_json::from_value(json_data).unwrap();
+        let WorkflowEvent::StepEnd(event) = event else {
+            panic!("Expected StepEnd event");
+        };
 
         assert_eq!(
             event.run_id.to_string(),
@@ -273,12 +288,8 @@ mod tests {
             "2023-06-27T12:34:56+00:00"
         );
 
-        if let StepEventData::End(data) = event.data {
-            assert_eq!(data.output, json!({"result": "success"}));
-            assert_eq!(data.info.unwrap(), json!({"duration": 1000}));
-        } else {
-            panic!("Expected StepEnd event");
-        }
+        assert_eq!(event.data.output, json!({"result": "success"}));
+        assert_eq!(event.data.info.unwrap(), json!({"duration": 1000}));
     }
 
     #[test]
@@ -293,7 +304,10 @@ mod tests {
             "time": "2023-06-27T17:00:00Z"
         });
 
-        let event: StepEvent = serde_json::from_value(json_data).unwrap();
+        let event: WorkflowEvent = serde_json::from_value(json_data).unwrap();
+        let WorkflowEvent::StepError(event) = event else {
+            panic!("Expected StepEnd event");
+        };
 
         assert_eq!(
             event.run_id.to_string(),
@@ -308,10 +322,8 @@ mod tests {
             "2023-06-27T17:00:00+00:00"
         );
 
-        if let StepEventData::Error(data) = event.data {
-            assert_eq!(data.error, "Step execution failed");
-        } else {
-            panic!("Expected StepError event");
-        }
+        assert_eq!(event.data.error, "Step execution failed");
     }
+
+    // TODO add tests for remaining event types
 }

@@ -1,38 +1,20 @@
 use std::sync::Arc;
 
 use axum::{extract::State, response::IntoResponse, Json};
-use chronicle_proxy::{
-    database::logging::ProxyLogEntry,
-    workflow_events::{
-        ErrorData, RunStartEvent, RunUpdateEvent, StepEndData, StepEvent, StepStartData,
-        StepStateData,
-    },
-    EventPayload, ProxyRequestInternalMetadata, ProxyRequestMetadata,
-};
+use chronicle_proxy::{workflow_events::WorkflowEvent, ProxyRequestMetadata};
 use error_stack::ResultExt;
 use http::{HeaderMap, StatusCode};
-use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use smallvec::{smallvec, SmallVec};
 
 use crate::{error::Error, proxy::ServerState};
-
-#[derive(Serialize)]
-struct Id {
-    id: Uuid,
-}
 
 async fn record_event(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
-    Json(mut body): Json<ProxyLogEntry>,
+    Json(mut body): Json<WorkflowEvent>,
 ) -> Result<impl IntoResponse, Error> {
-    match body {
-        ProxyLogEntry::Event(e) => {
-            e.metadata
-                .merge_request_headers(&headers)
-                .change_context(Error::InvalidProxyHeader)?;
-        }
-        ProxyLogEntry::RunStart(event) => {
+    match &mut body {
+        WorkflowEvent::RunStart(event) => {
             let mut metadata = ProxyRequestMetadata::default();
             metadata
                 .merge_request_headers(&headers)
@@ -42,7 +24,7 @@ async fn record_event(
         _ => {}
     }
 
-    state.proxy.record_event_batch(body.into()).await;
+    state.proxy.record_event_batch(smallvec![body]).await;
 
     Ok(StatusCode::ACCEPTED)
 }
@@ -50,18 +32,23 @@ async fn record_event(
 async fn record_events(
     State(state): State<Arc<ServerState>>,
     headers: HeaderMap,
-    Json(mut body): Json<Vec<ProxyLogEntry>>,
+    Json(mut body): Json<SmallVec<[WorkflowEvent; 1]>>,
 ) -> Result<impl IntoResponse, Error> {
     let mut metadata = ProxyRequestMetadata::default();
     metadata
         .merge_request_headers(&headers)
         .change_context(Error::InvalidProxyHeader)?;
 
-    for mut event in &mut body {
-        event.metadata.merge_from(&metadata);
+    for event in &mut body {
+        match event {
+            WorkflowEvent::RunStart(event) => {
+                event.merge_metadata(&metadata);
+            }
+            _ => {}
+        }
     }
 
-    let id = state.proxy.record_event_batch(body.into()).await;
+    state.proxy.record_event_batch(body).await;
 
     Ok(StatusCode::ACCEPTED)
 }

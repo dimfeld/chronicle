@@ -4,13 +4,18 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use error_stack::{Report, ResultExt};
 use itertools::Itertools;
-use sqlx::{SqliteExecutor, SqlitePool};
+use sqlx::{QueryBuilder, SqliteExecutor, SqlitePool};
 use uuid::Uuid;
 
-use super::{logging::ProxyLogEntry, DbProvider, ProxyDatabase};
+use super::{
+    logging::{ProxyLogEntry, ProxyLogEvent},
+    DbProvider, ProxyDatabase,
+};
 use crate::{
     config::{AliasConfig, AliasConfigProvider, ApiKeyConfig},
-    workflow_events::{RunStartEvent, RunUpdateEvent, StepEvent, StepEventData, StepStartData},
+    workflow_events::{
+        RunStartEvent, RunUpdateEvent, StepEventData, StepStartData, StepStateData, WorkflowEvent,
+    },
     Error,
 };
 
@@ -35,15 +40,12 @@ impl SqliteDatabase {
     async fn write_step_start(
         &self,
         tx: impl SqliteExecutor<'_>,
-        step_id: Uuid,
-        run_id: Uuid,
-        data: StepStartData,
-        timestamp: Option<DateTime<Utc>>,
+        event: StepEventData<StepStartData>,
     ) -> Result<(), sqlx::Error> {
-        let tags = if data.tags.is_empty() {
+        let tags = if event.data.tags.is_empty() {
             None
         } else {
-            Some(data.tags.join("|"))
+            Some(event.data.tags.join("|"))
         };
 
         sqlx::query(
@@ -57,16 +59,16 @@ impl SqliteDatabase {
             ON CONFLICT DO NOTHING;
             "##,
         )
-        .bind(step_id.to_string())
-        .bind(run_id.to_string())
-        .bind(data.typ)
-        .bind(data.parent_step.map(|s| s.to_string()))
-        .bind(data.name)
-        .bind(data.input)
+        .bind(event.step_id.to_string())
+        .bind(event.run_id.to_string())
+        .bind(event.data.typ)
+        .bind(event.data.parent_step.map(|s| s.to_string()))
+        .bind(event.data.name)
+        .bind(event.data.input)
         .bind(tags)
-        .bind(data.info)
-        .bind(data.span_id)
-        .bind(timestamp.unwrap_or_else(|| Utc::now()).timestamp())
+        .bind(event.data.info)
+        .bind(event.data.span_id)
+        .bind(event.time.unwrap_or_else(|| Utc::now()).timestamp())
         .execute(tx)
         .await?;
         Ok(())
@@ -82,8 +84,6 @@ impl SqliteDatabase {
         info: Option<serde_json::Value>,
         timestamp: Option<DateTime<Utc>>,
     ) -> Result<(), sqlx::Error> {
-        // TODO this needs a different method of merging JSON info since the current
-        // query uses Postgres syntax.
         sqlx::query(
             r##"
             UPDATE chronicle_steps
@@ -109,53 +109,21 @@ impl SqliteDatabase {
         Ok(())
     }
 
-    async fn write_step_event(
+    async fn write_step_status(
         &self,
         tx: impl SqliteExecutor<'_>,
-        entry: StepEvent,
+        event: StepEventData<StepStateData>,
     ) -> Result<(), sqlx::Error> {
-        match entry.data {
-            StepEventData::Start(data) => {
-                self.write_step_start(tx, entry.step_id, entry.run_id, data, entry.time)
-                    .await?;
-            }
-            StepEventData::End(data) => {
-                self.write_step_end(
-                    tx,
-                    entry.step_id,
-                    entry.run_id,
-                    "finished",
-                    data.output,
-                    data.info,
-                    entry.time,
-                )
-                .await?;
-            }
-            StepEventData::Error(data) => {
-                self.write_step_end(
-                    tx,
-                    entry.step_id,
-                    entry.run_id,
-                    "error",
-                    data.error,
-                    None,
-                    entry.time,
-                )
-                .await?;
-            }
-            StepEventData::State(data) => {
-                sqlx::query(
-                    "UPDATE chronicle_steps
+        sqlx::query(
+            "UPDATE chronicle_steps
                     SET status=$1
                     WHERE run_id=$2 AND id=$3",
-                )
-                .bind(data.state)
-                .bind(entry.run_id.to_string())
-                .bind(entry.step_id.to_string())
-                .execute(tx)
-                .await?;
-            }
-        }
+        )
+        .bind(event.data.state)
+        .bind(event.run_id.to_string())
+        .bind(event.step_id.to_string())
+        .execute(tx)
+        .await?;
 
         Ok(())
     }
@@ -198,7 +166,7 @@ impl SqliteDatabase {
         Ok(())
     }
 
-    async fn write_run_end(
+    async fn write_run_update(
         &self,
         tx: impl SqliteExecutor<'_>,
         event: RunUpdateEvent,
@@ -223,6 +191,60 @@ impl SqliteDatabase {
         .execute(tx)
         .await?;
         Ok(())
+    }
+
+    fn add_event_values(builder: &mut QueryBuilder<'_, sqlx::Sqlite>, item: ProxyLogEvent) {
+        let (rmodel, rprovider, rbody, rmeta) = match item
+            .response
+            .map(|r| (r.body.model.clone(), r.provider, r.body, r.info.meta))
+        {
+            Some((rmodel, rprovider, rbody, rmeta)) => {
+                (rmodel, Some(rprovider), Some(rbody), rmeta)
+            }
+            None => (None, None, None, None),
+        };
+
+        let model = rmodel
+            .or_else(|| item.request.as_ref().and_then(|r| r.model.clone()))
+            .unwrap_or_default();
+
+        let extra = item.options.metadata.extra.filter(|m| !m.is_empty());
+
+        let mut tuple = builder.separated(",");
+        tuple
+            .push_unseparated("(")
+            // sqlx encodes UUIDs as binary blobs by default with Sqlite, which is often nice
+            // but not what we want here.
+            .push_bind(item.id.to_string())
+            .push_bind(item.event_type)
+            .push_bind(item.options.internal_metadata.organization_id)
+            .push_bind(item.options.internal_metadata.project_id)
+            .push_bind(item.options.internal_metadata.user_id)
+            .push_bind(sqlx::types::Json(item.request))
+            .push_bind(sqlx::types::Json(rbody))
+            .push_bind(sqlx::types::Json(item.error))
+            .push_bind(rprovider)
+            .push_bind(model)
+            .push_bind(item.options.metadata.application)
+            .push_bind(item.options.metadata.environment)
+            .push_bind(item.options.metadata.organization_id)
+            .push_bind(item.options.metadata.project_id)
+            .push_bind(item.options.metadata.user_id)
+            .push_bind(item.options.metadata.workflow_id)
+            .push_bind(item.options.metadata.workflow_name)
+            .push_bind(item.options.metadata.run_id.map(|u| u.to_string()))
+            .push_bind(item.options.metadata.step.map(|u| u.to_string()))
+            .push_bind(item.options.metadata.step_index.map(|i| i as i32))
+            .push_bind(item.options.metadata.prompt_id)
+            .push_bind(item.options.metadata.prompt_version.map(|i| i as i32))
+            .push_bind(sqlx::types::Json(extra))
+            .push_bind(rmeta)
+            .push_bind(item.num_retries.map(|n| n as i32))
+            .push_bind(item.was_rate_limited)
+            .push_bind(item.latency.map(|d| d.as_millis() as i64))
+            .push_bind(item.total_latency.map(|d| d.as_millis() as i64))
+            .push_bind(item.timestamp.timestamp())
+            .push_unseparated(")");
     }
 }
 
@@ -330,73 +352,61 @@ impl ProxyDatabase for SqliteDatabase {
 
         for entry in entries.into_iter() {
             match entry {
-                ProxyLogEntry::Event(item) => {
-                    let (rmodel, rprovider, rbody, rmeta) = match item
-                        .response
-                        .map(|r| (r.body.model.clone(), r.provider, r.body, r.info.meta))
-                    {
-                        Some((rmodel, rprovider, rbody, rmeta)) => {
-                            (rmodel, Some(rprovider), Some(rbody), rmeta)
-                        }
-                        None => (None, None, None, None),
-                    };
-
-                    let model = rmodel
-                        .or_else(|| item.request.as_ref().and_then(|r| r.model.clone()))
-                        .unwrap_or_default();
-
-                    let extra = item.options.metadata.extra.filter(|m| !m.is_empty());
-
+                ProxyLogEntry::Proxied(item) => {
                     if first_event {
                         first_event = false;
                     } else {
                         event_builder.push(",");
                     }
 
-                    let mut tuple = event_builder.separated(",");
-                    tuple
-                        .push_unseparated("(")
-                        // sqlx encodes UUIDs as binary blobs by default with Sqlite, which is often nice
-                        // but not what we want here.
-                        .push_bind(item.id.to_string())
-                        .push_bind(item.event_type)
-                        .push_bind(item.options.internal_metadata.organization_id)
-                        .push_bind(item.options.internal_metadata.project_id)
-                        .push_bind(item.options.internal_metadata.user_id)
-                        .push_bind(sqlx::types::Json(item.request))
-                        .push_bind(sqlx::types::Json(rbody))
-                        .push_bind(sqlx::types::Json(item.error))
-                        .push_bind(rprovider)
-                        .push_bind(model)
-                        .push_bind(item.options.metadata.application)
-                        .push_bind(item.options.metadata.environment)
-                        .push_bind(item.options.metadata.organization_id)
-                        .push_bind(item.options.metadata.project_id)
-                        .push_bind(item.options.metadata.user_id)
-                        .push_bind(item.options.metadata.workflow_id)
-                        .push_bind(item.options.metadata.workflow_name)
-                        .push_bind(item.options.metadata.run_id.map(|u| u.to_string()))
-                        .push_bind(item.options.metadata.step.map(|u| u.to_string()))
-                        .push_bind(item.options.metadata.step_index.map(|i| i as i32))
-                        .push_bind(item.options.metadata.prompt_id)
-                        .push_bind(item.options.metadata.prompt_version.map(|i| i as i32))
-                        .push_bind(sqlx::types::Json(extra))
-                        .push_bind(rmeta)
-                        .push_bind(item.num_retries.map(|n| n as i32))
-                        .push_bind(item.was_rate_limited)
-                        .push_bind(item.latency.map(|d| d.as_millis() as i64))
-                        .push_bind(item.total_latency.map(|d| d.as_millis() as i64))
-                        .push_bind(item.timestamp.timestamp())
-                        .push_unseparated(")");
+                    Self::add_event_values(&mut event_builder, *item);
                 }
-                ProxyLogEntry::Step(event) => {
-                    self.write_step_event(&mut *tx, event).await?;
+                ProxyLogEntry::Workflow(WorkflowEvent::Event(event)) => {
+                    if first_event {
+                        first_event = false;
+                    } else {
+                        event_builder.push(",");
+                    }
+
+                    let item = ProxyLogEvent::from_payload(Uuid::now_v7(), event);
+                    Self::add_event_values(&mut event_builder, item);
                 }
-                ProxyLogEntry::RunStart(event) => {
+                ProxyLogEntry::Workflow(WorkflowEvent::StepStart(event)) => {
+                    self.write_step_start(&mut *tx, event).await?;
+                }
+
+                ProxyLogEntry::Workflow(WorkflowEvent::StepEnd(event)) => {
+                    self.write_step_end(
+                        &mut *tx,
+                        event.step_id,
+                        event.run_id,
+                        "finished",
+                        event.data.output,
+                        event.data.info,
+                        event.time,
+                    )
+                    .await?;
+                }
+                ProxyLogEntry::Workflow(WorkflowEvent::StepState(event)) => {
+                    self.write_step_status(&mut *tx, event).await?;
+                }
+                ProxyLogEntry::Workflow(WorkflowEvent::StepError(event)) => {
+                    self.write_step_end(
+                        &mut *tx,
+                        event.step_id,
+                        event.run_id,
+                        "error",
+                        event.data.error,
+                        None,
+                        event.time,
+                    )
+                    .await?;
+                }
+                ProxyLogEntry::Workflow(WorkflowEvent::RunStart(event)) => {
                     self.write_run_start(&mut *tx, event).await?;
                 }
-                ProxyLogEntry::RunUpdate(event) => {
-                    self.write_run_end(&mut *tx, event).await?;
+                ProxyLogEntry::Workflow(WorkflowEvent::RunUpdate(event)) => {
+                    self.write_run_update(&mut *tx, event).await?;
                 }
             }
         }
@@ -459,7 +469,7 @@ mod test {
 
     use crate::database::{
         sqlite::run_default_migrations,
-        testing::{test_events, TEST_EVENT_ID, TEST_RUN_ID, TEST_STEP1_ID, TEST_STEP2_ID},
+        testing::{test_events, TEST_EVENT1_ID, TEST_RUN_ID, TEST_STEP1_ID, TEST_STEP2_ID},
     };
 
     #[sqlx::test(migrations = false)]
@@ -626,7 +636,7 @@ mod test {
         assert_eq!(events.len(), 1);
 
         let event = &events[0];
-        assert_eq!(event.get::<String, _>(0), TEST_EVENT_ID.to_string(), "id");
+        assert_eq!(event.get::<String, _>(0), TEST_EVENT1_ID.to_string(), "id");
         assert_eq!(event.get::<String, _>(1), "query", "event_type");
         assert_eq!(event.get::<String, _>(2), TEST_STEP2_ID.to_string(), "step");
         assert_eq!(event.get::<String, _>(3), TEST_RUN_ID.to_string(), "run_id");

@@ -10,7 +10,7 @@ use uuid::Uuid;
 use super::{Database, ProxyDatabase};
 use crate::{
     format::{ChatRequest, ResponseInfo, SingleChatResponse},
-    workflow_events::{RunStartEvent, RunUpdateEvent, StepEvent},
+    workflow_events::{RunStartEvent, RunUpdateEvent, WorkflowEvent},
     EventPayload, ProxyRequestInternalMetadata, ProxyRequestOptions,
 };
 
@@ -42,24 +42,11 @@ pub struct ProxyLogEvent {
 
 impl ProxyLogEvent {
     /// Create a new event from a submitted payload
-    pub fn from_payload(
-        id: Uuid,
-        internal_metadata: ProxyRequestInternalMetadata,
-        mut payload: EventPayload,
-    ) -> Self {
-        if payload
-            .metadata
-            .extra
-            .as_ref()
-            .map(|m| m.is_empty())
-            .unwrap_or(true)
-        {
-            // The logger gets the `meta` field from here, so just move it over.
-            payload.metadata.extra = match payload.data {
-                Some(serde_json::Value::Object(m)) => Some(m),
-                _ => None,
-            };
-        }
+    pub fn from_payload(id: Uuid, payload: EventPayload) -> Self {
+        let extra = match payload.data {
+            Some(serde_json::Value::Object(m)) => Some(m),
+            _ => None,
+        };
 
         ProxyLogEvent {
             id,
@@ -73,8 +60,13 @@ impl ProxyLogEvent {
             num_retries: None,
             error: payload.error.and_then(|e| serde_json::to_string(&e).ok()),
             options: ProxyRequestOptions {
-                metadata: payload.metadata,
-                internal_metadata,
+                metadata: crate::ProxyRequestMetadata {
+                    extra,
+                    step: Some(payload.step_id),
+                    run_id: Some(payload.run_id),
+                    ..Default::default()
+                },
+                internal_metadata: payload.internal_metadata.unwrap_or_default(),
                 ..Default::default()
             },
         }
@@ -92,17 +84,11 @@ pub struct CollectedProxiedResult {
 }
 
 /// An event to be logged
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", content = "data", rename_all = "snake_case")]
 pub enum ProxyLogEntry {
-    /// An generic event, whether from a proxied request or submitted externally.
-    Event(ProxyLogEvent),
-    /// An update to a step
-    Step(StepEvent),
-    /// Start a new run
-    RunStart(RunStartEvent),
-    /// Update an existing run
-    RunUpdate(RunUpdateEvent),
+    /// The result of a proxied model request
+    Proxied(Box<ProxyLogEvent>),
+    /// An update from a workflow step or run
+    Workflow(WorkflowEvent),
 }
 
 /// A channel on which log events can be sent.
