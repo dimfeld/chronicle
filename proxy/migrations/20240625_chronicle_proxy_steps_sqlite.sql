@@ -2,8 +2,8 @@ CREATE TABLE chronicle_runs (
   id text PRIMARY KEY,
   name text NOT NULL,
   description text,
-  application text NOT NULL,
-  environment text NOT NULL,
+  application text,
+  environment text,
   input text,
   output text,
   status text NOT NULL,
@@ -31,7 +31,7 @@ CREATE INDEX chronicle_runs_created_at_idx ON chronicle_runs (created_at DESC);
 
 CREATE TABLE chronicle_steps (
   id text PRIMARY KEY,
-  run_id text NOT NULL REFERENCES chronicle_runs (id) ON DELETE CASCADE,
+  run_id text NOT NULL,
   type text NOT NULL,
   parent_step text,
   name text,

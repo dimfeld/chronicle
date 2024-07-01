@@ -1,5 +1,10 @@
 # chronicle-proxy JavaScript client changelog
 
+## 0.3.0
+
+- Support submitting runs and step trace data to Chronicle
+- Add an event queue to ensure that events are submitted in the order they occur.
+
 ## 0.2.0
 
 - Support streaming

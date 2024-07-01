@@ -1,5 +1,13 @@
 # chronicle-api changelog
 
+## 0.4.1
+
+- Better validation of step and run events with invalid payloads
+- Don't require `tags` on "run:start" event
+- Don't require `input` on "step:start" event
+- Remove foreign key constraint of step run_id, in case events arrive out of order.
+- Don't require `application` or `environment` in run SQLite table schema
+
 ## 0.4.0
 
 - Add "runs" and "steps", with events to manage them

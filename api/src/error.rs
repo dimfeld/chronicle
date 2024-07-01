@@ -35,6 +35,9 @@ pub enum Error {
     #[error("Missing provider for model {0}")]
     MissingProvider(String),
 
+    #[error("Invalid event payload for type {0}")]
+    InvalidEventPayload(String, serde_json::Value),
+
     #[error("Model provider error")]
     Proxy,
     #[error("Failed to build proxy")]
@@ -80,16 +83,16 @@ impl Error {
         })
     }
 
-    fn find_downstack_error_detail(&self) -> Option<serde_json::Value> {
-        let Error::WrapReport(report) = self else {
-            return None;
-        };
-
-        report.frames().find_map(|frame| {
-            frame
-                .downcast_ref::<chronicle_proxy::providers::ProviderError>()
-                .and_then(|e| e.body.clone())
-        })
+    fn error_detail_body(&self) -> Option<serde_json::Value> {
+        match self {
+            Error::InvalidEventPayload(_, body) => Some(body.clone()),
+            Error::WrapReport(report) => report.frames().find_map(|frame| {
+                frame
+                    .downcast_ref::<chronicle_proxy::providers::ProviderError>()
+                    .and_then(|e| e.body.clone())
+            }),
+            _ => None,
+        }
     }
 }
 
@@ -114,6 +117,7 @@ impl HttpError for Error {
             Error::BuildingProxy => "building_proxy",
             Error::InvalidProxyHeader => "invalid_proxy_headers",
             Error::Config => "config",
+            Error::InvalidEventPayload(_, _) => "invalid_event_payload",
         }
     }
 
@@ -135,11 +139,12 @@ impl HttpError for Error {
             Error::InvalidProxyHeader => StatusCode::UNPROCESSABLE_ENTITY,
             Error::Proxy => StatusCode::INTERNAL_SERVER_ERROR,
             Error::BuildingProxy => StatusCode::INTERNAL_SERVER_ERROR,
+            Error::InvalidEventPayload(_, _) => StatusCode::UNPROCESSABLE_ENTITY,
         }
     }
 
     fn error_detail(&self) -> serde_json::Value {
-        let body = self.find_downstack_error_detail();
+        let body = self.error_detail_body();
 
         let error_details = match self {
             Error::WrapReport(e) => e.error_detail().into(),

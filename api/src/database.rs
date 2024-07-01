@@ -380,114 +380,116 @@ mod tests {
             .await
             .unwrap();
 
-        let events = json!( [
-          {
-              "type": "run:start",
-              "id": "00000000-0000-0000-0000-000000000005",
-              "name": "test run",
-              "description": "test description",
-              "application": "test application",
-              "environment": "test environment",
-              "input": {
-                "query": "abc"
+        let events = json!({
+            "events": [
+              {
+                  "type": "run:start",
+                  "id": "00000000-0000-0000-0000-000000000005",
+                  "name": "test run",
+                  "description": "test description",
+                  "application": "test application",
+                  "environment": "test environment",
+                  "input": {
+                    "query": "abc"
+                  },
+                  "trace_id": "0123456789abcdef",
+                  "span_id": "12345678",
+                  "tags": ["tag1", "tag2"],
+                  "info": {
+                    "info1": "value1",
+                    "info2": "value2"
+                  },
+                  "time": "1970-01-01T00:00:01Z"
+                  },
+              {
+                  "type": "step:start",
+                  "step_id": "00000000-0000-0000-0000-000000000001",
+                  "run_id": "00000000-0000-0000-0000-000000000005",
+                  "time": "1970-01-01T00:00:02Z",
+                  "data": {
+                    "name": "source_node1",
+                    "type": "step_type",
+                    "span_id": "11111111",
+                    "info": {
+                      "model": "a_model"
+                    },
+                    "tags": ["dag", "node"],
+                    "input": {
+                      "task_param": "value"
+                    }
+                  }
               },
-              "trace_id": "0123456789abcdef",
-              "span_id": "12345678",
-              "tags": ["tag1", "tag2"],
-              "info": {
-                "info1": "value1",
-                "info2": "value2"
+              {
+                  "type": "step:start",
+                  "step_id": "00000000-0000-0000-0000-000000000002",
+                  "run_id": "00000000-0000-0000-0000-000000000005",
+                  "time": "1970-01-01T00:00:03Z",
+                  "data": {
+                    "name": "source_node2",
+                    "type": "llm",
+                    "parent_step": "00000000-0000-0000-0000-000000000001",
+                    "span_id": "22222222",
+                    "info": {
+                      "model": "a_model"
+                    },
+                    "tags": [],
+                    "input": {
+                      "task_param2": "value"
+                    }
+                  }
               },
-              "time": "1970-01-01T00:00:01Z"
+              {
+                  "type": "an_event",
+                  "data": {
+                    "key": "value"
+                  },
+                  "error": {
+                    "message": "something went wrong"
+                  },
+                  "step_id": "00000000-0000-0000-0000-000000000002",
+                  "run_id": "00000000-0000-0000-0000-000000000005",
+                  "time": "1970-01-01T00:00:05Z"
               },
-          {
-              "type": "step:start",
-              "step_id": "00000000-0000-0000-0000-000000000001",
-              "run_id": "00000000-0000-0000-0000-000000000005",
-              "time": "1970-01-01T00:00:02Z",
-              "data": {
-                "name": "source_node1",
-                "type": "step_type",
-                "span_id": "11111111",
-                "info": {
-                  "model": "a_model"
-                },
-                "tags": ["dag", "node"],
-                "input": {
-                  "task_param": "value"
+              {
+                  "type": "step:error",
+                  "step_id": "00000000-0000-0000-0000-000000000002",
+                  "run_id": "00000000-0000-0000-0000-000000000005",
+                  "time": "1970-01-01T00:00:05Z",
+                  "data": {
+                    "error": {
+                      "message": "an error"
+                    }
+                  }
+              },
+              {
+                  "type": "step:end",
+                  "step_id": "00000000-0000-0000-0000-000000000001",
+                  "run_id": "00000000-0000-0000-0000-000000000005",
+                  "time": "1970-01-01T00:00:05Z",
+                  "data": {
+                    "output": {
+                      "result": "success"
+                    },
+                    "info": {
+                      "info3": "value3"
+                    }
+                  }
+              },
+              {
+                  "type": "run:update",
+                  "id": "00000000-0000-0000-0000-000000000005",
+                  "status": "finished",
+                  "output": {
+                    "result": "success"
+                  },
+                  "info": {
+                    "info2": "new_value",
+                    "info3": "value3"
+                  },
+                  "time": "1970-01-01T00:00:05Z"
                 }
-              }
-          },
-          {
-              "type": "step:start",
-              "step_id": "00000000-0000-0000-0000-000000000002",
-              "run_id": "00000000-0000-0000-0000-000000000005",
-              "time": "1970-01-01T00:00:03Z",
-              "data": {
-                "name": "source_node2",
-                "type": "llm",
-                "parent_step": "00000000-0000-0000-0000-000000000001",
-                "span_id": "22222222",
-                "info": {
-                  "model": "a_model"
-                },
-                "tags": [],
-                "input": {
-                  "task_param2": "value"
-                }
-              }
-          },
-          {
-              "type": "an_event",
-              "data": {
-                "key": "value"
-              },
-              "error": {
-                "message": "something went wrong"
-              },
-              "step_id": "00000000-0000-0000-0000-000000000002",
-              "run_id": "00000000-0000-0000-0000-000000000005",
-              "time": "1970-01-01T00:00:05Z"
-          },
-          {
-              "type": "step:error",
-              "step_id": "00000000-0000-0000-0000-000000000002",
-              "run_id": "00000000-0000-0000-0000-000000000005",
-              "time": "1970-01-01T00:00:05Z",
-              "data": {
-                "error": {
-                  "message": "an error"
-                }
-              }
-          },
-          {
-              "type": "step:end",
-              "step_id": "00000000-0000-0000-0000-000000000001",
-              "run_id": "00000000-0000-0000-0000-000000000005",
-              "time": "1970-01-01T00:00:05Z",
-              "data": {
-                "output": {
-                  "result": "success"
-                },
-                "info": {
-                  "info3": "value3"
-                }
-              }
-          },
-          {
-              "type": "run:update",
-              "id": "00000000-0000-0000-0000-000000000005",
-              "status": "finished",
-              "output": {
-                "result": "success"
-              },
-              "info": {
-                "info2": "new_value",
-                "info3": "value3"
-              },
-              "time": "1970-01-01T00:00:05Z"
-            }
-        ]);
+            ]
+        });
 
         client
             .post(&format!("{base_url}/events"))
