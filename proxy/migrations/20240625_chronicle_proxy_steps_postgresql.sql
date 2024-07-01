@@ -33,7 +33,7 @@ CREATE INDEX chronicle_runs_tags_idx ON chronicle_runs USING gin (tags);
 
 CREATE TABLE chronicle_steps (
   id uuid PRIMARY KEY,
-  run_id uuid NOT NULL REFERENCES chronicle_runs (id) ON DELETE CASCADE,
+  run_id uuid NOT NULL,
   type text NOT NULL,
   parent_step uuid,
   name text,

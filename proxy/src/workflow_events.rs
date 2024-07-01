@@ -54,6 +54,7 @@ pub struct RunStartEvent {
     pub input: Option<serde_json::Value>,
     pub trace_id: Option<String>,
     pub span_id: Option<String>,
+    #[serde(default)]
     pub tags: Vec<String>,
     pub info: Option<serde_json::Value>,
     pub time: Option<DateTime<chrono::Utc>>,
