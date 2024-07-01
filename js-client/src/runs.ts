@@ -104,13 +104,30 @@ export function toSpanAttributeValue(v: AttributeValue | object): AttributeValue
 export const asyncEventStorage = new AsyncLocalStorage<RunContext>();
 
 export interface RunContext {
+  /** The ID of this run */
   runId: string;
+  /** The ID of the current step */
   stepId: string | undefined;
+  /** The Chronicle client, which can be used for logging events and making LLM requests */
   chronicle: ChronicleClient;
+  /** Record additional information about the step that is only known after starting it.
+   * Each call to `recordStepInfo will merge the argument with the arguments to previous calls.`*/
   recordStepInfo: (o: object) => void;
+  /** Retrieve any information recorded by `recordStepInfo` */
   getRecordedStepInfo: () => object | undefined;
+  /** Record additional information about the run that is only known after starting it.
+   * Each call to `recordStepInfo will merge the argument with the arguments to previous calls.`*/
   recordRunInfo: (o: object) => void;
+  /** Record any information recorded by `recordRunInfo`. */
   getRecordedRunInfo: () => object | undefined;
+  /** Set the final status for the run to something other than the default of 'finished'.
+   * This does not update the status right away; rather it customizes the status passed
+   * to the `run:update` event after the run's function finishes.
+   *
+   * If you want to update the status of a run while it is running, you can send
+   * your own `run:update` event.
+   * */
+  setRunFinishStatus: (status: string) => void;
 }
 
 export function getEventContext(): RunContext | undefined {
@@ -123,14 +140,6 @@ export function getEventContext(): RunContext | undefined {
 export interface RunOptions {
   /** Restore context with this existing run ID */
   runId?: string;
-
-  /** If true, don't update the run's status to 'finished' when the inner function is done.
-   * This may be useful for things like state machines where the run finishing for now
-   * is not necessarily an actual "finished" state.
-   *
-   * Note that if this is set, you are also responsible for passing the output and returned `info` with your
-   * run update event, or else these will not be recorded. */
-  skipFinishEvent?: boolean;
 
   /** A Chronicle client. If omitted, the default client will be used */
   chronicle?: ChronicleClient;
@@ -165,6 +174,7 @@ export function startRun<T>(
 ): Promise<{ id: string; output: T; info: object | undefined }> {
   const chronicle = options.chronicle ?? getDefaultClient();
   let runInfo: object | undefined;
+  let runFinishStatus = 'finished';
   let context: RunContext = {
     runId: options.runId ?? uuidv7(),
     stepId: undefined,
@@ -179,6 +189,9 @@ export function startRun<T>(
       };
     },
     getRecordedRunInfo: () => runInfo,
+    setRunFinishStatus: (status: string) => {
+      runFinishStatus = status;
+    },
   };
 
   chronicle.event({
@@ -197,16 +210,14 @@ export function startRun<T>(
   return asyncEventStorage.run(context, async () => {
     try {
       const retVal = await fn(context);
-      if (!options.skipFinishEvent) {
-        chronicle.event({
-          type: 'run:update',
-          id: context.runId,
-          output: retVal,
-          info: runInfo,
-          status: 'finished',
-          time: new Date(),
-        } satisfies RunUpdateEvent);
-      }
+      chronicle.event({
+        type: 'run:update',
+        id: context.runId,
+        output: retVal,
+        info: runInfo,
+        status: runFinishStatus,
+        time: new Date(),
+      } satisfies RunUpdateEvent);
 
       return { id: context.runId, info: runInfo, output: retVal };
     } catch (e) {
@@ -250,6 +261,7 @@ async function runNewStepInternal<T>(
     stepId: currentStep,
     recordRunInfo: oldContext?.recordRunInfo ?? (() => {}),
     getRecordedRunInfo: oldContext?.getRecordedRunInfo ?? (() => undefined),
+    setRunFinishStatus: oldContext?.setRunFinishStatus ?? (() => {}),
     recordStepInfo,
     getRecordedStepInfo,
   };
@@ -359,4 +371,9 @@ export function recordStepInfo(info: object) {
  * This data will be shallowly merged with existing run information. */
 export function recordRunInfo(info: object) {
   getEventContext()?.recordRunInfo?.(info);
+}
+
+/** Set the status that will be written to the run when it finishes. */
+export function setRunFinishStatus(state: string) {
+  getEventContext()?.setRunFinishStatus(state);
 }

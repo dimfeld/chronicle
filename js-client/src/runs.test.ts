@@ -42,7 +42,6 @@ test('runs and steps ', async () => {
       input: {
         value: 1,
       },
-      skipFinishEvent: false,
       tags: ['test'],
     },
     async () => {
@@ -78,11 +77,11 @@ test('runs and steps ', async () => {
   await flushEvents();
 });
 
-test('run with skipFinishEvent', async () => {
+test.only('run with custom finish status', async () => {
   const runId = uuidv7();
   await startRun(
     {
-      name: 'Test with skipFinishEvent',
+      name: 'Test with custom finish status',
       runId,
       info: {
         testing: true,
@@ -90,10 +89,10 @@ test('run with skipFinishEvent', async () => {
       input: {
         value: 1,
       },
-      skipFinishEvent: true,
       tags: ['test'],
     },
-    async () => {
+    async (ctx) => {
+      ctx.setRunFinishStatus('skipped');
       return 1;
     }
   );
