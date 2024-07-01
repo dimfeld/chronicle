@@ -13,6 +13,7 @@ keywords.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+ahash = "0.8.11"
 async-trait = "0.1.80"
 backon = "0.4.4"
 bytes = "1.6.0"

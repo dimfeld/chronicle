@@ -307,6 +307,8 @@ impl ProxyDatabase for PostgresDatabase {
         let mut tx = self.pool.begin().await?;
         let mut first_event = true;
 
+        let mut run_ids = ahash::AHashSet::new();
+
         for entry in entries.into_iter() {
             match entry {
                 ProxyLogEntry::Proxied(item) => {
@@ -314,6 +316,10 @@ impl ProxyDatabase for PostgresDatabase {
                         first_event = false;
                     } else {
                         event_builder.push(",");
+                    }
+
+                    if let Some(run_id) = item.options.metadata.run_id {
+                        run_ids.insert(run_id);
                     }
 
                     Self::add_event_values(&mut event_builder, *item);
@@ -325,14 +331,18 @@ impl ProxyDatabase for PostgresDatabase {
                         event_builder.push(",");
                     }
 
+                    run_ids.insert(event.run_id);
+
                     let item = ProxyLogEvent::from_payload(Uuid::now_v7(), event);
                     Self::add_event_values(&mut event_builder, item);
                 }
                 ProxyLogEntry::Workflow(WorkflowEvent::StepStart(event)) => {
+                    run_ids.insert(event.run_id);
                     self.write_step_start(&mut *tx, event).await?;
                 }
 
                 ProxyLogEntry::Workflow(WorkflowEvent::StepEnd(event)) => {
+                    run_ids.insert(event.run_id);
                     self.write_step_end(
                         &mut *tx,
                         event.step_id,
@@ -345,9 +355,11 @@ impl ProxyDatabase for PostgresDatabase {
                     .await?;
                 }
                 ProxyLogEntry::Workflow(WorkflowEvent::StepState(event)) => {
+                    run_ids.insert(event.run_id);
                     self.write_step_status(&mut *tx, event).await?;
                 }
                 ProxyLogEntry::Workflow(WorkflowEvent::StepError(event)) => {
+                    run_ids.insert(event.run_id);
                     self.write_step_end(
                         &mut *tx,
                         event.step_id,
@@ -360,9 +372,11 @@ impl ProxyDatabase for PostgresDatabase {
                     .await?;
                 }
                 ProxyLogEntry::Workflow(WorkflowEvent::RunStart(event)) => {
+                    run_ids.insert(event.id);
                     self.write_run_start(&mut *tx, event).await?;
                 }
                 ProxyLogEntry::Workflow(WorkflowEvent::RunUpdate(event)) => {
+                    run_ids.insert(event.id);
                     self.write_run_update(&mut *tx, event).await?;
                 }
             }
@@ -371,6 +385,22 @@ impl ProxyDatabase for PostgresDatabase {
         if !first_event {
             let query = event_builder.build();
             query.execute(&mut *tx).await?;
+        }
+
+        if !run_ids.is_empty() {
+            let mut notify_builder =
+                QueryBuilder::new("SELECT pg_notify(ch, '') FROM UNNEST(ARRAY[");
+            let mut sep = notify_builder.separated(',');
+            for run_id in run_ids {
+                sep.push_bind(format!("chronicle_run:{run_id}"));
+            }
+            sep.push_unseparated("]) AS ch");
+
+            notify_builder
+                .build()
+                .persistent(false)
+                .execute(&mut *tx)
+                .await?;
         }
 
         tx.commit().await?;
@@ -421,9 +451,11 @@ pub async fn run_default_migrations(pool: &PgPool) -> Result<(), sqlx::Error> {
 
 #[cfg(test)]
 mod test {
+    use std::time::Duration;
+
     use chrono::{DateTime, TimeZone, Utc};
     use serde_json::json;
-    use sqlx::{PgPool, Row};
+    use sqlx::{postgres::PgListener, PgPool, Row};
     use uuid::Uuid;
 
     use crate::database::{
@@ -439,6 +471,15 @@ mod test {
     async fn test_database_writes(pool: PgPool) {
         filigree::tracing_config::test::init();
         run_default_migrations(&pool).await.unwrap();
+
+        let mut listener = PgListener::connect_with(&pool).await.unwrap();
+        let listen_task = tokio::task::spawn(async move {
+            listener
+                .listen(&format!("chronicle_run:{TEST_RUN_ID}"))
+                .await
+                .unwrap();
+            listener.recv().await
+        });
 
         let db = super::PostgresDatabase::new(pool.clone());
 
@@ -648,5 +689,13 @@ mod test {
             "error"
         );
         assert_eq!(event2.get::<DateTime<Utc>, _>(6), dt(5), "created_at");
+
+        let listened = tokio::time::timeout(Duration::from_secs(1), listen_task)
+            .await
+            .expect("Listener not notified")
+            .expect("Listener panicked")
+            .expect("Listener encountered an error");
+        assert_eq!(listened.channel(), format!("chronicle_run:{TEST_RUN_ID}"));
+        assert_eq!(listened.payload(), "", "payload");
     }
 }

@@ -1,5 +1,9 @@
 # chronicle-proxy changelog
 
+## 0.4.2
+
+- When using a PostgreSQL database, send notifications for each run that has an update
+
 ## 0.4.1
 
 - Don't require `tags` on "run:start" event

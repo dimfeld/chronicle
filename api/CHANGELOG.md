@@ -1,5 +1,9 @@
 # chronicle-api changelog
 
+## 0.4.2
+
+- When using a PostgreSQL database, send notifications for each run that has an update
+
 ## 0.4.1
 
 - Better validation of step and run events with invalid payloads
