@@ -27,7 +27,7 @@ const errorStep = asStep(async function errorStep() {
   throw new Error('test error');
 });
 
-test.only('runs and steps ', async () => {
+test('runs and steps ', async () => {
   const runId = uuidv7();
   let retVal = await startRun(
     {

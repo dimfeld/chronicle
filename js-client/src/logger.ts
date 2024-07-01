@@ -58,6 +58,7 @@ export class Logger {
     } catch (e) {
       // TODO log error to somewhere real
       console.error(e);
+      console.error('Writing', thisBatch);
     } finally {
       if (this.event_queue.length) {
         const overThreshold = this.event_queue.length > QUEUE_THRESHOLD;
