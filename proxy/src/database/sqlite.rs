@@ -351,6 +351,7 @@ impl ProxyDatabase for SqliteDatabase {
         let mut first_event = true;
 
         for entry in entries.into_iter() {
+            tracing::debug!(?entry, "Processing event");
             match entry {
                 ProxyLogEntry::Proxied(item) => {
                     if first_event {

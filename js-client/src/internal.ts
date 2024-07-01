@@ -21,3 +21,25 @@ export function proxyUrl(configured?: string | URL, path = '/chat') {
 
   return url;
 }
+
+export async function handleError(res: Response) {
+  let message = '';
+  const err = await res.text();
+  try {
+    const { error } = JSON.parse(err);
+
+    let errorBody = error?.details.body;
+    if (errorBody?.error) {
+      errorBody = errorBody.error;
+    }
+
+    if (errorBody) {
+      message = typeof errorBody === 'string' ? errorBody : JSON.stringify(errorBody);
+    }
+  } catch (e) {
+    message = err;
+  }
+
+  // TODO The api returns a bunch of other error details, so integrate them here.
+  return message || 'An error occurred';
+}

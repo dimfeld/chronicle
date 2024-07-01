@@ -1,18 +1,18 @@
 import { Attributes, trace } from '@opentelemetry/api';
-import { proxyUrl, propagateSpan } from './internal.js';
+import { proxyUrl, propagateSpan, handleError } from './internal.js';
 import { Stream } from './streaming.js';
 import type {
   ChronicleChatRequest,
   ChronicleChatRequestNonStreaming,
   ChronicleChatRequestStreaming,
-  ChronicleChatResponse,
   ChronicleChatResponseStream,
-  ChronicleRequestMetadata,
   ChronicleRequestOptions,
   ChronicleChatResponseNonStreaming,
   ChronicleChatResponseStreaming,
 } from './types.js';
-import { ChronicleEvent, isGenericEvent } from './events.js';
+import { ChronicleEvent, fillInEvents, isGenericEvent } from './events.js';
+import { getEventContext } from './runs.js';
+import { getLogger } from './logger.js';
 
 export interface ChronicleClientOptions {
   /** Replace the normal fetch function with this one */
@@ -38,7 +38,7 @@ export type StreamingClientFn = (
 
 export type ChronicleEventFn = (event: ChronicleEvent | ChronicleEvent[]) => Promise<void>;
 export type ChronicleClient = NonStreamingClientFn &
-  StreamingClientFn & { event: ChronicleEventFn };
+  StreamingClientFn & { event: ChronicleEventFn; metadata: Partial<ChronicleRequestOptions> };
 
 /** Create a Chronicle proxy client. This returns a function which will call the Chronicle proxy */
 export function createChronicleClient(options?: ChronicleClientOptions): ChronicleClient {
@@ -53,15 +53,21 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
     let { signal, ...reqOptions } = options ?? {};
 
     let body = {
-      ...defaults,
+      ...client.metadata,
       ...chat,
       ...reqOptions,
       metadata: {
-        ...defaults.metadata,
+        ...client.metadata,
         ...chat.metadata,
         ...reqOptions.metadata,
       },
     };
+
+    if (!body.metadata.run_id || !body.metadata.step_id) {
+      const context = getEventContext();
+      body.metadata.run_id ??= context?.runId;
+      body.metadata.step_id ??= context?.stepId ?? undefined;
+    }
 
     let req = new Request(url, {
       method: 'POST',
@@ -93,6 +99,8 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
     }
   };
 
+  client.metadata = defaults;
+
   client.event = (event: ChronicleEvent | ChronicleEvent[]) => {
     return sendEvent(eventUrl, event);
   };
@@ -101,19 +109,8 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
   return client;
 }
 
-export async function sendEvent(
-  url: string | URL | undefined,
-  body: ChronicleEvent | ChronicleEvent[]
-): Promise<void> {
-  const path = Array.isArray(body) ? '/events' : '/event';
+export function sendEvent(url: string | URL | undefined, body: ChronicleEvent | ChronicleEvent[]) {
   const payload = Array.isArray(body) ? body : [body];
-  let req = new Request(proxyUrl(url, path), {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-    },
-    body: JSON.stringify({ events: payload }),
-  });
 
   const span = trace.getActiveSpan();
   if (span?.isRecording() && !Array.isArray(body) && isGenericEvent(body)) {
@@ -140,30 +137,27 @@ export async function sendEvent(
     span.addEvent(body.type as string, eventAttributes);
   }
 
-  let res = await fetch(req);
-  if (!res.ok) {
-    throw new Error(await handleError(res));
-  }
+  let eventContext = getEventContext();
+  let spanCtx = span?.isRecording() ? span.spanContext() : undefined;
+  fillInEvents(payload, eventContext?.runId, eventContext?.stepId, spanCtx, new Date());
+
+  let logger = getLogger(proxyUrl(url, '/events'));
+  logger.enqueue(payload);
 }
 
-async function handleError(res: Response) {
-  let message = '';
-  const err = await res.text();
-  try {
-    const { error } = JSON.parse(err);
+let defaultClient: ChronicleClient | undefined;
 
-    let errorBody = error?.details.body;
-    if (errorBody?.error) {
-      errorBody = errorBody.error;
-    }
+/** Initialize the default client. */
+export function createDefaultClient(options: ChronicleClientOptions) {
+  defaultClient = createChronicleClient(options);
+  return defaultClient;
+}
 
-    if (errorBody) {
-      message = typeof errorBody === 'string' ? errorBody : JSON.stringify(errorBody);
-    }
-  } catch (e) {
-    message = err;
+/** Return the default client, or create one if it doesn't exist. This is primarily
+ * used by the run auto-instrumentation functions. */
+export function getDefaultClient() {
+  if (!defaultClient) {
+    defaultClient = createChronicleClient();
   }
-
-  // TODO The api returns a bunch of other error details, so integrate them here.
-  return message || 'An error occurred';
+  return defaultClient;
 }

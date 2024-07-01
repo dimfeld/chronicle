@@ -178,6 +178,7 @@ pub struct StepStartData {
     /// Additional information about the step.
     pub info: Option<serde_json::Value>,
     /// Input data for the step.
+    #[serde(default)]
     pub input: serde_json::Value,
 }
 

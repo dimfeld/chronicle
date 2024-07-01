@@ -14,6 +14,7 @@ use crate::{
 };
 
 /// An event from the proxy.
+#[derive(Debug)]
 pub struct ProxyLogEvent {
     /// A unique ID for this event
     pub id: Uuid,
@@ -73,6 +74,7 @@ impl ProxyLogEvent {
 }
 
 /// A response from the model provider, collected into a single body if it was streamed
+#[derive(Debug)]
 pub struct CollectedProxiedResult {
     /// The response itself
     pub body: SingleChatResponse,
@@ -83,6 +85,7 @@ pub struct CollectedProxiedResult {
 }
 
 /// An event to be logged
+#[derive(Debug)]
 pub enum ProxyLogEntry {
     /// The result of a proxied model request
     Proxied(Box<ProxyLogEvent>),
@@ -122,7 +125,7 @@ async fn database_logger_task(
                     break;
                 };
 
-                tracing::debug!("Received item");
+                tracing::debug!(num_items=item.len(), "Received items");
                 batch.extend(item);
 
                 if batch.len() >= batch_size {
