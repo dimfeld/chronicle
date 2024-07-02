@@ -125,7 +125,7 @@ export interface RunContext {
    * to the `run:update` event after the run's function finishes.
    *
    * If you want to update the status of a run while it is running, you can send
-   * your own `run:update` event.
+   * your own `run:update` event to `chronicle.event()`.
    * */
   setRunFinishStatus: (status: string) => void;
 }
