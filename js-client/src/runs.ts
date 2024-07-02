@@ -31,7 +31,6 @@ export interface StepOptions {
   parentStep?: string | null;
   /** Override the parent span */
   parentSpan?: opentelemetry.Context;
-  newSourceName?: string;
   input?: unknown;
 }
 
