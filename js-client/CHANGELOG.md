@@ -3,6 +3,7 @@
 ## 0.3.1
 
 - When running a step outside of a run, automatically wrap it in a run
+- Allow disabling all event logging in an application.
 
 ## 0.3.0
 

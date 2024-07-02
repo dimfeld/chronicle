@@ -10,7 +10,7 @@ import type {
   ChronicleChatResponseNonStreaming,
   ChronicleChatResponseStreaming,
 } from './types.js';
-import { ChronicleEvent, fillInEvents, isGenericEvent } from './events.js';
+import { ChronicleEvent, fillInEvents, isGenericEvent, getLoggingEnabled } from './events.js';
 import { getEventContext } from './runs.js';
 import { getLogger } from './logger.js';
 
@@ -110,6 +110,10 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
 }
 
 export function sendEvent(url: string | URL | undefined, body: ChronicleEvent | ChronicleEvent[]) {
+  if (!getLoggingEnabled()) {
+    return;
+  }
+
   const payload = Array.isArray(body) ? body : [body];
 
   const span = trace.getActiveSpan();

@@ -202,3 +202,15 @@ export function fillInEvents(
     }
   }
 }
+
+let loggingEnabled = true;
+
+/** Return if logging is enabled, application-wide. */
+export function getLoggingEnabled() {
+  return loggingEnabled;
+}
+
+/** Enable or disable run, step, and event logging globally. */
+export function setLoggingEnabled(enabled: boolean) {
+  loggingEnabled = enabled;
+}
