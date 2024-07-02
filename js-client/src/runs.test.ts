@@ -77,7 +77,7 @@ test('runs and steps ', async () => {
   await flushEvents();
 });
 
-test.only('run with custom finish status', async () => {
+test('run with custom finish status', async () => {
   const runId = uuidv7();
   await startRun(
     {
@@ -116,6 +116,15 @@ test('run error', async () => {
     throw new Error(`Failed to propagate error from run`);
   } catch (e) {
     expect(e.message).toEqual('test error');
+  } finally {
+    await flushEvents();
+  }
+});
+
+test('implicit run around a step', async () => {
+  try {
+    let output = await autoStep(1);
+    expect(output).toEqual(4);
   } finally {
     await flushEvents();
   }

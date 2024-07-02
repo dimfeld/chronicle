@@ -27,6 +27,9 @@ export interface StepOptions {
   tags?: string[];
   info?: object;
   spanOptions?: SpanOptions;
+  /** Provide a run ID for this step. This can be useful if the step's execution will be delayed in
+   * some way that makes it difficult to link to the parent run context. */
+  runId?: string;
   /** Override the parent step */
   parentStep?: string | null;
   /** Override the parent span */
@@ -153,7 +156,7 @@ export interface RunOptions {
   tags?: string[];
 
   /** Input for this run. */
-  input?: object;
+  input?: unknown;
 
   /** Additional information about this run. */
   info?: object;
@@ -258,9 +261,27 @@ async function runNewStepInternal<T>(
 
   let oldContext = getEventContext();
   let currentStep = uuidv7();
+  let runId = options.runId ?? oldContext?.runId;
+
+  if (!runId) {
+    // Wrap this step in a run
+    const { output } = await startRun(
+      {
+        name: options.name,
+        chronicle: oldContext?.chronicle ?? getDefaultClient(),
+        input: options.input,
+        info: options.info,
+        tags: options.tags,
+      },
+      () => runNewStepInternal(options, span, fn)
+    );
+
+    return output;
+  }
+
   let newContext: RunContext = {
     chronicle: oldContext?.chronicle ?? getDefaultClient(),
-    runId: oldContext?.runId ?? uuidv7(),
+    runId,
     stepId: currentStep,
     recordRunInfo: oldContext?.recordRunInfo ?? (() => {}),
     getRecordedRunInfo: oldContext?.getRecordedRunInfo ?? (() => undefined),

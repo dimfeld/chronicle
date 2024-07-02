@@ -1,5 +1,9 @@
 # chronicle-proxy JavaScript client changelog
 
+## 0.3.1
+
+- When running a step outside of a run, automatically wrap it in a run
+
 ## 0.3.0
 
 - Support submitting runs and step trace data to Chronicle
