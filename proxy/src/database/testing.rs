@@ -23,6 +23,7 @@ pub fn test_events() -> Vec<ProxyLogEntry> {
             description: Some("test description".to_string()),
             application: Some("test application".to_string()),
             environment: Some("test environment".to_string()),
+            status: None,
             input: Some(json!({"query":"abc"})),
             trace_id: Some("0123456789abcdef".to_string()),
             span_id: Some("12345678".to_string()),

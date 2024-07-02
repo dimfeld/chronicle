@@ -54,6 +54,8 @@ pub struct RunStartEvent {
     pub input: Option<serde_json::Value>,
     pub trace_id: Option<String>,
     pub span_id: Option<String>,
+    /// A status to start with. If omitted, 'started' is used.
+    pub status: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
     pub info: Option<serde_json::Value>,

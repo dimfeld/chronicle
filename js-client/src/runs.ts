@@ -158,6 +158,9 @@ export interface RunOptions {
   /** Additional information about this run. */
   info?: object;
 
+  /** Customize the initial status of the run. The default value is 'started'. */
+  status?: string;
+
   /** The application name linked to the run. If ommited, the value from the Chronicle client
    * can be used instead. */
   application?: string;
@@ -201,6 +204,7 @@ export function startRun<T>(
     environment: options.environment ?? chronicle.metadata.metadata?.environment,
     input: options.input,
     info: options.info,
+    status: options.status,
     description: options.description,
     tags: options.tags,
     time: new Date(),

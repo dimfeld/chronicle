@@ -17,6 +17,8 @@ export interface RunStartEvent {
   application?: string;
   /** Optional environment in which the run is executed */
   environment?: string;
+  /** Customize the initial status of the run. The default value is 'started'. */
+  status?: string;
   /** Optional input data for the run */
   input?: unknown;
   /** OpenTelemetry trace ID for distributed tracing */

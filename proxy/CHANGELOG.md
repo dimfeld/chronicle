@@ -1,5 +1,10 @@
 # chronicle-proxy changelog
 
+## 0.4.3
+
+- Allow customizing the initial status in a `run:start` event.
+- When receiving a `run:start` event for an already-existing run, update the status instead of ignoring it.
+
 ## 0.4.2
 
 - When using a PostgreSQL database, send notifications for each run that has an update

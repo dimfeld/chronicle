@@ -145,9 +145,11 @@ impl PostgresDatabase {
                     trace_id, span_id, tags, info, updated_at, created_at
             )
             VALUES (
-                $1, $2, $3, $4, $5, $6, 'started', $7, $8, $9, $10, $11, $11
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12
             )
-            ON CONFLICT DO NOTHING;
+            ON CONFLICT(id) DO UPDATE SET
+                status = EXCLUDED.status,
+                updated_at = EXCLUDED.updated_at;
             "##,
         )
         .bind(event.id)
@@ -156,6 +158,7 @@ impl PostgresDatabase {
         .bind(event.application)
         .bind(event.environment)
         .bind(event.input)
+        .bind(event.status.as_deref().unwrap_or("started"))
         .bind(event.trace_id)
         .bind(event.span_id)
         .bind(tags)
