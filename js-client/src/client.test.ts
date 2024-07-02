@@ -129,7 +129,7 @@ describe('tools', () => {
               hair_color: { type: 'string' },
               favorite_color: { type: 'string', description: `The person's favorite color.` },
             },
-            required: ['name', 'hair', 'color'],
+            required: ['name', 'hair_color', 'favorite_color'],
           },
         },
       },
@@ -334,8 +334,8 @@ describe('tracing', () => {
           data: {
             some_data: true,
           },
-          step_id: 'test-step',
-          run_id: 'test-run',
+          step_id: uuidv7(),
+          run_id: uuidv7(),
         });
       } finally {
         span.end();
