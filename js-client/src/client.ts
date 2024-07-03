@@ -10,7 +10,7 @@ import type {
   ChronicleChatResponseNonStreaming,
   ChronicleChatResponseStreaming,
 } from './types.js';
-import { ChronicleEvent, fillInEvents, isGenericEvent, getLoggingEnabled } from './events.js';
+import { ChronicleEvent, fillInEvents, isWorkflowEvent, getLoggingEnabled } from './events.js';
 import { getEventContext } from './runs.js';
 import { getLogger } from './logger.js';
 import EventEmitter from 'node:events';
@@ -128,7 +128,7 @@ export function sendEvent(
   const payload = Array.isArray(body) ? body : [body];
 
   const span = trace.getActiveSpan();
-  if (span?.isRecording() && !Array.isArray(body) && isGenericEvent(body)) {
+  if (span?.isRecording() && !Array.isArray(body) && !isWorkflowEvent(body)) {
     let eventAttributes: Attributes = {};
 
     if (body.data) {

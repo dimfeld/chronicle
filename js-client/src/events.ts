@@ -122,11 +122,14 @@ export type WorkflowEventTypes =
   | 'step:state';
 
 /** Represents a generic event in the system */
-export interface GenericEvent {
+export interface GenericEvent<
+  TYPE extends Omit<string, WorkflowEventTypes> = Omit<string, WorkflowEventTypes>,
+  DATA = object | undefined,
+> {
   /** The type of the event */
-  type: Omit<string, WorkflowEventTypes>;
+  type: TYPE;
   /** Data associated with the event */
-  data?: object;
+  data: DATA;
   /** Optional error information */
   error?: object;
   /** The ID for the run associated with this event. If not supplied, this will
@@ -139,19 +142,20 @@ export interface GenericEvent {
   time?: Date;
 }
 
-/** Represents any type of event that can be submitted to Chronicle */
-export type ChronicleEvent =
+export type ChronicleWorkflowEvent =
   | RunStartEvent
   | RunUpdateEvent
   | StepStartEvent
   | StepEndEvent
   | StepErrorEvent
-  | StepStateEvent
-  | GenericEvent;
+  | StepStateEvent;
 
-export function isGenericEvent(event: ChronicleEvent): event is GenericEvent {
+/** Represents any type of event that can be submitted to Chronicle */
+export type ChronicleEvent = ChronicleWorkflowEvent | GenericEvent;
+
+export function isWorkflowEvent(event: ChronicleEvent): event is ChronicleWorkflowEvent {
   // If the event type is not any of the known types, it's generic.
-  return !(
+  return (
     event.type === 'run:start' ||
     event.type === 'run:update' ||
     event.type === 'step:start' ||
@@ -176,10 +180,7 @@ export function fillInEvents(
       event.time = now;
     }
 
-    if (isGenericEvent(event)) {
-      event.run_id ??= runId ?? NIL_UUID;
-      event.step_id ??= stepId ?? NIL_UUID;
-    } else {
+    if (isWorkflowEvent(event)) {
       switch (event.type) {
         case 'step:start':
           event.run_id ??= runId ?? NIL_UUID;
@@ -199,6 +200,9 @@ export function fillInEvents(
           event.span_id ??= spanCtx?.spanId;
           event.trace_id ??= spanCtx?.traceId;
       }
+    } else {
+      event.run_id ??= runId ?? NIL_UUID;
+      event.step_id ??= stepId ?? NIL_UUID;
     }
   }
 }

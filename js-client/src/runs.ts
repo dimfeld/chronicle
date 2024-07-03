@@ -11,7 +11,7 @@ import {
   RunUpdateEvent,
   StepEndEvent,
   StepErrorEvent,
-  isGenericEvent,
+  isWorkflowEvent,
   type ChronicleEvent,
   type StepStartEvent,
 } from './events.js';
@@ -93,7 +93,7 @@ export async function runInSpan<T>(
 }
 
 export function addSpanEvent(span: Span, e: ChronicleEvent) {
-  if (isGenericEvent(e) && span.isRecording()) {
+  if (!isWorkflowEvent(e) && span.isRecording()) {
     const spanData = Object.fromEntries(
       Object.entries(e.data ?? {}).map(([k, v]) => [k, toSpanAttributeValue(v)])
     );
