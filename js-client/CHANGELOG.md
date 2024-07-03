@@ -6,6 +6,7 @@
 - Allow disabling all event logging in an application.
 - Allow explicitly passing a run context to `runStep`, in case it can not be retrieved from the normal AsyncLocalStorage context.
 - The client is now also an `EventEmitter`, and will emit any events passed to `client.event()`.
+- Add a `withMetadata` function to the client, which returns a child client with updated default metadata values in the requests. This client shares the same EventEmitter and other settings with its parent.
 
 ## 0.3.0
 

@@ -351,3 +351,27 @@ describe('tracing', () => {
     });
   });
 });
+
+test('withMetadata', () => {
+  let client = createChronicleClient({
+    defaults: {
+      metadata: {
+        application: 'appl',
+        workflow_name: 'a workflow',
+      },
+    },
+  });
+  let newClient = client.withMetadata({ workflow_name: 'withMetadata' });
+
+  // Old client's metadata was not changed.
+  expect(client.requestOptions.metadata?.workflow_name).toBe('a workflow');
+  expect(client.requestOptions.metadata?.application).toBe('appl');
+
+  expect(newClient.requestOptions.metadata?.workflow_name).toBe('withMetadata');
+  // New client inherits values from the old client
+  expect(newClient.requestOptions.metadata?.application).toBe('appl');
+
+  // Event emitter is the same.
+  expect(client.on).toBe(newClient.on);
+  expect(client.emit).toBe(newClient.emit);
+});

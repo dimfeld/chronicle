@@ -226,8 +226,10 @@ export function startRun<T>(
     options.name ?? 'run',
     {
       attributes: {
-        'workflow.run.application': options.application ?? chronicle.metadata.metadata?.application,
-        'workflow.run.environment': options.environment ?? chronicle.metadata.metadata?.environment,
+        'workflow.run.application':
+          options.application ?? chronicle.requestOptions.metadata?.application,
+        'workflow.run.environment':
+          options.environment ?? chronicle.requestOptions.metadata?.environment,
         'workflow.run.id': context.runId,
         'workflow.run.tags': options.tags,
         'workflow.run.input':
@@ -241,8 +243,8 @@ export function startRun<T>(
         type: 'run:start',
         id: context.runId,
         name: options.name ?? '',
-        application: options.application ?? chronicle.metadata.metadata?.application,
-        environment: options.environment ?? chronicle.metadata.metadata?.environment,
+        application: options.application ?? chronicle.requestOptions.metadata?.application,
+        environment: options.environment ?? chronicle.requestOptions.metadata?.environment,
         input: options.input,
         info: options.info,
         status: options.status,

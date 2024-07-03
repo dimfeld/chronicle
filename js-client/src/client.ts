@@ -9,6 +9,7 @@ import type {
   ChronicleRequestOptions,
   ChronicleChatResponseNonStreaming,
   ChronicleChatResponseStreaming,
+  ChronicleRequestMetadata,
 } from './types.js';
 import { ChronicleEvent, fillInEvents, isWorkflowEvent, getLoggingEnabled } from './events.js';
 import { getEventContext } from './runs.js';
@@ -25,7 +26,7 @@ export interface ChronicleClientOptions {
   token?: string;
 
   /** Set default options for requests made by this client. */
-  defaults?: Partial<ChronicleRequestOptions>;
+  defaults?: Omit<Partial<ChronicleRequestOptions>, 'signal'>;
 }
 
 export type NonStreamingClientFn = (
@@ -40,8 +41,14 @@ export type StreamingClientFn = (
 export type ChronicleEventFn = (event: ChronicleEvent | ChronicleEvent[]) => Promise<void>;
 export type ChronicleClient = NonStreamingClientFn &
   StreamingClientFn & {
+    /** Send an event to Chronicle. All events will also be re-emitted from the client using the EventEmitter interface.
+     * where the event name is 'event' and the data is the event passed to this function. */
     event: ChronicleEventFn;
-    metadata: Partial<ChronicleRequestOptions>;
+    /** Create a child client which shares the same settings and EventEmitter, but with new metadata merged
+     * over the existing metadata values. */
+    withMetadata: (newDefaults: Partial<ChronicleRequestMetadata>) => ChronicleClient;
+    /** The request options used by this client. */
+    requestOptions: Partial<ChronicleRequestOptions>;
   } & EventEmitter<{ event: [ChronicleEvent] }>;
 
 /** Create a Chronicle proxy client. This returns a function which will call the Chronicle proxy */
@@ -59,11 +66,11 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
     let { signal, ...reqOptions } = options ?? {};
 
     let body = {
-      ...client.metadata,
+      ...client.requestOptions,
       ...chat,
       ...reqOptions,
       metadata: {
-        ...client.metadata,
+        ...client.requestOptions?.metadata,
         ...chat.metadata,
         ...reqOptions.metadata,
       },
@@ -105,7 +112,7 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
     }
   };
 
-  client.metadata = defaults;
+  client.requestOptions = defaults;
 
   // Wire through the event emitter
   client.on = emitter.on.bind(emitter);
@@ -114,6 +121,31 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
 
   client.event = (event: ChronicleEvent | ChronicleEvent[]) => {
     return sendEvent(eventUrl, event, emitter);
+  };
+
+  function updateWithMetadata(
+    client: ChronicleClient,
+    newMetadata: Partial<ChronicleRequestMetadata>
+  ): ChronicleClient {
+    return {
+      ...client,
+      requestOptions: {
+        ...client.requestOptions,
+        metadata: {
+          ...client.requestOptions.metadata,
+          ...newMetadata,
+        },
+      },
+    } as ChronicleClient;
+  }
+
+  client.withMetadata = (defaults: Partial<ChronicleRequestMetadata>): ChronicleClient => {
+    let newClient = updateWithMetadata(client as ChronicleClient, defaults);
+    newClient.withMetadata = (defaults: Partial<ChronicleRequestMetadata>): ChronicleClient => {
+      return updateWithMetadata(newClient, defaults);
+    };
+
+    return newClient;
   };
 
   // @ts-expect-error
