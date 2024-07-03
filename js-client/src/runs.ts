@@ -44,18 +44,19 @@ export interface StepOptions {
 /** Run a step of a workflow. This both adds a tracing span and starts a new step in the
  * workflow's event tracking. */
 export function runStep<T>(options: StepOptions, f: (ctx: RunContext, span: Span) => Promise<T>) {
+  let stepId = uuidv7();
   let spanOptions: SpanOptions = options.spanOptions ?? {};
-  if (options.info) {
-    spanOptions.attributes = {
-      ...spanOptions.attributes,
-      ...Object.fromEntries(
-        Object.entries(options.info).map(([k, v]) => [k, toSpanAttributeValue(v)])
-      ),
-    };
-  }
+  spanOptions.attributes = {
+    'workflow.step.name': options.name,
+    'workflow.step.type': options.type,
+    'workflow.step.tags': options.tags,
+    'workflow.step.id': stepId,
+    ...objectToSpanAttributeValues(options.info, 'workflow.step.info.'),
+    ...spanOptions.attributes,
+  };
 
   return runInSpanWithParent(options.name, spanOptions, options.parentSpan, (span) => {
-    return runNewStepInternal(options, span, (ctx) => f(ctx, span));
+    return runNewStepInternal(options, stepId, span, (ctx) => f(ctx, span));
   });
 }
 
@@ -107,6 +108,19 @@ export function toSpanAttributeValue(v: AttributeValue | object): AttributeValue
   } else {
     return v;
   }
+}
+
+export function objectToSpanAttributeValues(
+  o: object | null | undefined,
+  prefix = ''
+): Record<string, AttributeValue> | undefined {
+  if (!o) {
+    return undefined;
+  }
+
+  return Object.fromEntries(
+    Object.entries(o).map(([k, v]) => [prefix + k, toSpanAttributeValue(v)])
+  );
 }
 
 export const asyncEventStorage = new AsyncLocalStorage<RunContext>();
@@ -176,6 +190,9 @@ export interface RunOptions {
   /** The environment name linked to the run. If ommited, the value from the Chronicle client
    * can be used instead. */
   environment?: string;
+
+  /** Force the span for this run to have this parent. */
+  parentSpanContext?: opentelemetry.Context;
 }
 
 /** Run a workflow and initialize an event context, if one does not already exist. */
@@ -205,50 +222,68 @@ export function startRun<T>(
     },
   };
 
-  chronicle.event({
-    type: 'run:start',
-    id: context.runId,
-    name: options.name ?? '',
-    application: options.application ?? chronicle.metadata.metadata?.application,
-    environment: options.environment ?? chronicle.metadata.metadata?.environment,
-    input: options.input,
-    info: options.info,
-    status: options.status,
-    description: options.description,
-    tags: options.tags,
-    time: new Date(),
-  } satisfies RunStartEvent);
-
-  return asyncEventStorage.run(context, async () => {
-    try {
-      const retVal = await fn(context);
+  return runInSpanWithParent(
+    options.name ?? 'run',
+    {
+      attributes: {
+        'workflow.run.application': options.application ?? chronicle.metadata.metadata?.application,
+        'workflow.run.environment': options.environment ?? chronicle.metadata.metadata?.environment,
+        'workflow.run.id': context.runId,
+        'workflow.run.tags': options.tags,
+        'workflow.run.input':
+          options.input == undefined ? undefined : JSON.stringify(options.input),
+        ...objectToSpanAttributeValues(options.info, 'workflow.run.info.'),
+      },
+    },
+    options.parentSpanContext,
+    () => {
       chronicle.event({
-        type: 'run:update',
+        type: 'run:start',
         id: context.runId,
-        output: retVal,
-        info: runInfo,
-        status: runFinishStatus,
+        name: options.name ?? '',
+        application: options.application ?? chronicle.metadata.metadata?.application,
+        environment: options.environment ?? chronicle.metadata.metadata?.environment,
+        input: options.input,
+        info: options.info,
+        status: options.status,
+        description: options.description,
+        tags: options.tags,
         time: new Date(),
-      } satisfies RunUpdateEvent);
+      } satisfies RunStartEvent);
 
-      return { id: context.runId, info: runInfo, output: retVal };
-    } catch (e) {
-      chronicle.event({
-        type: 'run:update',
-        id: context.runId,
-        status: 'error',
-        time: new Date(),
-        output: e as Error,
-        info: runInfo,
-      } satisfies RunUpdateEvent);
-      throw e;
+      return asyncEventStorage.run(context, async () => {
+        try {
+          const retVal = await fn(context);
+          chronicle.event({
+            type: 'run:update',
+            id: context.runId,
+            output: retVal,
+            info: runInfo,
+            status: runFinishStatus,
+            time: new Date(),
+          } satisfies RunUpdateEvent);
+
+          return { id: context.runId, info: runInfo, output: retVal };
+        } catch (e) {
+          chronicle.event({
+            type: 'run:update',
+            id: context.runId,
+            status: 'error',
+            time: new Date(),
+            output: e as Error,
+            info: runInfo,
+          } satisfies RunUpdateEvent);
+          throw e;
+        }
+      });
     }
-  });
+  );
 }
 
 /** Run a new step, recording the current step as the step's parent. */
 async function runNewStepInternal<T>(
   options: StepOptions,
+  stepId: string | undefined,
   span: Span,
   fn: (ctx: RunContext) => Promise<T>
 ): Promise<T> {
@@ -266,7 +301,7 @@ async function runNewStepInternal<T>(
   }
 
   let oldContext = options.parentRunContext ?? getEventContext();
-  let currentStep = uuidv7();
+  let currentStep = stepId ?? uuidv7();
   let runId = oldContext?.runId;
 
   if (!runId) {
@@ -279,7 +314,7 @@ async function runNewStepInternal<T>(
         info: options.info,
         tags: options.tags,
       },
-      () => runNewStepInternal(options, span, fn)
+      () => runNewStepInternal(options, stepId, span, fn)
     );
 
     return output;
