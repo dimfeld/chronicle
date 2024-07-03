@@ -4,6 +4,8 @@
 
 - When running a step outside of a run, automatically wrap it in a run
 - Allow disabling all event logging in an application.
+- Allow explicitly passing a run context to `runStep`, in case it can not be retrieved from the normal AsyncLocalStorage context.
+- The client is now also an `EventEmitter`, and will emit any events passed to `client.event()`.
 
 ## 0.3.0
 

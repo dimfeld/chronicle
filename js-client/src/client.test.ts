@@ -4,6 +4,7 @@ import { ChronicleChatRequest, ChronicleChatResponseStreaming } from './types.js
 import { HoneycombSDK } from '@honeycombio/opentelemetry-node';
 import { trace } from '@opentelemetry/api';
 import { uuidv7 } from 'uuidv7';
+import { ChronicleEvent } from './events.js';
 
 test('basic client', async () => {
   let client = createChronicleClient();
@@ -191,6 +192,11 @@ test('events', async () => {
 
   console.log('runId', runId);
 
+  let seenEvent: ChronicleEvent | undefined;
+  client.once('event', (event) => {
+    seenEvent = event;
+  });
+
   // Start a run
   await client.event({
     type: 'run:start',
@@ -204,6 +210,8 @@ test('events', async () => {
       midValue: 2,
     },
   });
+
+  expect(seenEvent?.type).toEqual('run:start');
 
   // Start a step
   await client.event({

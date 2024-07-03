@@ -26,15 +26,19 @@ export interface StepOptions {
   type: string;
   tags?: string[];
   info?: object;
-  spanOptions?: SpanOptions;
-  /** Provide a run ID for this step. This can be useful if the step's execution will be delayed in
-   * some way that makes it difficult to link to the parent run context. */
-  runId?: string;
-  /** Override the parent step */
-  parentStep?: string | null;
-  /** Override the parent span */
-  parentSpan?: opentelemetry.Context;
+  /** Record this as the input for the step. */
   input?: unknown;
+
+  /** Options for the OpenTelemetry span that will wrap this step. */
+  spanOptions?: SpanOptions;
+
+  /** Override the parent OpenTelemetry span */
+  parentSpan?: opentelemetry.Context;
+
+  /** Use this context as the parent for the step. This can be useful if the step's execution was delayed in
+   * some way that makes it difficult to link to the parent run context, such as when running the step in a DAG,
+   * based on some EventEmitter. */
+  parentRunContext?: RunContext;
 }
 
 /** Run a step of a workflow. This both adds a tracing span and starts a new step in the
@@ -72,6 +76,8 @@ export async function runInSpanWithParent<T>(
       span.recordException(e as Error);
       span.setStatus({ code: SpanStatusCode.ERROR });
       throw e;
+    } finally {
+      span.end();
     }
   });
 }
@@ -246,7 +252,7 @@ async function runNewStepInternal<T>(
   span: Span,
   fn: (ctx: RunContext) => Promise<T>
 ): Promise<T> {
-  const { name, tags, info, parentStep, input } = options;
+  const { name, tags, info, input } = options;
   let additionalInfo: object | undefined;
   function recordStepInfo(o: object) {
     additionalInfo = {
@@ -259,9 +265,9 @@ async function runNewStepInternal<T>(
     return additionalInfo;
   }
 
-  let oldContext = getEventContext();
+  let oldContext = options.parentRunContext ?? getEventContext();
   let currentStep = uuidv7();
-  let runId = options.runId ?? oldContext?.runId;
+  let runId = oldContext?.runId;
 
   if (!runId) {
     // Wrap this step in a run
@@ -303,7 +309,7 @@ async function runNewStepInternal<T>(
         input,
         tags,
         info: info,
-        parent_step: parentStep ?? oldContext?.stepId,
+        parent_step: oldContext?.stepId,
         span_id: stepSpanId(span),
       },
     } satisfies StepStartEvent);
@@ -378,6 +384,12 @@ export function asStep<P extends unknown[] = unknown[], RET = unknown>(
       },
       () => fn(...args)
     );
+}
+
+/** Explicitly provide an existing `RunContext`, for cases where the function is not causally linked to the run closely
+ * enough for it to be retireved through the normal AsyncLocalStorage mechanism. */
+export function runWithContext<T>(ctx: RunContext, fn: () => T): T {
+  return asyncEventStorage.run(ctx, fn);
 }
 
 /** Get the current span ID, but only if recording */

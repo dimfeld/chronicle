@@ -13,6 +13,7 @@ import type {
 import { ChronicleEvent, fillInEvents, isGenericEvent, getLoggingEnabled } from './events.js';
 import { getEventContext } from './runs.js';
 import { getLogger } from './logger.js';
+import EventEmitter from 'node:events';
 
 export interface ChronicleClientOptions {
   /** Replace the normal fetch function with this one */
@@ -38,13 +39,18 @@ export type StreamingClientFn = (
 
 export type ChronicleEventFn = (event: ChronicleEvent | ChronicleEvent[]) => Promise<void>;
 export type ChronicleClient = NonStreamingClientFn &
-  StreamingClientFn & { event: ChronicleEventFn; metadata: Partial<ChronicleRequestOptions> };
+  StreamingClientFn & {
+    event: ChronicleEventFn;
+    metadata: Partial<ChronicleRequestOptions>;
+  } & EventEmitter<{ event: [ChronicleEvent] }>;
 
 /** Create a Chronicle proxy client. This returns a function which will call the Chronicle proxy */
 export function createChronicleClient(options?: ChronicleClientOptions): ChronicleClient {
   let { fetch = globalThis.fetch, token, defaults = {} } = options ?? {};
   let url = proxyUrl(options?.url);
   let eventUrl = new URL('/events', url);
+
+  let emitter = new EventEmitter<{ event: [ChronicleEvent] }>();
 
   const client = async (
     chat: ChronicleChatRequest & Partial<ChronicleRequestOptions>,
@@ -101,19 +107,24 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
 
   client.metadata = defaults;
 
+  // Wire through the event emitter
+  client.on = emitter.on.bind(emitter);
+  client.once = emitter.once.bind(emitter);
+  client.emit = emitter.emit.bind(emitter);
+
   client.event = (event: ChronicleEvent | ChronicleEvent[]) => {
-    return sendEvent(eventUrl, event);
+    return sendEvent(eventUrl, event, emitter);
   };
 
   // @ts-expect-error
   return client;
 }
 
-export function sendEvent(url: string | URL | undefined, body: ChronicleEvent | ChronicleEvent[]) {
-  if (!getLoggingEnabled()) {
-    return;
-  }
-
+export function sendEvent(
+  url: string | URL | undefined,
+  body: ChronicleEvent | ChronicleEvent[],
+  emitter: EventEmitter<{ event: [ChronicleEvent] }>
+) {
   const payload = Array.isArray(body) ? body : [body];
 
   const span = trace.getActiveSpan();
@@ -144,6 +155,14 @@ export function sendEvent(url: string | URL | undefined, body: ChronicleEvent | 
   let eventContext = getEventContext();
   let spanCtx = span?.isRecording() ? span.spanContext() : undefined;
   fillInEvents(payload, eventContext?.runId, eventContext?.stepId, spanCtx, new Date());
+
+  for (let event of payload) {
+    emitter.emit('event', event);
+  }
+
+  if (!getLoggingEnabled()) {
+    return;
+  }
 
   let logger = getLogger(proxyUrl(url, '/events'));
   logger.enqueue(payload);
