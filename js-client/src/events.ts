@@ -134,10 +134,10 @@ export interface GenericEvent<
   error?: object;
   /** The ID for the run associated with this event. If not supplied, this will
    * be filled in from the context. */
-  run_id: Uuid;
+  run_id?: Uuid;
   /** The ID for the step associated with this event. If not supplied, this wil
    * be filled in from the context. */
-  step_id: Uuid;
+  step_id?: Uuid;
   /** Timestamp of when the event occurred. If not supplied, `new Date()` will be used. */
   time?: Date;
 }
