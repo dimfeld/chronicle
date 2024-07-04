@@ -1,6 +1,6 @@
 # chronicle-proxy JavaScript client changelog
 
-## 0.4.1 (Unreleased)
+## 0.4.1 
 
 - Make `run_id` and `step_id` optional in `GenericEvent` since they will be filled in automatically when possible.
 
