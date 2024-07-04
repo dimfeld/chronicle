@@ -46,7 +46,7 @@ export type ChronicleClient = NonStreamingClientFn &
     event: ChronicleEventFn;
     /** Create a child client which shares the same settings and EventEmitter, but with new metadata merged
      * over the existing metadata values. */
-    withMetadata: (newDefaults: Partial<ChronicleRequestMetadata>) => ChronicleClient;
+    withMetadata: (newDefaults: ChronicleRequestMetadata) => ChronicleClient;
     /** The request options used by this client. */
     requestOptions: Partial<ChronicleRequestOptions>;
   } & EventEmitter<{ event: [ChronicleEvent] }>;
@@ -125,7 +125,7 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
 
   function updateWithMetadata(
     client: ChronicleClient,
-    newMetadata: Partial<ChronicleRequestMetadata>
+    newMetadata: ChronicleRequestMetadata
   ): ChronicleClient {
     return {
       ...client,
@@ -139,9 +139,9 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
     } as ChronicleClient;
   }
 
-  client.withMetadata = (defaults: Partial<ChronicleRequestMetadata>): ChronicleClient => {
+  client.withMetadata = (defaults: ChronicleRequestMetadata): ChronicleClient => {
     let newClient = updateWithMetadata(client as ChronicleClient, defaults);
-    newClient.withMetadata = (defaults: Partial<ChronicleRequestMetadata>): ChronicleClient => {
+    newClient.withMetadata = (defaults: ChronicleRequestMetadata): ChronicleClient => {
       return updateWithMetadata(newClient, defaults);
     };
 
@@ -152,7 +152,7 @@ export function createChronicleClient(options?: ChronicleClientOptions): Chronic
   return client;
 }
 
-export function sendEvent(
+function sendEvent(
   url: string | URL | undefined,
   body: ChronicleEvent | ChronicleEvent[],
   emitter: EventEmitter<{ event: [ChronicleEvent] }>
@@ -202,7 +202,7 @@ export function sendEvent(
 
 let defaultClient: ChronicleClient | undefined;
 
-/** Initialize the default client. */
+/** Initialize the default client with custom options. */
 export function createDefaultClient(options: ChronicleClientOptions) {
   defaultClient = createChronicleClient(options);
   return defaultClient;

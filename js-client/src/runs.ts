@@ -16,6 +16,7 @@ import {
   type StepStartEvent,
 } from './events.js';
 import { ChronicleClient, getDefaultClient } from './client.js';
+import { ChronicleRequestMetadata } from './types.js';
 
 export const tracer = opentelemetry.trace.getTracer('ramus');
 
@@ -39,6 +40,12 @@ export interface StepOptions {
    * some way that makes it difficult to link to the parent run context, such as when running the step in a DAG,
    * based on some EventEmitter. */
   parentRunContext?: RunContext;
+
+  /** Use this Chronicle client instance for this step. */
+  chronicle?: ChronicleClient;
+
+  /** Create a child Chronicle client with these metadata values. */
+  metadata?: ChronicleRequestMetadata;
 }
 
 /** Run a step of a workflow. This both adds a tracing span and starts a new step in the
@@ -166,6 +173,9 @@ export interface RunOptions {
   /** A Chronicle client. If omitted, the default client will be used */
   chronicle?: ChronicleClient;
 
+  /** Create a child Chronicle client with these metadata values. */
+  metadata?: ChronicleRequestMetadata;
+
   /** A name for this run */
   name?: string;
 
@@ -200,7 +210,11 @@ export function startRun<T>(
   options: RunOptions,
   fn: (ctx: RunContext) => Promise<T>
 ): Promise<{ id: string; output: T; info: object | undefined }> {
-  const chronicle = options.chronicle ?? getDefaultClient();
+  let chronicle = options.chronicle ?? getDefaultClient();
+  if (options.metadata) {
+    chronicle = chronicle.withMetadata(options.metadata);
+  }
+
   let runInfo: object | undefined;
   let runFinishStatus = 'finished';
   let context: RunContext = {
@@ -306,12 +320,17 @@ async function runNewStepInternal<T>(
   let currentStep = stepId ?? uuidv7();
   let runId = oldContext?.runId;
 
+  let chronicle = options.chronicle ?? oldContext?.chronicle ?? getDefaultClient();
+  if (options.metadata) {
+    chronicle = chronicle.withMetadata(options.metadata);
+  }
+
   if (!runId) {
     // Wrap this step in a run
     const { output } = await startRun(
       {
         name: options.name,
-        chronicle: oldContext?.chronicle ?? getDefaultClient(),
+        chronicle,
         input: options.input,
         info: options.info,
         tags: options.tags,
@@ -323,7 +342,7 @@ async function runNewStepInternal<T>(
   }
 
   let newContext: RunContext = {
-    chronicle: oldContext?.chronicle ?? getDefaultClient(),
+    chronicle,
     runId,
     stepId: currentStep,
     recordRunInfo: oldContext?.recordRunInfo ?? (() => {}),
@@ -424,7 +443,7 @@ export function asStep<P extends unknown[] = unknown[], RET = unknown>(
 }
 
 /** Explicitly provide an existing `RunContext`, for cases where the function is not causally linked to the run closely
- * enough for it to be retireved through the normal AsyncLocalStorage mechanism. */
+ * enough for it to be retrieved through the normal AsyncLocalStorage mechanism. */
 export function runWithContext<T>(ctx: RunContext, fn: () => T): T {
   return asyncEventStorage.run(ctx, fn);
 }
@@ -449,4 +468,9 @@ export function recordRunInfo(info: object) {
 /** Set the status that will be written to the run when it finishes. */
 export function setRunFinishStatus(state: string) {
   getEventContext()?.setRunFinishStatus(state);
+}
+
+/** Get the current Chronicle client from the event context, or the global client. */
+export function chronicleClient(): ChronicleClient {
+  return getEventContext()?.chronicle ?? getDefaultClient();
 }
