@@ -1,7 +1,7 @@
 {
   "name": "@dimfeld/chronicle",
   "description": "Client SDK for the Chronicle LLM Proxy",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "module": "dist/index.js",
   "license": "Apache-2.0",
   "type": "module",

@@ -1,6 +1,6 @@
 # chronicle-proxy JavaScript client changelog
 
-## 0.3.1
+## 0.4.0
 
 - When running a step outside of a run, automatically wrap it in a run.
 - Allow disabling all event logging in an application.
