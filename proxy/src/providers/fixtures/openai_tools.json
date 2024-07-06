@@ -15,9 +15,9 @@
           "properties": {
             "name": { "type": "string" },
             "hair_color": { "type": "string" }
-          }
-        },
-        "required": ["name", "hair", "color"]
+          },
+          "required": ["name", "hair_color"]
+        }
       }
     }
   ],

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 source ../../../../.env
 
 cat ./$1.json | \

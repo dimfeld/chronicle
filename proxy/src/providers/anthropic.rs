@@ -5,6 +5,7 @@ use error_stack::{Report, ResultExt};
 use itertools::Itertools;
 use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Serialize};
+use smallvec::{smallvec, SmallVec};
 
 use super::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions};
 use crate::{
@@ -65,7 +66,15 @@ impl ChatModelProvider for Anthropic {
             max_tokens: body.max_tokens.unwrap_or(4096),
             system: body.system,
             metadata: AnthropicMetadata { user_id: body.user },
-            messages: body.messages,
+            messages: body
+                .messages
+                .into_iter()
+                .map(AnthropicChatMessage::try_from)
+                .collect::<Result<_, _>>()
+                .change_context_lazy(|| {
+                    ProviderError::from_kind(ProviderErrorKind::TransformingRequest)
+                })
+                .attach_printable("Failed to convert messages to Anthropic format")?,
             stop: body.stop,
             temperature: body.temperature,
             top_p: body.top_p,
@@ -192,7 +201,7 @@ fn handle_retry_after(res: &reqwest::Response) -> Option<Duration> {
 #[derive(Serialize, Debug, Clone)]
 struct AnthropicChatRequest {
     model: String,
-    messages: Vec<ChatMessage>,
+    messages: Vec<AnthropicChatMessage>,
     metadata: AnthropicMetadata,
     max_tokens: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -284,7 +293,7 @@ struct AnthropicChatResponse {
 
 impl Into<SingleChatResponse> for AnthropicChatResponse {
     fn into(self) -> SingleChatResponse {
-        let (text, tool_calls) = convert_content(self.content);
+        let (text, tool_calls) = convert_from_response(self.content);
         ChatResponse {
             created: chrono::Utc::now().timestamp() as u64,
             model: Some(self.model),
@@ -298,6 +307,7 @@ impl Into<SingleChatResponse> for AnthropicChatResponse {
                     name: None,
                     content: text,
                     tool_calls,
+                    tool_call_id: None,
                 },
             }],
             usage: Some(UsageResponse {
@@ -312,7 +322,7 @@ impl Into<SingleChatResponse> for AnthropicChatResponse {
 impl AnthropicChatResponse {
     /// Do the conversion as required by the message_start streaming event
     fn as_new_streaming_message(self) -> StreamingChatResponse {
-        let (text, tool_calls) = convert_content(self.content);
+        let (text, tool_calls) = convert_from_response(self.content);
         ChatResponse {
             created: chrono::Utc::now().timestamp() as u64,
             model: Some(self.model),
@@ -326,6 +336,7 @@ impl AnthropicChatResponse {
                     name: None,
                     content: text,
                     tool_calls,
+                    tool_call_id: None,
                 },
             }],
             usage: Some(UsageResponse {
@@ -338,7 +349,9 @@ impl AnthropicChatResponse {
 }
 
 /// Extract the text and tool calls from the chat content
-fn convert_content(mut content: Vec<AnthropicChatContent>) -> (Option<String>, Vec<ToolCall>) {
+fn convert_from_response(
+    mut content: Vec<AnthropicChatContent>,
+) -> (Option<String>, Vec<ToolCall>) {
     if content.len() == 1 {
         match content.pop().unwrap() {
             AnthropicChatContent::Text { text } => (Some(text), Vec::new()),
@@ -371,6 +384,44 @@ fn convert_content(mut content: Vec<AnthropicChatContent>) -> (Option<String>, V
         let text = if text.is_empty() { None } else { Some(text) };
 
         (text, tools)
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct AnthropicChatMessage {
+    role: String,
+    content: SmallVec<[AnthropicChatContent; 1]>,
+}
+
+impl TryFrom<ChatMessage> for AnthropicChatMessage {
+    type Error = serde_json::Error;
+
+    fn try_from(message: ChatMessage) -> Result<Self, Self::Error> {
+        let role = message.role.unwrap_or_else(|| "user".to_string());
+        if role == "tool" {
+            // Tool result
+            return Ok(Self {
+                role: "user".to_string(),
+                content: smallvec![AnthropicChatContent::ToolResult {
+                    tool_use_id: message.tool_call_id.unwrap_or_default(),
+                    content: message.content,
+                    // TODO add a field to ChatMessage for this
+                    is_error: false,
+                }],
+            });
+        }
+
+        let content = message
+            .content
+            .into_iter()
+            .map(|text| Ok(AnthropicChatContent::Text { text }))
+            .chain(message.tool_calls.into_iter().map(|c| {
+                let c = c.try_into()?;
+                Ok::<_, serde_json::Error>(AnthropicChatContent::ToolUse(c))
+            }))
+            .collect::<Result<_, _>>()?;
+
+        Ok(AnthropicChatMessage { role, content })
     }
 }
 
@@ -409,6 +460,23 @@ impl From<AnthropicToolUse> for ToolCall {
     }
 }
 
+impl TryFrom<ToolCall> for AnthropicToolUse {
+    type Error = serde_json::Error;
+
+    fn try_from(tool: ToolCall) -> Result<AnthropicToolUse, Self::Error> {
+        Ok(AnthropicToolUse {
+            id: tool.id.unwrap_or_default(),
+            name: tool.function.name.unwrap_or_default(),
+            input: tool
+                .function
+                .arguments
+                .map(|a| serde_json::from_str(&a))
+                .transpose()?
+                .unwrap_or_default(),
+        })
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct AnthropicUsageResponse {
     pub input_tokens: Option<usize>,
@@ -434,6 +502,7 @@ mod streaming {
 
     pub struct ChunkProcessor {
         message: StreamingChatResponse,
+        tool_call_index: Vec<u32>,
     }
 
     impl ChunkProcessor {
@@ -446,6 +515,7 @@ mod streaming {
                     choices: Vec::new(),
                     usage: None,
                 },
+                tool_call_index: Vec::new(),
             }
         }
 
@@ -513,22 +583,26 @@ mod streaming {
                             content: Some(text),
                             ..Default::default()
                         },
-                        ContentBlock::ToolUse(tool) => ChatMessage {
-                            tool_calls: vec![ToolCall {
-                                index: Some(index),
-                                id: Some(tool.id),
-                                typ: Some("function".to_string()),
-                                function: ToolCallFunction {
-                                    name: Some(tool.name),
-                                    arguments: None,
-                                },
-                            }],
-                            ..Default::default()
-                        },
+                        ContentBlock::ToolUse(tool) => {
+                            self.tool_call_index.push(index as u32);
+
+                            ChatMessage {
+                                tool_calls: vec![ToolCall {
+                                    index: Some(self.tool_call_index.len() - 1),
+                                    id: Some(tool.id),
+                                    typ: Some("function".to_string()),
+                                    function: ToolCallFunction {
+                                        name: Some(tool.name),
+                                        arguments: None,
+                                    },
+                                }],
+                                ..Default::default()
+                            }
+                        }
                     };
 
                     message.choices.push(ChatChoiceDelta {
-                        index,
+                        index: 0,
                         delta,
                         finish_reason: None,
                     });
@@ -542,22 +616,30 @@ mod streaming {
                             content: Some(text),
                             ..Default::default()
                         },
-                        ContentBlockDelta::InputJsonDelta { partial_json } => ChatMessage {
-                            tool_calls: vec![ToolCall {
-                                index: Some(index),
-                                id: None,
-                                typ: None,
-                                function: ToolCallFunction {
-                                    name: None,
-                                    arguments: Some(partial_json),
-                                },
-                            }],
-                            ..Default::default()
-                        },
+                        ContentBlockDelta::InputJsonDelta { partial_json } => {
+                            let tool_call_index =
+                                self.tool_call_index.iter().position(|i| *i == index as u32);
+                            let Some(tool_call_index) = tool_call_index else {
+                                return Ok(None);
+                            };
+
+                            ChatMessage {
+                                tool_calls: vec![ToolCall {
+                                    index: Some(tool_call_index),
+                                    id: None,
+                                    typ: None,
+                                    function: ToolCallFunction {
+                                        name: None,
+                                        arguments: Some(partial_json),
+                                    },
+                                }],
+                                ..Default::default()
+                            }
+                        }
                     };
 
                     message.choices.push(ChatChoiceDelta {
-                        index,
+                        index: 0,
                         delta,
                         finish_reason: None,
                     });
@@ -675,7 +757,7 @@ mod tests {
     use wiremock::MockServer;
 
     use super::*;
-    use crate::testing::test_fixture_response;
+    use crate::testing::{test_fixture_response, test_tool_use, test_tool_use_response};
 
     async fn run_fixture_test(test_name: &str, stream: bool, response: &str) {
         let server = MockServer::start().await;
@@ -732,5 +814,45 @@ mod tests {
             include_str!("./fixtures/anthropic_tools_response_nonstreaming.json"),
         )
         .await
+    }
+
+    #[cfg_attr(
+        not(feature = "live-test-anthropic"),
+        ignore = "live-test-anthropic disabled"
+    )]
+    #[tokio::test]
+    async fn live_test_tool_use_nonstreaming() {
+        dotenvy::dotenv().ok();
+        test_tool_use("anthropic/claude-3-haiku-20240307", false).await
+    }
+
+    #[cfg_attr(
+        not(feature = "live-test-anthropic"),
+        ignore = "live-test-anthropic disabled"
+    )]
+    #[tokio::test]
+    async fn live_test_tool_use_streaming() {
+        dotenvy::dotenv().ok();
+        test_tool_use("anthropic/claude-3-haiku-20240307", true).await
+    }
+
+    #[cfg_attr(
+        not(feature = "live-test-anthropic"),
+        ignore = "live-test-anthropic disabled"
+    )]
+    #[tokio::test]
+    async fn live_test_tool_use_response_nonstreaming() {
+        dotenvy::dotenv().ok();
+        test_tool_use_response("anthropic/claude-3-haiku-20240307", false).await
+    }
+
+    #[cfg_attr(
+        not(feature = "live-test-anthropic"),
+        ignore = "live-test-anthropic disabled"
+    )]
+    #[tokio::test]
+    async fn live_test_tool_use_response_streaming() {
+        dotenvy::dotenv().ok();
+        test_tool_use_response("anthropic/claude-3-haiku-20240307", true).await
     }
 }

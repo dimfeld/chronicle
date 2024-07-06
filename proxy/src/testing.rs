@@ -4,15 +4,18 @@ use std::{
 };
 
 use error_stack::Report;
+use filigree::errors::WrapReport;
 use wiremock::{matchers, Mock, MockServer, ResponseTemplate};
 
 use crate::{
     collect_response,
     format::{
-        ChatChoice, ChatMessage, ChatRequest, ChatResponse, ResponseInfo, StreamingChatResponse,
-        StreamingResponse, StreamingResponseSender, UsageResponse,
+        ChatChoice, ChatMessage, ChatRequest, ChatResponse, FunctionTool, ResponseInfo,
+        StreamingChatResponse, StreamingResponse, StreamingResponseSender, Tool, ToolCall,
+        ToolCallFunction, UsageResponse,
     },
     providers::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions},
+    Proxy,
 };
 
 #[derive(Debug)]
@@ -112,7 +115,7 @@ impl ChatModelProvider for TestProvider {
                     role: Some("assistant".to_string()),
                     content: Some(self.response.clone()),
                     tool_calls: Vec::new(),
-                    name: None,
+                    ..Default::default()
                 },
                 finish_reason: "stop".to_string(),
             }],
@@ -211,6 +214,7 @@ pub async fn test_fixture_response(
                             content: Some("hello".to_string()),
                             tool_calls: Vec::new(),
                             name: None,
+                            tool_call_id: None,
                         }],
                         stream,
                         ..Default::default()
@@ -233,4 +237,132 @@ pub async fn test_fixture_response(
             insta::assert_json_snapshot!(response);
         })
         .await;
+}
+
+pub async fn test_tool_use(model: &str, stream: bool) {
+    filigree::tracing_config::test::init();
+    let proxy = Proxy::builder().build().await.expect("Building proxy");
+
+    let chan = proxy
+        .send(
+            crate::ProxyRequestOptions::default(),
+            ChatRequest {
+                messages: vec![ChatMessage {
+                    role: Some("user".to_string()),
+                    content: Some("What is the weather in San Francisco?".to_string()),
+                    ..Default::default()
+                }],
+                system: None,
+                model: Some(model.to_string()),
+                max_tokens: Some(512),
+                tools: vec![Tool {
+                    typ: "function".to_string(),
+                    function: FunctionTool {
+                        name: "get_weather".to_string(),
+                        description: Some("Find the weather in a particular place".to_string()),
+                        parameters: Some(serde_json::json!({
+                          "type": "object",
+                          "properties": {
+                            "location": { "type": "string" },
+                          },
+                          "required": ["location"]
+                        })),
+                    },
+                }],
+                stream,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("Sending request");
+    let response = collect_response(chan, 1).await.expect("receiving response");
+
+    println!("{response:#?}");
+
+    let tool_call_choice = &response.response.choices[0].message;
+    let call = &tool_call_choice.tool_calls[0].function;
+    assert_eq!(call.name.as_deref().unwrap(), "get_weather");
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(call.arguments.as_deref().unwrap()).unwrap(),
+        serde_json::json!({ "location": "San Francisco" })
+    );
+}
+
+pub async fn test_tool_use_response(model: &str, stream: bool) {
+    filigree::tracing_config::test::init();
+    let proxy = Proxy::builder().build().await.expect("Building proxy");
+
+    let tool_call_id = "tool_n890qrn03m";
+    let chan = proxy
+        .send(
+            crate::ProxyRequestOptions::default(),
+            ChatRequest {
+                messages: vec![
+                    ChatMessage {
+                        role: Some("user".to_string()),
+                        content: Some("How is the weather in San Francisco?".to_string()),
+                        ..Default::default()
+                    },
+                    ChatMessage {
+                        role: Some("assistant".to_string()),
+                        content: None,
+                        tool_calls: vec![ToolCall {
+                            index: Some(0),
+                            id: Some(tool_call_id.to_string()),
+                            typ: Some("function".to_string()),
+                            function: ToolCallFunction {
+                                name: Some("get_weather".to_string()),
+                                arguments: Some(r#"{"location":"San Francisco"}"#.to_string()),
+                            },
+                        }],
+                        ..Default::default()
+                    },
+                    ChatMessage {
+                        role: Some("tool".to_string()),
+                        tool_call_id: Some(tool_call_id.to_string()),
+                        content: Some("Sunny, 76 degrees F".to_string()),
+                        ..Default::default()
+                    },
+                ],
+                system: None,
+                model: Some(model.to_string()),
+                max_tokens: Some(512),
+                tools: vec![Tool {
+                    typ: "function".to_string(),
+                    function: FunctionTool {
+                        name: "get_weather".to_string(),
+                        description: Some("Find the weather in a particular place".to_string()),
+                        parameters: Some(serde_json::json!({
+                          "type": "object",
+                          "properties": {
+                            "location": { "type": "string" },
+                          },
+                          "required": ["location"]
+                        })),
+                    },
+                }],
+                stream,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("Sending request");
+    let response = collect_response(chan, 1).await;
+
+    let response = match response {
+        Ok(response) => response,
+        Err(e) => {
+            let provider_error = e.frames().find_map(|f| f.downcast_ref::<ProviderError>());
+            println!("{provider_error:?}");
+            panic!("Error receiving response: {:#?}", e);
+        }
+    };
+
+    let message = response.response.choices[0]
+        .message
+        .content
+        .as_deref()
+        .unwrap();
+    println!("{message}");
+    assert!(message.to_ascii_lowercase().contains("sunny"));
 }

@@ -815,7 +815,7 @@ mod test {
                         role: Some("assistant".to_string()),
                         content: Some("hello".to_string()),
                         tool_calls: Vec::new(),
-                        name: None,
+                        ..Default::default()
                     },
                     finish_reason: "stop".to_string(),
                 }],
@@ -857,7 +857,7 @@ mod test {
                         role: Some("user".to_string()),
                         content: Some("hello".to_string()),
                         tool_calls: Vec::new(),
-                        name: None,
+                        ..Default::default()
                     }],
                     ..Default::default()
                 },
@@ -889,7 +889,7 @@ mod test {
                     role: Some("assistant".to_string()),
                     content: Some("hello".to_string()),
                     tool_calls: Vec::new(),
-                    name: None,
+                    ..Default::default()
                 },
                 finish_reason: None,
             }],
@@ -910,7 +910,7 @@ mod test {
                     role: None,
                     content: Some(" and hello again".to_string()),
                     tool_calls: Vec::new(),
-                    name: None,
+                    ..Default::default()
                 },
                 finish_reason: Some("stop".to_string()),
             }],
@@ -965,7 +965,7 @@ mod test {
                         role: Some("user".to_string()),
                         content: Some("hello".to_string()),
                         tool_calls: Vec::new(),
-                        name: None,
+                        ..Default::default()
                     }],
                     stream: true,
                     ..Default::default()
