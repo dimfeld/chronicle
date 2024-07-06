@@ -151,6 +151,9 @@ pub struct ChatMessage {
     /// A tool call to be invoked
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCall>,
+    /// A tool call ID when responding to the tool call.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
 }
 
 impl ChatMessage {
@@ -162,6 +165,10 @@ impl ChatMessage {
         }
         if self.name.is_none() {
             self.name = delta.name.clone();
+        }
+
+        if self.tool_call_id.is_none() {
+            self.tool_call_id = delta.tool_call_id.clone();
         }
 
         match (&mut self.content, &delta.content) {
@@ -424,6 +431,7 @@ impl ChatRequest {
                 content: Some(system),
                 tool_calls: Vec::new(),
                 name: None,
+                tool_call_id: None,
             })
             .chain(self.messages.drain(..))
             .collect();

@@ -119,6 +119,7 @@ impl ChatModelProvider for Groq {
                                 tool_calls: tool_calls.tool_calls,
                                 content: None,
                                 name: None,
+                                tool_call_id: None,
                             },
                             finish_reason: "tool_calls".to_string(),
                         }],

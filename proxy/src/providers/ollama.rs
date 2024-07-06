@@ -100,7 +100,7 @@ impl ChatModelProvider for Ollama {
         let model = body
             .model
             .ok_or_else(|| ProviderError::from_kind(ProviderErrorKind::TransformingRequest))
-            .attach_printable("Model not specified ")?;
+            .attach_printable("Model not specified")?;
 
         let request = OllamaChatRequest {
             model,
