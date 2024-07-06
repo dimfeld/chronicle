@@ -401,7 +401,7 @@ impl TryFrom<ChatMessage> for AnthropicChatMessage {
         if role == "tool" {
             // Tool result
             return Ok(Self {
-                role,
+                role: "user".to_string(),
                 content: smallvec![AnthropicChatContent::ToolResult {
                     tool_use_id: message.tool_call_id.unwrap_or_default(),
                     content: message.content,
@@ -502,6 +502,7 @@ mod streaming {
 
     pub struct ChunkProcessor {
         message: StreamingChatResponse,
+        tool_call_index: Vec<u32>,
     }
 
     impl ChunkProcessor {
@@ -514,6 +515,7 @@ mod streaming {
                     choices: Vec::new(),
                     usage: None,
                 },
+                tool_call_index: Vec::new(),
             }
         }
 
@@ -581,22 +583,26 @@ mod streaming {
                             content: Some(text),
                             ..Default::default()
                         },
-                        ContentBlock::ToolUse(tool) => ChatMessage {
-                            tool_calls: vec![ToolCall {
-                                index: Some(index),
-                                id: Some(tool.id),
-                                typ: Some("function".to_string()),
-                                function: ToolCallFunction {
-                                    name: Some(tool.name),
-                                    arguments: None,
-                                },
-                            }],
-                            ..Default::default()
-                        },
+                        ContentBlock::ToolUse(tool) => {
+                            self.tool_call_index.push(index as u32);
+
+                            ChatMessage {
+                                tool_calls: vec![ToolCall {
+                                    index: Some(self.tool_call_index.len() - 1),
+                                    id: Some(tool.id),
+                                    typ: Some("function".to_string()),
+                                    function: ToolCallFunction {
+                                        name: Some(tool.name),
+                                        arguments: None,
+                                    },
+                                }],
+                                ..Default::default()
+                            }
+                        }
                     };
 
                     message.choices.push(ChatChoiceDelta {
-                        index,
+                        index: 0,
                         delta,
                         finish_reason: None,
                     });
@@ -610,22 +616,30 @@ mod streaming {
                             content: Some(text),
                             ..Default::default()
                         },
-                        ContentBlockDelta::InputJsonDelta { partial_json } => ChatMessage {
-                            tool_calls: vec![ToolCall {
-                                index: Some(index),
-                                id: None,
-                                typ: None,
-                                function: ToolCallFunction {
-                                    name: None,
-                                    arguments: Some(partial_json),
-                                },
-                            }],
-                            ..Default::default()
-                        },
+                        ContentBlockDelta::InputJsonDelta { partial_json } => {
+                            let tool_call_index =
+                                self.tool_call_index.iter().position(|i| *i == index as u32);
+                            let Some(tool_call_index) = tool_call_index else {
+                                return Ok(None);
+                            };
+
+                            ChatMessage {
+                                tool_calls: vec![ToolCall {
+                                    index: Some(tool_call_index),
+                                    id: None,
+                                    typ: None,
+                                    function: ToolCallFunction {
+                                        name: None,
+                                        arguments: Some(partial_json),
+                                    },
+                                }],
+                                ..Default::default()
+                            }
+                        }
                     };
 
                     message.choices.push(ChatChoiceDelta {
-                        index,
+                        index: 0,
                         delta,
                         finish_reason: None,
                     });
@@ -743,7 +757,7 @@ mod tests {
     use wiremock::MockServer;
 
     use super::*;
-    use crate::testing::test_fixture_response;
+    use crate::testing::{test_fixture_response, test_tool_use, test_tool_use_response};
 
     async fn run_fixture_test(test_name: &str, stream: bool, response: &str) {
         let server = MockServer::start().await;
@@ -800,5 +814,45 @@ mod tests {
             include_str!("./fixtures/anthropic_tools_response_nonstreaming.json"),
         )
         .await
+    }
+
+    #[cfg_attr(
+        not(feature = "live-test-anthropic"),
+        ignore = "live-test-anthropic disabled"
+    )]
+    #[tokio::test]
+    async fn live_test_tool_use_nonstreaming() {
+        dotenvy::dotenv().ok();
+        test_tool_use("anthropic/claude-3-haiku-20240307", false).await
+    }
+
+    #[cfg_attr(
+        not(feature = "live-test-anthropic"),
+        ignore = "live-test-anthropic disabled"
+    )]
+    #[tokio::test]
+    async fn live_test_tool_use_streaming() {
+        dotenvy::dotenv().ok();
+        test_tool_use("anthropic/claude-3-haiku-20240307", true).await
+    }
+
+    #[cfg_attr(
+        not(feature = "live-test-anthropic"),
+        ignore = "live-test-anthropic disabled"
+    )]
+    #[tokio::test]
+    async fn live_test_tool_use_response_nonstreaming() {
+        dotenvy::dotenv().ok();
+        test_tool_use_response("anthropic/claude-3-haiku-20240307", false).await
+    }
+
+    #[cfg_attr(
+        not(feature = "live-test-anthropic"),
+        ignore = "live-test-anthropic disabled"
+    )]
+    #[tokio::test]
+    async fn live_test_tool_use_response_streaming() {
+        dotenvy::dotenv().ok();
+        test_tool_use_response("anthropic/claude-3-haiku-20240307", true).await
     }
 }

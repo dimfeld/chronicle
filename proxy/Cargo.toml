@@ -44,6 +44,7 @@ url = "2.5.0"
 uuid = { version = "1.8.0", features = ["v4", "v7", "serde"] }
 
 [dev-dependencies]
+dotenvy = "0.15.7"
 filigree = { workspace = true }
 insta = { version = "1.38.0", features = ["json", "redactions"] }
 tokio = { version = "1.37.0", features = ["fs", "macros", "rt", "test-util", "time"] }
@@ -55,3 +56,5 @@ postgres = ["sqlx/postgres"]
 sqlite = ["sqlx/sqlite"]
 filigree = ["dep:filigree"]
 schemars = ["dep:schemars"]
+
+live-test-anthropic = []

@@ -343,13 +343,17 @@ pub async fn send_standard_request(
             _ => {}
         };
 
-        let body = result.json::<serde_json::Value>().await.ok();
+        let body_text = result.text().await.ok();
+
+        let body_json = body_text
+            .as_deref()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok());
         let latency = start.elapsed();
 
         Err(Report::new(ProviderError {
             kind: e,
             status_code: Some(status),
-            body,
+            body: body_json.or_else(|| body_text.map(serde_json::Value::String)),
             latency,
         }))
     } else {
@@ -424,7 +428,7 @@ mod test {
                     role: Some("user".to_string()),
                     content: Some("Tell me a story".to_string()),
                     tool_calls: Vec::new(),
-                    name: None,
+                    ..Default::default()
                 }],
                 ..Default::default()
             },
