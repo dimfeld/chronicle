@@ -1,5 +1,7 @@
 pub mod anthropic;
 pub mod anyscale;
+#[cfg(feature = "aws-bedrock")]
+pub mod aws_bedrock;
 pub mod custom;
 pub mod deepinfra;
 pub mod fireworks;
