@@ -10,11 +10,11 @@ readme.workspace = true
 repository.workspace = true
 keywords.workspace = true
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 ahash = "0.8.11"
 async-trait = "0.1.80"
+aws-config = { version = "1.1.7", features = ["behavior-version-latest"], optional = true }
+aws-sdk-bedrockruntime = { version = "1.38.0", optional = true }
 backon = "0.4.4"
 bytes = "1.6.0"
 chrono = { version = "0.4.38", features = ["serde"] }
@@ -55,3 +55,7 @@ postgres = ["sqlx/postgres"]
 sqlite = ["sqlx/sqlite"]
 filigree = ["dep:filigree"]
 schemars = ["dep:schemars"]
+aws-bedrock = ["dep:aws-config", "dep:aws-sdk-bedrockruntime"]
+
+[package.metadata.docs.rs]
+all-features = true
