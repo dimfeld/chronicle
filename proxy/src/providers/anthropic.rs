@@ -71,9 +71,7 @@ impl ChatModelProvider for Anthropic {
                 .into_iter()
                 .map(AnthropicChatMessage::try_from)
                 .collect::<Result<_, _>>()
-                .change_context_lazy(|| {
-                    ProviderError::from_kind(ProviderErrorKind::TransformingRequest)
-                })
+                .change_context_lazy(ProviderError::transforming_request)
                 .attach_printable("Failed to convert messages to Anthropic format")?,
             stop: body.stop,
             temperature: body.temperature,
@@ -83,9 +81,8 @@ impl ChatModelProvider for Anthropic {
             stream: body.stream,
         };
 
-        let body = serde_json::to_vec(&body).change_context_lazy(|| {
-            ProviderError::from_kind(ProviderErrorKind::TransformingRequest)
-        })?;
+        let body =
+            serde_json::to_vec(&body).change_context_lazy(ProviderError::transforming_request)?;
         let body = Bytes::from(body);
 
         let api_token = api_key
