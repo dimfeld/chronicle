@@ -70,6 +70,12 @@ impl ProviderError {
             latency: std::time::Duration::ZERO,
         }
     }
+
+    /// A helper for creating a `ProviderError` with the TransformingRequest error kind. This is by
+    /// far the most common case in the codebase.
+    pub fn transforming_request() -> Self {
+        Self::from_kind(ProviderErrorKind::TransformingRequest)
+    }
 }
 
 #[cfg(feature = "filigree")]
