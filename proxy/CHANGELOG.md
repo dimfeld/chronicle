@@ -5,6 +5,8 @@
 - Allow customizing the initial status in a `run:start` event.
 - When receiving a `run:start` event for an already-existing run, update the status instead of ignoring it.
 - Fix Anthropic tool use results and streaming
+- Add support for AWS Bedrock
+- Change `finish_reason` to be an enum instead of a string. This also standardizes the field across providers.
 
 ## 0.4.2
 
