@@ -38,7 +38,7 @@ expression: response
             }
           ]
         },
-        "finish_reason": "tool_use"
+        "finish_reason": "tool_calls"
       }
     ],
     "usage": {

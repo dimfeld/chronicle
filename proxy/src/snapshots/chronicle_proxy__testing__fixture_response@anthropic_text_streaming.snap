@@ -27,7 +27,7 @@ expression: response
           "role": "assistant",
           "content": "Lassie was a famous fictional dog character that starred in a long-running media franchise.\n\nThe key facts about Lassie:\n\n- Lassie was originally created as the main character in a short story published in 1940 called \"Lassie Come-Home\" by Eric Knight.\n\n- The character then became the star of a popular film series starting in 1943, with the first movie titled \"Lassie Come Home.\"\n\n- In the 1950s, Lassie became the star of a hugely popular CBS television series called \"The Adventures of Lassie\" that ran for 19 seasons until 1973.\n\n- The Lassie character was portrayed by a series of female collies over the years, with the original Lassie dog being a dog named Pal.\n\n- Lassie was known for being a loyal, heroic, and highly intelligent collie dog who would often save the day and help her human companions in times of trouble.\n\n- The Lassie franchise, including the films and TV shows, became one of the most successful and iconic dog character stories in popular culture.\n\nSo in summary, Lassie was a legendary fictional collie dog character that became a beloved entertainment icon across multiple mediums for decades."
         },
-        "finish_reason": "end_turn"
+        "finish_reason": "stop"
       }
     ],
     "usage": {
