@@ -59,7 +59,9 @@ filigree = ["dep:filigree"]
 schemars = ["dep:schemars"]
 aws-bedrock = ["dep:aws-config", "dep:aws-sdk-bedrockruntime", "dep:aws-smithy-types"]
 
+live-test = ["live-test-anthropic", "live-test-aws-bedrock"]
 live-test-anthropic = []
+live-test-aws-bedrock = ["aws-bedrock"]
 
 [package.metadata.docs.rs]
 all-features = true

@@ -274,8 +274,17 @@ pub async fn test_tool_use(model: &str, stream: bool) {
             },
         )
         .await
+        .inspect_err(|e| println!("{e:#?}"))
         .expect("Sending request");
-    let response = collect_response(chan, 1).await.expect("receiving response");
+    let response = collect_response(chan, 1)
+        .await
+        .inspect_err(|e| {
+            let provider_error = e.frames().find_map(|f| f.downcast_ref::<ProviderError>());
+            if let Some(e) = provider_error {
+                println!("{e:?}");
+            }
+        })
+        .expect("receiving response");
 
     println!("{response:#?}");
 

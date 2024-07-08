@@ -19,9 +19,14 @@ use crate::format::{
     ChatRequestTransformation, ResponseInfo, StreamingResponse, StreamingResponseSender,
 };
 
-#[derive(Debug)]
 pub struct AwsBedrock {
     client: aws_sdk_bedrockruntime::Client,
+}
+
+impl std::fmt::Debug for AwsBedrock {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AwsBedrock").finish_non_exhaustive()
+    }
 }
 
 impl AwsBedrock {
@@ -127,23 +132,26 @@ impl ChatModelProvider for AwsBedrock {
                 .await
                 .change_context_lazy(|| ProviderError::from_kind(ProviderErrorKind::Permanent))?;
 
-            let mut processor = streaming::ChunkProcessor::new(chunk_tx);
+            tokio::task::spawn(async move {
+                let mut processor = streaming::ChunkProcessor::new(chunk_tx);
 
-            loop {
-                let chunk = response.stream.recv().await;
-                match chunk {
-                    Ok(Some(response)) => {
-                        processor.handle_data(response).await;
+                loop {
+                    let chunk = response.stream.recv().await;
+                    tracing::debug!(chunk = ?chunk, "Received chunk");
+                    match chunk {
+                        Ok(Some(response)) => {
+                            processor.handle_data(response).await;
+                        }
+                        Err(e) => {
+                            processor.handle_error(e).await;
+                        }
+                        // End of stream
+                        Ok(None) => break,
                     }
-                    Err(e) => {
-                        processor.handle_error(e).await;
-                    }
-                    // End of stream
-                    Ok(None) => break,
                 }
-            }
 
-            processor.finish(model).await;
+                processor.finish(model).await;
+            });
         } else {
             let builder = self
                 .client
@@ -441,5 +449,43 @@ mod streaming {
                 .await
                 .ok();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::testing::{test_tool_use, test_tool_use_response};
+
+    #[cfg_attr(
+        not(feature = "live-test-aws-bedrock"),
+        ignore = "live-test-aws-bedrock disabled"
+    )]
+    #[tokio::test]
+    async fn live_test_tool_use_nonstreaming() {
+        dotenvy::dotenv().ok();
+        let model = "aws-bedrock/anthropic.claude-3-haiku-20240307-v1:0";
+        test_tool_use(model, false).await;
+    }
+
+    #[cfg_attr(
+        not(feature = "live-test-aws-bedrock"),
+        ignore = "live-test-aws-bedrock disabled"
+    )]
+    #[tokio::test]
+    async fn live_test_tool_use_streaming() {
+        dotenvy::dotenv().ok();
+        let model = "aws-bedrock/anthropic.claude-3-haiku-20240307-v1:0";
+        test_tool_use(model, true).await;
+    }
+
+    #[cfg_attr(
+        not(feature = "live-test-aws-bedrock"),
+        ignore = "live-test-aws-bedrock disabled"
+    )]
+    #[tokio::test]
+    async fn live_test_tool_use_response() {
+        dotenvy::dotenv().ok();
+        let model = "aws-bedrock/anthropic.claude-3-haiku-20240307-v1:0";
+        test_tool_use_response(model, true).await;
     }
 }
