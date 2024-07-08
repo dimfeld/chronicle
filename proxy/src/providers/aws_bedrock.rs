@@ -3,30 +3,20 @@
 //! This is very similar to the Anthropic provider since Bedrock's API is close to the same. The
 //! main difference is that we use their SDK for it.
 
-use std::{borrow::Cow, collections::HashMap, time::Duration};
+mod conversions;
 
-use async_trait::async_trait;
-use aws_config::retry::RetryConfig;
-use aws_sdk_bedrockruntime::{
-    error::BuildError,
-    types::{
-        AnyToolChoice, AutoToolChoice, ContentBlock, ConversationRole, DocumentBlock,
-        InferenceConfiguration, Message, SpecificToolChoice, ToolChoice, ToolConfiguration,
-        ToolInputSchema, ToolResultBlock, ToolSpecification, ToolUseBlock,
-    },
+use std::{borrow::Cow, time::Duration};
+
+use aws_sdk_bedrockruntime::types::{InferenceConfiguration, ToolConfiguration};
+use conversions::{
+    convert_from_single_aws_output, convert_message_to_aws_bedrock,
+    convert_tool_choice_to_aws_bedrock, convert_tool_to_aws_bedrock, document_to_value,
 };
-use aws_smithy_types::{event_stream::RawMessage, Document};
 use error_stack::{Report, ResultExt};
-use http::Response;
-use serde_json::Value;
 
 use super::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions};
-use crate::{
-    format::{
-        ChatMessage, ChatRequestTransformation, ResponseInfo, StreamingResponse,
-        StreamingResponseSender, Tool,
-    },
-    Error,
+use crate::format::{
+    ChatRequestTransformation, ResponseInfo, StreamingResponse, StreamingResponseSender,
 };
 
 #[derive(Debug)]
@@ -60,9 +50,7 @@ impl ChatModelProvider for AwsBedrock {
 
     async fn send_request(
         &self,
-        SendRequestOptions {
-            timeout, mut body, ..
-        }: SendRequestOptions,
+        SendRequestOptions { mut body, .. }: SendRequestOptions,
         chunk_tx: StreamingResponseSender,
     ) -> Result<(), Report<ProviderError>> {
         body.transform(&ChatRequestTransformation {
@@ -176,14 +164,19 @@ impl ChatModelProvider for AwsBedrock {
 
             match response {
                 Ok(result) => {
-                    // TODO convert to SingleChatResponse and send it
+                    let meta = result
+                        .additional_model_response_fields
+                        .clone()
+                        .map(document_to_value);
+
+                    let message = convert_from_single_aws_output(model.clone(), result)
+                        .map(StreamingResponse::Single);
+                    chunk_tx.send_async(message).await.ok();
 
                     chunk_tx
                         .send_async(Ok(StreamingResponse::ResponseInfo(ResponseInfo {
                             model,
-                            meta: result
-                                .additional_model_response_fields
-                                .map(document_to_value),
+                            meta,
                         })))
                         .await
                         .ok();
@@ -224,184 +217,14 @@ impl ChatModelProvider for AwsBedrock {
     }
 }
 
-fn convert_tool_choice_to_aws_bedrock(
-    tool_choice: Option<serde_json::Value>,
-) -> Option<aws_sdk_bedrockruntime::types::ToolChoice> {
-    let Some(value) = tool_choice else {
-        return None;
-    };
-
-    match value.as_str().unwrap_or_default() {
-        // "none" is not supported so we don't set a value
-        "none" => return None,
-        "auto" => return Some(ToolChoice::Auto(AutoToolChoice::builder().build())),
-        "required" => return Some(ToolChoice::Any(AnyToolChoice::builder().build())),
-        _ => {}
-    };
-
-    if value["type"] == "function" {
-        if let Some(tool_name) = value["function"]["name"].as_str() {
-            return Some(ToolChoice::Tool(
-                SpecificToolChoice::builder()
-                    .name(tool_name)
-                    .build()
-                    .unwrap(),
-            ));
-        }
-    }
-
-    None
-}
-
-fn convert_tool_to_aws_bedrock(
-    tool: Tool,
-) -> Result<aws_sdk_bedrockruntime::types::Tool, Report<ProviderError>> {
-    let schema = tool
-        .function
-        .parameters
-        .map(|p| ToolInputSchema::Json(value_to_document(p)));
-    let tool_spec = ToolSpecification::builder()
-        .name(tool.function.name)
-        .set_description(tool.function.description)
-        .set_input_schema(schema)
-        .build()
-        .unwrap();
-
-    Ok(aws_sdk_bedrockruntime::types::Tool::ToolSpec(tool_spec))
-}
-
-/// Convert a serde_json::Value to a Document
-fn value_to_document(value: Value) -> Document {
-    match value {
-        Value::Null => Document::Null,
-        Value::Bool(b) => Document::Bool(b),
-        Value::Number(n) => {
-            if let Some(n) = n.as_f64() {
-                aws_smithy_types::Number::Float(n).into()
-            } else if let Some(n) = n.as_u64() {
-                aws_smithy_types::Number::PosInt(n).into()
-            } else if let Some(n) = n.as_i64() {
-                aws_smithy_types::Number::NegInt(n).into()
-            } else {
-                // This shouldn't ever happen
-                Document::Null
-            }
-        }
-        Value::String(s) => Document::String(s),
-        Value::Array(arr) => Document::Array(arr.into_iter().map(value_to_document).collect()),
-        Value::Object(obj) => Document::Object(
-            obj.into_iter()
-                .map(|(k, v)| (k, value_to_document(v)))
-                .collect(),
-        ),
-    }
-}
-
-/// Convert a Document to a serde_json::Value
-fn document_to_value(document: Document) -> serde_json::Value {
-    match document {
-        Document::Null => Value::Null,
-        Document::Bool(b) => Value::Bool(b),
-        Document::Number(n) => {
-            let n = match n {
-                aws_smithy_types::Number::Float(f) => {
-                    serde_json::Number::from_f64(f).unwrap_or_else(|| serde_json::Number::from(0))
-                }
-                aws_smithy_types::Number::PosInt(p) => serde_json::Number::from(p),
-                aws_smithy_types::Number::NegInt(p) => serde_json::Number::from(p),
-            };
-
-            Value::Number(n)
-        }
-        Document::String(s) => Value::String(s),
-        Document::Array(arr) => Value::Array(arr.into_iter().map(document_to_value).collect()),
-        Document::Object(obj) => Value::Object(
-            obj.into_iter()
-                .map(|(k, v)| (k, document_to_value(v)))
-                .collect::<serde_json::Map<String, Value>>()
-                .into(),
-        ),
-    }
-}
-
-fn convert_message_to_aws_bedrock(
-    message: ChatMessage,
-) -> Result<aws_sdk_bedrockruntime::types::Message, Report<ProviderError>> {
-    let role = message.role.as_deref().unwrap_or("user");
-    if role == "tool" {
-        // Tool result
-        let block = ToolResultBlock::builder()
-            .set_tool_use_id(message.tool_call_id)
-            .content(aws_sdk_bedrockruntime::types::ToolResultContentBlock::Text(
-                message.content.unwrap_or_default(),
-            ))
-            .build()
-            .change_context_lazy(ProviderError::transforming_request)?;
-
-        let tool_result = ContentBlock::ToolResult(block);
-        return Message::builder()
-            .role(ConversationRole::User)
-            .content(tool_result)
-            .build()
-            .change_context_lazy(ProviderError::transforming_request);
-    }
-
-    let role = match role {
-        "assistant" => ConversationRole::Assistant,
-        _ => ConversationRole::User,
-    };
-
-    let content = message
-        .content
-        .into_iter()
-        .map(|text| Ok(ContentBlock::Text(text)))
-        .chain(message.tool_calls.into_iter().map(|c| {
-            let input = c
-                .function
-                .arguments
-                .map(|a| serde_json::from_str(&a))
-                .transpose()
-                .change_context_lazy(ProviderError::transforming_request)?
-                .map(value_to_document)
-                .unwrap_or_default();
-
-            let block = ToolUseBlock::builder()
-                .set_tool_use_id(c.id)
-                .set_name(c.function.name)
-                .input(input)
-                .build()
-                .change_context_lazy(ProviderError::transforming_request)?;
-            Ok::<_, Report<ProviderError>>(ContentBlock::ToolUse(block))
-        }))
-        .collect::<Result<_, _>>()?;
-
-    Message::builder()
-        .role(role)
-        .set_content(Some(content))
-        .build()
-        .change_context_lazy(ProviderError::transforming_request)
-}
-
-fn conversation_role_to_string(role: ConversationRole) -> &'static str {
-    match role {
-        ConversationRole::User => "user",
-        ConversationRole::Assistant => "assistant",
-        _ => {
-            tracing::warn!(?role, "Unknown role");
-            "user"
-        }
-    }
-}
-
 mod streaming {
     use std::time::Duration;
 
     use aws_sdk_bedrockruntime::{
         error::SdkError,
-        operation::converse_stream::ConverseStreamError,
         types::{
             error::ConverseStreamOutputError, ContentBlockDelta, ContentBlockStart,
-            ContentBlockStartEvent, ConverseStreamOutput,
+            ConverseStreamOutput,
         },
     };
     use aws_smithy_types::event_stream::RawMessage;
@@ -409,11 +232,11 @@ mod streaming {
     use http::StatusCode;
     use serde_json::json;
 
-    use super::{conversation_role_to_string, document_to_value};
+    use super::conversions::{conversation_role_to_string, convert_usage, document_to_value};
     use crate::{
         format::{
             ChatChoiceDelta, ChatMessage, ResponseInfo, StreamingChatResponse, StreamingResponse,
-            StreamingResponseSender, ToolCall, ToolCallFunction, UsageResponse,
+            StreamingResponseSender, ToolCall, ToolCallFunction,
         },
         providers::{ProviderError, ProviderErrorKind},
     };
@@ -466,11 +289,7 @@ mod streaming {
                 ConverseStreamOutput::Metadata(e) => {
                     let mut message = self.message.clone();
 
-                    message.usage = e.usage.map(|u| UsageResponse {
-                        prompt_tokens: Some(u.input_tokens as usize),
-                        completion_tokens: Some(u.output_tokens as usize),
-                        total_tokens: Some(u.total_tokens as usize),
-                    });
+                    message.usage = e.usage.map(convert_usage);
 
                     Some(message)
                 }
@@ -558,25 +377,49 @@ mod streaming {
 
         pub async fn handle_error(&self, error: SdkError<ConverseStreamOutputError, RawMessage>) {
             let e = error.into_service_error();
-            let (status_code, kind) = if e.is_model_stream_error_exception() {
-                (
+            let meta = e.meta();
+            let code = meta.code();
+
+            let (status_code, kind, message) = match &e {
+                ConverseStreamOutputError::ValidationException(e) => (
+                    StatusCode::BAD_REQUEST,
+                    ProviderErrorKind::BadInput,
+                    e.message(),
+                ),
+                ConverseStreamOutputError::InternalServerException(e) => (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    ProviderErrorKind::ProviderClosedConnection,
-                )
-            } else if e.is_throttling_exception() {
-                (
+                    ProviderErrorKind::Server,
+                    e.message(),
+                ),
+                ConverseStreamOutputError::ModelStreamErrorException(e) => {
+                    let status_code = e
+                        .original_status_code()
+                        .and_then(|code| StatusCode::from_u16(code as u16).ok())
+                        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+
+                    let message = e.original_message().or_else(|| e.message());
+
+                    (
+                        status_code,
+                        ProviderErrorKind::ProviderClosedConnection,
+                        message,
+                    )
+                }
+                ConverseStreamOutputError::ThrottlingException(e) => (
                     StatusCode::TOO_MANY_REQUESTS,
                     ProviderErrorKind::RateLimit { retry_after: None },
-                )
-            } else if e.is_validation_exception() {
-                (StatusCode::BAD_REQUEST, ProviderErrorKind::BadInput)
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, ProviderErrorKind::Server)
+                    e.message(),
+                ),
+                _ => (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ProviderErrorKind::Server,
+                    meta.message(),
+                ),
             };
-            let meta = e.meta();
+
             let body = json!({
-                "code": meta.code(),
-                "message": meta.message(),
+                "code": code,
+                "message": message,
             });
 
             let err = Err(Report::new(e).change_context(ProviderError {
