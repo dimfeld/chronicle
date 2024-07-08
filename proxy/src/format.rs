@@ -123,7 +123,7 @@ pub struct ChatChoice {
     /// The message
     pub message: ChatMessage,
     /// The reason the chat terminated
-    pub finish_reason: String,
+    pub finish_reason: FinishReason,
 }
 
 /// A delta in a streaming chat choice
@@ -134,7 +134,46 @@ pub struct ChatChoiceDelta {
     /// The message
     pub delta: ChatMessage,
     /// The reason the chat terminated, if this is the final delta in the choice
-    pub finish_reason: Option<String>,
+    pub finish_reason: Option<FinishReason>,
+}
+
+#[derive(Deserialize, Default, Debug, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum FinishReason {
+    #[default]
+    Stop,
+    Length,
+    ContentFilter,
+    ToolCalls,
+    #[serde(untagged)]
+    Other(Cow<'static, str>),
+}
+
+impl FinishReason {
+    pub fn as_str(&self) -> &str {
+        match self {
+            FinishReason::Stop => "stop",
+            FinishReason::Length => "length",
+            FinishReason::ContentFilter => "content_filter",
+            FinishReason::ToolCalls => "tool_calls",
+            FinishReason::Other(reason) => reason.as_ref(),
+        }
+    }
+}
+
+impl Serialize for FinishReason {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl std::fmt::Display for FinishReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
 }
 
 /// A single message in a chat

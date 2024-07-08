@@ -117,7 +117,7 @@ impl ChatModelProvider for TestProvider {
                     tool_calls: Vec::new(),
                     ..Default::default()
                 },
-                finish_reason: "stop".to_string(),
+                finish_reason: crate::format::FinishReason::Stop,
             }],
             usage: Some(UsageResponse {
                 prompt_tokens: Some(1),

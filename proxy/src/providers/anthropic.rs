@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{borrow::Cow, time::Duration};
 
 use bytes::Bytes;
 use error_stack::{Report, ResultExt};
@@ -11,7 +11,7 @@ use super::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOpti
 use crate::{
     format::{
         ChatChoice, ChatChoiceDelta, ChatMessage, ChatRequestTransformation, ChatResponse,
-        ResponseInfo, SingleChatResponse, StreamingChatResponse, StreamingResponse,
+        FinishReason, ResponseInfo, SingleChatResponse, StreamingChatResponse, StreamingResponse,
         StreamingResponseSender, Tool, ToolCall, ToolCallFunction, UsageResponse,
     },
     request::{parse_response_json, response_is_sse, send_standard_request},
@@ -297,8 +297,7 @@ impl Into<SingleChatResponse> for AnthropicChatResponse {
             system_fingerprint: None,
             choices: vec![ChatChoice {
                 index: 0,
-                // TODO align this with OpenAI finish_reason
-                finish_reason: self.stop_reason.unwrap_or_default(),
+                finish_reason: self.stop_reason.map(from_stop_reason).unwrap_or_default(),
                 message: ChatMessage {
                     role: Some(self.role),
                     name: None,
@@ -326,8 +325,7 @@ impl AnthropicChatResponse {
             system_fingerprint: None,
             choices: vec![ChatChoiceDelta {
                 index: 0,
-                // TODO align this with OpenAI finish_reason
-                finish_reason: self.stop_reason,
+                finish_reason: self.stop_reason.map(from_stop_reason),
                 delta: ChatMessage {
                     role: Some(self.role),
                     name: None,
@@ -342,6 +340,16 @@ impl AnthropicChatResponse {
                 total_tokens: None,
             }),
         }
+    }
+}
+
+fn from_stop_reason(stop_reason: String) -> FinishReason {
+    match stop_reason.as_str() {
+        "end_turn" => FinishReason::Stop,
+        "max_tokens" => FinishReason::Length,
+        "stop_sequence" => FinishReason::Stop,
+        "tool_use" => FinishReason::ToolCalls,
+        _ => FinishReason::Other(Cow::from(stop_reason)),
     }
 }
 
@@ -487,7 +495,9 @@ mod streaming {
     use http::StatusCode;
     use serde::{Deserialize, Serialize};
 
-    use super::{AnthropicChatResponse, AnthropicToolUse, AnthropicUsageResponse};
+    use super::{
+        from_stop_reason, AnthropicChatResponse, AnthropicToolUse, AnthropicUsageResponse,
+    };
     use crate::{
         format::{
             ChatChoiceDelta, ChatMessage, StreamingChatResponse, ToolCall, ToolCallFunction,
@@ -562,7 +572,7 @@ mod streaming {
                                 content: Some(String::new()),
                                 ..Default::default()
                             },
-                            finish_reason: message.stop_reason,
+                            finish_reason: message.stop_reason.map(from_stop_reason),
                         };
 
                         output.choices.push(delta);

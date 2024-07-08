@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use aws_sdk_bedrockruntime::{
     operation::converse::ConverseOutput,
     types::{
@@ -14,7 +16,7 @@ use serde_json::Value;
 
 use crate::{
     format::{
-        ChatChoice, ChatMessage, ChatResponse, SingleChatResponse, Tool, ToolCall,
+        ChatChoice, ChatMessage, ChatResponse, FinishReason, SingleChatResponse, Tool, ToolCall,
         ToolCallFunction, UsageResponse,
     },
     providers::ProviderError,
@@ -268,13 +270,13 @@ pub fn convert_from_single_aws_output(
     output: aws_sdk_bedrockruntime::operation::converse::ConverseOutput,
 ) -> Result<SingleChatResponse, Report<ProviderError>> {
     let finish_reason = match output.stop_reason {
-        StopReason::ContentFiltered => "content_filtered".to_string(),
-        StopReason::EndTurn => "end_turn".to_string(),
-        StopReason::GuardrailIntervened => "guardrail_intervened".to_string(),
-        StopReason::MaxTokens => "max_tokens".to_string(),
-        StopReason::StopSequence => "stop_sequence".to_string(),
-        StopReason::ToolUse => "tool_use".to_string(),
-        e @ _ => e.to_string(),
+        StopReason::ContentFiltered => FinishReason::ContentFilter,
+        StopReason::EndTurn => FinishReason::Stop,
+        StopReason::GuardrailIntervened => FinishReason::Other(Cow::from("guardrail_intervened")),
+        StopReason::MaxTokens => FinishReason::Length,
+        StopReason::StopSequence => FinishReason::Stop,
+        StopReason::ToolUse => FinishReason::ToolCalls,
+        e @ _ => FinishReason::Other(Cow::from(e.to_string())),
     };
 
     let message = output

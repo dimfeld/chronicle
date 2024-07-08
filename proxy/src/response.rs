@@ -70,7 +70,7 @@ pub async fn handle_response(
     current_span.record("llm.usage.prompt_tokens", usage.prompt_tokens);
     current_span.record(
         "llm.finish_reason",
-        response.choices.get(0).map(|c| &c.finish_reason),
+        response.choices.get(0).map(|c| c.finish_reason.as_str()),
     );
     current_span.record("llm.usage.completion_tokens", usage.completion_tokens);
     let total_tokens = usage

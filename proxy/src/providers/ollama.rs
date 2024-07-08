@@ -13,8 +13,8 @@ use super::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOpti
 use crate::{
     format::{
         ChatChoice, ChatChoiceDelta, ChatMessage, ChatRequestTransformation, ChatResponse,
-        ResponseInfo, StreamingChatResponse, StreamingResponse, StreamingResponseSender,
-        UsageResponse,
+        FinishReason, ResponseInfo, StreamingChatResponse, StreamingResponse,
+        StreamingResponseSender, UsageResponse,
     },
     request::{parse_response_json, send_standard_request},
 };
@@ -175,7 +175,7 @@ impl ChatModelProvider for Ollama {
                 system_fingerprint: None,
                 choices: vec![ChatChoice {
                     index: 0,
-                    finish_reason: result.done_reason.unwrap_or_else(|| "stop".to_string()),
+                    finish_reason: result.done_reason.unwrap_or(FinishReason::Stop),
                     message: result.message,
                 }],
                 usage: Some(UsageResponse {
@@ -232,7 +232,7 @@ struct OllamaResponse {
     // created_at: String,
     model: String,
     message: ChatMessage,
-    done_reason: Option<String>,
+    done_reason: Option<FinishReason>,
     // total_duration: u64,
     load_duration: Option<u64>,
     prompt_eval_count: Option<u64>,
