@@ -137,7 +137,7 @@ pub struct ChatChoiceDelta {
     pub finish_reason: Option<FinishReason>,
 }
 
-#[derive(Deserialize, Default, Debug, Clone)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum FinishReason {
     #[default]
@@ -158,15 +158,6 @@ impl FinishReason {
             FinishReason::ToolCalls => "tool_calls",
             FinishReason::Other(reason) => reason.as_ref(),
         }
-    }
-}
-
-impl Serialize for FinishReason {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(self.as_str())
     }
 }
 
@@ -566,4 +557,42 @@ pub struct ToolCallFunction {
     /// The optional arguments passed to the function, as a JSON string
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arguments: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FinishReason;
+
+    #[test]
+    fn finish_reason_serialization() {
+        let cases = vec![
+            (FinishReason::Stop, "stop"),
+            (FinishReason::Length, "length"),
+            (FinishReason::ContentFilter, "content_filter"),
+            (FinishReason::ToolCalls, "tool_calls"),
+            (FinishReason::Other("custom_reason".into()), "custom_reason"),
+        ];
+
+        for (finish_reason, expected_str) in cases {
+            let serialized = serde_json::to_value(&finish_reason).unwrap();
+            assert_eq!(serialized, serde_json::json!(expected_str));
+        }
+    }
+
+    #[test]
+    fn finish_reason_deserialization() {
+        let cases = vec![
+            ("stop", FinishReason::Stop),
+            ("length", FinishReason::Length),
+            ("content_filter", FinishReason::ContentFilter),
+            ("tool_calls", FinishReason::ToolCalls),
+            ("custom_reason", FinishReason::Other("custom_reason".into())),
+        ];
+
+        for (json_str, expected_enum) in cases {
+            let deserialized: FinishReason =
+                serde_json::from_value(serde_json::json!(json_str)).unwrap();
+            assert_eq!(deserialized.as_str(), expected_enum.as_str());
+        }
+    }
 }
