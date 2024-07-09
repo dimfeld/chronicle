@@ -1,7 +1,8 @@
 //! AWS Bedrock Runtime Support
 //!
 //! This is very similar to the Anthropic provider since Bedrock's API is close to the same. The
-//! main difference is that we use their SDK for it.
+//! main difference is that we use their SDK for it, and some minor differences in the streaming
+//! format.
 
 mod conversions;
 
