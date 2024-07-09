@@ -10,3 +10,19 @@ Chronicle is a proxy for language model API calls which
 - Supports logging "runs" and "steps" for multi-step workflows
 
 [See the roadmap](https://imfeld.dev/notes/projects_chronicle) for the current status and other notes.
+
+The project contains both a Rust crate named [chronicle-proxy](https://crates.io/crates/chronicle-proxy) in the `proxy` directory for embedding in applications, and a [turnkey server](https://crates.io/crates/chronicle-api) in the `api` directory which can be run directly.
+
+See the [CHANGELOG](./api/CHANGELOG.md) for latest changes.
+
+## Supported Providers
+
+- OpenAI
+- Anthropic
+- AWS Bedrock
+- Groq
+- Ollama
+- AnyScale
+- DeepInfra
+- Fireworks
+- Together
