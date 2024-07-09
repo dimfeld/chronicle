@@ -121,7 +121,7 @@ impl ChatModelProvider for Groq {
                                 name: None,
                                 tool_call_id: None,
                             },
-                            finish_reason: "tool_calls".to_string(),
+                            finish_reason: crate::format::FinishReason::ToolCalls,
                         }],
                         usage: Some(UsageResponse {
                             // TODO This should be better

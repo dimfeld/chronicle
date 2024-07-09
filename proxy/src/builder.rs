@@ -17,6 +17,28 @@ use crate::{
     Error, ProviderLookup, Proxy,
 };
 
+enum MaybeEmpty<T> {
+    None,
+    Empty,
+    Some(T),
+}
+
+impl<T> MaybeEmpty<T> {
+    /// Convert this `MaybeEmpty` into an `Option<T>`, setting the Empty case to None.
+    fn to_option(self) -> Option<T> {
+        match self {
+            MaybeEmpty::None => None,
+            MaybeEmpty::Empty => None,
+            MaybeEmpty::Some(t) => Some(t),
+        }
+    }
+
+    /// Return true if the value is Empty or Some
+    fn is_set(&self) -> bool {
+        matches!(self, MaybeEmpty::Some(_) | MaybeEmpty::Empty)
+    }
+}
+
 /// A builder for [Proxy]
 pub struct ProxyBuilder {
     database: Option<Database>,
@@ -27,6 +49,8 @@ pub struct ProxyBuilder {
 
     anthropic: Option<String>,
     anyscale: Option<String>,
+    #[cfg(feature = "aws-bedrock")]
+    aws_bedrock: MaybeEmpty<aws_sdk_bedrockruntime::Client>,
     deepinfra: Option<String>,
     fireworks: Option<String>,
     groq: Option<String>,
@@ -48,6 +72,8 @@ impl ProxyBuilder {
 
             anthropic: Some(String::new()),
             anyscale: Some(String::new()),
+            #[cfg(feature = "aws-bedrock")]
+            aws_bedrock: MaybeEmpty::Empty,
             deepinfra: Some(String::new()),
             fireworks: Some(String::new()),
             groq: Some(String::new()),
@@ -176,6 +202,16 @@ impl ProxyBuilder {
         self
     }
 
+    #[cfg(feature = "aws-bedrock")]
+    /// Enable the AWS Bedrock provider, possibly passing a custom client.
+    pub fn with_aws_bedrock(mut self, client: Option<aws_sdk_bedrockruntime::Client>) -> Self {
+        self.aws_bedrock = match client {
+            Some(client) => MaybeEmpty::Some(client),
+            None => MaybeEmpty::Empty,
+        };
+        self
+    }
+
     /// Enable the DeepInfra provider, if it was disabled by [without_default_providers]
     pub fn with_deepinfra(mut self, token: Option<String>) -> Self {
         self.deepinfra = token.or(Some(String::new()));
@@ -216,6 +252,10 @@ impl ProxyBuilder {
     pub fn without_default_providers(mut self) -> Self {
         self.anthropic = None;
         self.anyscale = None;
+        #[cfg(feature = "aws-bedrock")]
+        {
+            self.aws_bedrock = MaybeEmpty::None;
+        }
         self.deepinfra = None;
         self.fireworks = None;
         self.groq = None;
@@ -314,6 +354,13 @@ impl ProxyBuilder {
                 Arc::new(Anyscale::new(client.clone(), empty_to_none(token)))
                     as Arc<dyn ChatModelProvider>,
             );
+        }
+
+        #[cfg(feature = "aws-bedrock")]
+        if self.aws_bedrock.is_set() {
+            providers.push(Arc::new(
+                crate::providers::aws_bedrock::AwsBedrock::new(self.aws_bedrock.to_option()).await,
+            ) as Arc<dyn ChatModelProvider>);
         }
 
         if let Some(token) = self.deepinfra {

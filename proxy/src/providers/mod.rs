@@ -1,5 +1,7 @@
 pub mod anthropic;
 pub mod anyscale;
+#[cfg(feature = "aws-bedrock")]
+pub mod aws_bedrock;
 pub mod custom;
 pub mod deepinfra;
 pub mod fireworks;
@@ -67,6 +69,12 @@ impl ProviderError {
             body: None,
             latency: std::time::Duration::ZERO,
         }
+    }
+
+    /// A helper for creating a `ProviderError` with the TransformingRequest error kind. This is by
+    /// far the most common case in the codebase.
+    pub fn transforming_request() -> Self {
+        Self::from_kind(ProviderErrorKind::TransformingRequest)
     }
 }
 

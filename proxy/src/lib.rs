@@ -817,7 +817,7 @@ mod test {
                         tool_calls: Vec::new(),
                         ..Default::default()
                     },
-                    finish_reason: "stop".to_string(),
+                    finish_reason: crate::format::FinishReason::Stop,
                 }],
             }))
             .mount(&mock_server)
@@ -912,7 +912,7 @@ mod test {
                     tool_calls: Vec::new(),
                     ..Default::default()
                 },
-                finish_reason: Some("stop".to_string()),
+                finish_reason: Some(crate::format::FinishReason::Stop),
             }],
         };
 
