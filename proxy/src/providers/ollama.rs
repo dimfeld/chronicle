@@ -14,7 +14,7 @@ use crate::{
     format::{
         ChatChoice, ChatChoiceDelta, ChatMessage, ChatRequestTransformation, ChatResponse,
         FinishReason, ResponseInfo, StreamingChatResponse, StreamingResponse,
-        StreamingResponseSender, UsageResponse,
+        StreamingResponseSender, Tool, UsageResponse,
     },
     request::{parse_response_json, send_standard_request},
 };
@@ -96,7 +96,8 @@ impl ChatModelProvider for Ollama {
             strip_model_prefix: Some(Cow::Borrowed("ollama/")),
         });
 
-        let stream = body.stream;
+        // Ollama doesn't yet support streaming tools, so disable it if tools are passed.
+        let stream = body.stream && body.tools.is_empty();
         let model = body
             .model
             .ok_or_else(|| ProviderError::from_kind(ProviderErrorKind::TransformingRequest))
@@ -115,6 +116,7 @@ impl ChatModelProvider for Ollama {
                 seed: body.seed,
             },
             stream,
+            tools: body.tools,
             keep_alive: None,
         };
 
@@ -208,6 +210,8 @@ struct OllamaChatRequest {
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     keep_alive: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tools: Vec<Tool>,
 }
 
 #[derive(Serialize, Debug)]

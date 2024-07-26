@@ -1,5 +1,9 @@
 # chronicle-proxy changelog
 
+## Unreleased
+
+- Support Ollama 0.3.0 tool calls
+
 ## 0.4.3
 
 - Allow customizing the initial status in a `run:start` event.
