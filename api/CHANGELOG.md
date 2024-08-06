@@ -1,5 +1,10 @@
 # chronicle-api changelog
 
+## Unreleased
+
+- Support Ollama 0.3.0 tool calls
+- Support `strict` field in function calls with GPT4o
+
 ## 0.4.3
 
 - Allow customizing the initial status in a `run:start` event.

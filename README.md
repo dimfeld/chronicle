@@ -2,6 +2,7 @@
 
 Chronicle is a proxy for language model API calls which
 
+- Presents an OpenAI-compatible API regardless of the underlying provider. Switching providers is as easy as changing the model string in your request.
 - Provides retries and optionally falls back to other providers on a failed call
 - Records each call in a database, and sends OpenTelemetry events
 - Lets you switch model provider APIs without changing your request format.

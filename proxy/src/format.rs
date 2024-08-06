@@ -499,6 +499,8 @@ pub struct FunctionTool {
     pub name: String,
     /// An optional description of the function
     pub description: Option<String>,
+    /// For OpenAI, if constrained sampling should be used when generating the response.
+    pub strict: Option<bool>,
     /// Optional parameters for the function, represented as a JSON value
     pub parameters: Option<serde_json::Value>,
 }
