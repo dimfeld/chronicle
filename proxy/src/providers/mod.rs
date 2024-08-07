@@ -181,6 +181,14 @@ impl ProviderErrorKind {
         Some(code)
     }
 
+    pub fn from_reqwest_send_error(error: &reqwest::Error) -> Self {
+        if error.is_timeout() {
+            Self::Timeout
+        } else {
+            Self::Sending
+        }
+    }
+
     pub fn status_code(&self) -> StatusCode {
         match self {
             ProviderErrorKind::Generic => StatusCode::INTERNAL_SERVER_ERROR,

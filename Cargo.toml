@@ -13,7 +13,7 @@ repository = "https://github.com/dimfeld/chronicle"
 keywords = ["llm", "proxy", "logging", "observability"]
 
 [workspace.dependencies]
-filigree = { version = "0.4.0", features = ["tracing", "tracing_export"] }
+filigree = { version = "0.4.1", features = ["tracing", "tracing_export"] }
 sqlx = "0.8.0"
 sqlx-transparent-json-decode = "3.0.0"
 #filigree = { "path" = "../filigree/filigree", features = ["tracing", "tracing_export"] }

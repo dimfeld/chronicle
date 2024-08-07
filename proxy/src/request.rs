@@ -324,11 +324,14 @@ pub async fn send_standard_request(
         .body(body)
         .send()
         .await
-        .change_context(ProviderError {
-            kind: ProviderErrorKind::Sending,
-            status_code: None,
-            body: None,
-            latency: start.elapsed(),
+        .map_err(|e| {
+            let kind = ProviderErrorKind::from_reqwest_send_error(&e);
+            Report::new(e).change_context(ProviderError {
+                kind,
+                status_code: None,
+                body: None,
+                latency: start.elapsed(),
+            })
         })?;
 
     let status = result.status();
