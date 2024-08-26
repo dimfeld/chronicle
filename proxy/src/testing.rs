@@ -215,6 +215,7 @@ pub async fn test_fixture_response(
                             tool_calls: Vec::new(),
                             name: None,
                             tool_call_id: None,
+                            cache_control: None,
                         }],
                         stream,
                         ..Default::default()
@@ -259,6 +260,7 @@ pub async fn test_tool_use(model: &str, stream: bool) {
                     typ: "function".to_string(),
                     function: FunctionTool {
                         name: "get_weather".to_string(),
+                        strict: None,
                         description: Some("Find the weather in a particular place".to_string()),
                         parameters: Some(serde_json::json!({
                           "type": "object",
@@ -341,6 +343,7 @@ pub async fn test_tool_use_response(model: &str, stream: bool) {
                     function: FunctionTool {
                         name: "get_weather".to_string(),
                         description: Some("Find the weather in a particular place".to_string()),
+                        strict: None,
                         parameters: Some(serde_json::json!({
                           "type": "object",
                           "properties": {

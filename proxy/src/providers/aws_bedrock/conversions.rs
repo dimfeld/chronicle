@@ -1,12 +1,9 @@
 use std::borrow::Cow;
 
-use aws_sdk_bedrockruntime::{
-    operation::converse::ConverseOutput,
-    types::{
-        AnyToolChoice, AutoToolChoice, ContentBlock, ConversationRole, Message, SpecificToolChoice,
-        StopReason, TokenUsage, ToolChoice, ToolInputSchema, ToolResultBlock, ToolSpecification,
-        ToolUseBlock,
-    },
+use aws_sdk_bedrockruntime::types::{
+    AnyToolChoice, AutoToolChoice, ContentBlock, ConversationRole, Message, SpecificToolChoice,
+    StopReason, TokenUsage, ToolChoice, ToolInputSchema, ToolResultBlock, ToolSpecification,
+    ToolUseBlock,
 };
 use aws_smithy_types::Document;
 use chrono::Utc;
@@ -16,7 +13,7 @@ use serde_json::Value;
 
 use crate::{
     format::{
-        ChatChoice, ChatMessage, ChatResponse, FinishReason, SingleChatResponse, Tool, ToolCall,
+        ChatChoice, ChatMessage, FinishReason, SingleChatResponse, Tool, ToolCall,
         ToolCallFunction, UsageResponse,
     },
     providers::ProviderError,
@@ -262,6 +259,7 @@ fn convert_aws_message(message: Message) -> ChatMessage {
         content: message,
         tool_calls: tools,
         tool_call_id: None,
+        cache_control: None,
     }
 }
 

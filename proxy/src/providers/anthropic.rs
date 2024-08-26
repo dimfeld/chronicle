@@ -10,9 +10,10 @@ use smallvec::{smallvec, SmallVec};
 use super::{ChatModelProvider, ProviderError, ProviderErrorKind, SendRequestOptions};
 use crate::{
     format::{
-        ChatChoice, ChatChoiceDelta, ChatMessage, ChatRequestTransformation, ChatResponse,
-        FinishReason, ResponseInfo, SingleChatResponse, StreamingChatResponse, StreamingResponse,
-        StreamingResponseSender, Tool, ToolCall, ToolCallFunction, UsageResponse,
+        CacheControl, ChatChoice, ChatChoiceDelta, ChatMessage, ChatRequestTransformation,
+        ChatResponse, FinishReason, ResponseInfo, SingleChatResponse, StreamingChatResponse,
+        StreamingResponse, StreamingResponseSender, Tool, ToolCall, ToolCallFunction,
+        UsageResponse,
     },
     request::{parse_response_json, response_is_sse, send_standard_request},
     streaming::stream_sse_to_channel,
@@ -97,6 +98,7 @@ impl ChatModelProvider for Anthropic {
                     .post(self.url.as_str())
                     .header("x-api-key", api_token)
                     .header("anthropic-version", "2023-06-01")
+                    .header("anthropic-beta", "prompt-caching-2024-07-31")
                     .header(CONTENT_TYPE, "application/json; charset=utf8")
             },
             handle_retry_after,
@@ -304,6 +306,7 @@ impl Into<SingleChatResponse> for AnthropicChatResponse {
                     content: text,
                     tool_calls,
                     tool_call_id: None,
+                    cache_control: None,
                 },
             }],
             usage: Some(UsageResponse {
@@ -332,6 +335,7 @@ impl AnthropicChatResponse {
                     content: text,
                     tool_calls,
                     tool_call_id: None,
+                    cache_control: None,
                 },
             }],
             usage: Some(UsageResponse {
@@ -396,6 +400,8 @@ fn convert_from_response(
 struct AnthropicChatMessage {
     role: String,
     content: SmallVec<[AnthropicChatContent; 1]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_control: Option<CacheControl>,
 }
 
 impl TryFrom<ChatMessage> for AnthropicChatMessage {
@@ -413,6 +419,7 @@ impl TryFrom<ChatMessage> for AnthropicChatMessage {
                     // TODO add a field to ChatMessage for this
                     is_error: false,
                 }],
+                cache_control: message.cache_control,
             });
         }
 
@@ -426,7 +433,11 @@ impl TryFrom<ChatMessage> for AnthropicChatMessage {
             }))
             .collect::<Result<_, _>>()?;
 
-        Ok(AnthropicChatMessage { role, content })
+        Ok(AnthropicChatMessage {
+            role,
+            content,
+            cache_control: message.cache_control,
+        })
     }
 }
 

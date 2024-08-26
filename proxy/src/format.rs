@@ -184,6 +184,10 @@ pub struct ChatMessage {
     /// A tool call ID when responding to the tool call.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+    /// Control caching of prompt inputs.
+    /// This is experimental, and may change as prompt caching functionality evolves across providers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
 }
 
 impl ChatMessage {
@@ -232,6 +236,12 @@ impl ChatMessage {
             self.tool_calls[index].merge_delta(tool_call);
         }
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "snake_case", tag = "type")]
+pub enum CacheControl {
+    Ephemeral,
 }
 
 /// Counts of prompt, completion, and total tokens
@@ -462,6 +472,7 @@ impl ChatRequest {
                 tool_calls: Vec::new(),
                 name: None,
                 tool_call_id: None,
+                cache_control: None,
             })
             .chain(self.messages.drain(..))
             .collect();

@@ -121,7 +121,6 @@ pub(crate) async fn run(cmd: Cli) -> Result<(), Report<Error>> {
     for (dir, _) in configs.global.iter().chain(configs.cwd.iter()) {
         tracing::info!("Loaded config from {}", dir.display());
     }
-
     let db = init_database(server_config.database.clone())
         .await
         .change_context(Error::Db)?;

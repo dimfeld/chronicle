@@ -120,6 +120,7 @@ impl ChatModelProvider for Groq {
                                 content: None,
                                 name: None,
                                 tool_call_id: None,
+                                cache_control: None,
                             },
                             finish_reason: crate::format::FinishReason::ToolCalls,
                         }],
